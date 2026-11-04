@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { INITIAL_ACCOUNTING_STATE, BLANK_ACCOUNTING_STATE } from './data/initialAccountingData';
+import { INITIAL_ACCOUNTING_STATE, BLANK_ACCOUNTING_STATE, INITIAL_USERS } from './data/initialAccountingData';
 import {
   AccountingState,
   Currency,
@@ -15,6 +15,7 @@ import {
   BankStatementEntry,
   BotConfig,
   BotDeliveryLog,
+  UserAccount,
 } from './types/accounting';
 import { DashboardOverview } from './components/DashboardOverview';
 import { FXTradingDeskView } from './components/FXTradingDeskView';
@@ -26,6 +27,8 @@ import { BanksAndReconciliationView } from './components/BanksAndReconciliationV
 import { StandardAccountingReportsView } from './components/StandardAccountingReportsView';
 import { OfflineActivationModal } from './components/OfflineActivationModal';
 import { CurrencyManagerModal } from './components/CurrencyManagerModal';
+import { SettingsModal } from './components/SettingsModal';
+import { LoginModal } from './components/LoginModal';
 import { PWAInstallPrompt } from './components/PWAInstallPrompt';
 import {
   loadLicenseStatus,
@@ -44,12 +47,13 @@ import {
   FileSpreadsheet,
   RotateCcw,
   ShieldCheck,
-  Wifi,
   WifiOff,
   RefreshCw,
   Server,
   Database,
-  Smartphone,
+  Settings,
+  LogOut,
+  UserCheck,
 } from 'lucide-react';
 
 type NavTab =
@@ -62,7 +66,8 @@ type NavTab =
   | 'inventory'
   | 'reports';
 
-const STORAGE_KEY = 'TARAZBAN_PERSONAL_ACCOUNTING_STATE_V8';
+const STORAGE_KEY = 'TARAZBAN_PERSONAL_ACCOUNTING_STATE_V9';
+const CURRENT_USER_SESSION_KEY = 'TARAZBAN_CURRENT_USER_SESSION';
 
 export function App() {
   const [licenseStatus, setLicenseStatus] = useState<LicenseStatus>(() =>
@@ -133,6 +138,19 @@ export function App() {
   const [botLogs, setBotLogs] = useState<BotDeliveryLog[]>(
     savedState?.botLogs || INITIAL_ACCOUNTING_STATE.botLogs
   );
+  const [users, setUsers] = useState<UserAccount[]>(
+    savedState?.users || INITIAL_ACCOUNTING_STATE.users || INITIAL_USERS
+  );
+
+  // Active User Authentication State
+  const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => {
+    try {
+      const saved = sessionStorage.getItem(CURRENT_USER_SESSION_KEY);
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
 
   const fullAccountingState: AccountingState = useMemo(
     () => ({
@@ -150,6 +168,7 @@ export function App() {
       fxDeals,
       botConfig,
       botLogs,
+      users,
     }),
     [
       currencies,
@@ -164,6 +183,7 @@ export function App() {
       fxDeals,
       botConfig,
       botLogs,
+      users,
     ]
   );
 
@@ -180,6 +200,7 @@ export function App() {
   const [lastSyncTime, setLastSyncTime] = useState<string>('');
   const [showBlankConfirmModal, setShowBlankConfirmModal] = useState<boolean>(false);
   const [showCurrencyModal, setShowCurrencyModal] = useState<boolean>(false);
+  const [showSettingsModal, setShowSettingsModal] = useState<boolean>(false);
   const lastServerUpdatedAtRef = useRef<string | null>(null);
   const isRemoteUpdateRef = useRef<boolean>(false);
 
@@ -220,7 +241,7 @@ export function App() {
     };
   }, []);
 
-  // ۲. همگام‌سازی زنده دوره‌ای (Polling هر ۵ ثانیه): هر تغییری از گوشی یا کلاینت دیگر فورا روی این کلاینت اعمال می‌شود
+  // ۲. همگام‌سازی زنده دوره‌ای (Polling هر ۲ ثانیه برای همگام‌سازی آنی تمام کلاینت‌های شبکه لینوکس)
   useEffect(() => {
     const pollInterval = setInterval(async () => {
       try {
@@ -248,7 +269,7 @@ export function App() {
       } catch {
         setNetworkSyncStatus('offline');
       }
-    }, 5000);
+    }, 2000);
 
     return () => clearInterval(pollInterval);
   }, []);
@@ -278,7 +299,7 @@ export function App() {
       } catch {
         // سرور موقتا در دسترس نیست
       }
-    }, 800);
+    }, 500);
 
     return () => clearTimeout(timer);
   }, [fullAccountingState]);
@@ -480,7 +501,7 @@ export function App() {
           debitForeign: isReceipt ? 0 : sp.amountForeign,
           creditForeign: isReceipt ? sp.amountForeign : 0,
           debitIRR: isReceipt ? 0 : sp.amountIRR,
-          creditIRR: isReceipt ? sp.amountIRR : 0,
+          creditIRR: isReceipt ? 0 : sp.amountIRR,
           trackingNumber: trk,
         });
 
@@ -897,7 +918,7 @@ export function App() {
                   debitForeign: isSales ? 0 : sp.amountForeign,
                   creditForeign: isSales ? sp.amountForeign : 0,
                   debitIRR: isSales ? 0 : sp.amountIRR,
-                  creditIRR: isSales ? sp.amountIRR : 0,
+                  creditIRR: isSales ? 0 : sp.amountIRR,
                   trackingNumber: trk,
                 });
               });
@@ -1053,6 +1074,7 @@ export function App() {
     setBankStatements(restored.bankStatementEntries ?? []);
     if (restored.botConfig) setBotConfig(restored.botConfig);
     if (restored.botLogs) setBotLogs(restored.botLogs ?? []);
+    if (restored.users) setUsers(restored.users);
   };
 
   const handleResetDemoData = () => {
@@ -1076,6 +1098,16 @@ export function App() {
     setShowBlankConfirmModal(false);
   };
 
+  const handleLogout = () => {
+    setCurrentUser(null);
+    sessionStorage.removeItem(CURRENT_USER_SESSION_KEY);
+  };
+
+  const handleLoginSuccess = (user: UserAccount) => {
+    setCurrentUser(user);
+    sessionStorage.setItem(CURRENT_USER_SESSION_KEY, JSON.stringify(user));
+  };
+
   const navItems: { id: NavTab; label: string; icon: React.ReactNode; badge?: string }[] = [
     {
       id: 'dashboard',
@@ -1085,39 +1117,39 @@ export function App() {
     {
       id: 'fx_desk',
       label: 'خرید و فروش ارز (صرافی)',
-      icon: <Coins className="w-4 h-4 text-amber-400" />,
+      icon: <Coins className="w-4 h-4 text-amber-500" />,
       badge: 'اصلی',
     },
     {
       id: 'invoices',
       label: 'فاکتور معاملات ارزی',
-      icon: <ShoppingBag className="w-4 h-4 text-teal-400" />,
+      icon: <ShoppingBag className="w-4 h-4 text-teal-600" />,
       badge: 'تسویه چندارزی',
     },
     {
       id: 'vouchers',
       label: 'امور مالی و دریافت/پرداخت',
-      icon: <Sparkles className="w-4 h-4 text-emerald-400" />,
+      icon: <Sparkles className="w-4 h-4 text-emerald-600" />,
     },
     {
       id: 'persons',
       label: 'حساب اشخاص (طلب/بدهی ارزی)',
-      icon: <Users className="w-4 h-4 text-cyan-400" />,
+      icon: <Users className="w-4 h-4 text-cyan-600" />,
     },
     {
       id: 'banks',
       label: 'بانک‌ها و صندوق‌های ارزی',
-      icon: <Landmark className="w-4 h-4 text-indigo-400" />,
+      icon: <Landmark className="w-4 h-4 text-indigo-600" />,
     },
     {
       id: 'inventory',
       label: 'موجودی ارزها و پشتیبان',
-      icon: <Package className="w-4 h-4 text-purple-400" />,
+      icon: <Package className="w-4 h-4 text-purple-600" />,
     },
     {
       id: 'reports',
       label: 'گزارش سود و زیان معاملات',
-      icon: <FileSpreadsheet className="w-4 h-4 text-rose-400" />,
+      icon: <FileSpreadsheet className="w-4 h-4 text-rose-600" />,
     },
   ];
 
@@ -1128,6 +1160,11 @@ export function App() {
         onActivated={(newStatus) => setLicenseStatus(newStatus)}
       />
     );
+  }
+
+  // If user is not logged in, show Login Screen
+  if (!currentUser) {
+    return <LoginModal users={users} onLoginSuccess={handleLoginSuccess} />;
   }
 
   return (
@@ -1152,12 +1189,25 @@ export function App() {
                 </span>
               </div>
               <p className="hidden sm:block text-[11px] sm:text-xs text-slate-500 line-clamp-1">
-                طراحی‌شده برای صرافی و حسابداری معاملات ارزی در گوشی و رایانه
+                طراحی‌شده برای صرافی و حسابداری معاملات ارزی در شبکه محلی صرافی
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            {/* User Profile Badge & Logout */}
+            <div className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 px-2 sm:px-2.5 py-1 rounded-xl text-xs font-bold transition">
+              <UserCheck className="w-3.5 h-3.5 text-teal-600" />
+              <span className="text-slate-800 text-[11px] sm:text-xs max-w-[100px] truncate">{currentUser.fullName}</span>
+              <button
+                onClick={handleLogout}
+                title="خروج از حساب کاربری"
+                className="text-slate-400 hover:text-rose-600 mr-1 p-0.5 transition cursor-pointer"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
             {/* Live Network Server Sync Status */}
             <div className="flex items-center gap-1 px-2 py-1 text-[10px] sm:text-xs rounded-xl border border-slate-200 bg-slate-50">
               {networkSyncStatus === 'connected' ? (
@@ -1189,14 +1239,13 @@ export function App() {
               + ارزها ({currencies.length})
             </button>
 
-            {/* Reset Demo Data */}
+            {/* Settings Modal Button */}
             <button
-              onClick={handleResetDemoData}
-              title="بازگردانی داده‌های پیش‌فرض نمونه"
-              className="px-2 py-1 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 text-[10px] sm:text-xs text-slate-700 flex items-center gap-1 transition cursor-pointer shrink-0"
+              onClick={() => setShowSettingsModal(true)}
+              className="px-2.5 py-1 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold text-[10px] sm:text-[11px] flex items-center gap-1 transition cursor-pointer shrink-0 shadow-xs"
             >
-              <RotateCcw className="w-3 h-3 text-slate-500" />
-              <span className="hidden sm:inline">ریست نمونه</span>
+              <Settings className="w-3.5 h-3.5" />
+              <span>تنظیمات</span>
             </button>
           </div>
         </div>
@@ -1210,51 +1259,20 @@ export function App() {
         onUpdateCurrencies={setCurrencies}
       />
 
-      {/* Blank Database Confirmation Modal */}
-      {showBlankConfirmModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white border border-slate-200 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
-            <div className="flex items-center gap-3 text-amber-600">
-              <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center border border-amber-200">
-                <Database className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="font-bold text-slate-900 text-base">خام کردن و صفر کردن کامل دیتابیس</h3>
-                <p className="text-xs text-slate-500">شروع کار واقعی بدون اسناد یا مشتریان تستی</p>
-              </div>
-            </div>
+      {/* Settings Modal (Includes Database Reset, User Management, Bot Config & Server Sync) */}
+      <SettingsModal
+        isOpen={showSettingsModal}
+        onClose={() => setShowSettingsModal(false)}
+        state={fullAccountingState}
+        currentUser={currentUser}
+        onResetToBlankDatabase={handleResetToBlankDatabase}
+        onUpdateBotConfig={(patch) => setBotConfig({ ...botConfig, ...patch })}
+        onUpdateUsers={setUsers}
+        networkSyncStatus={networkSyncStatus}
+        lastSyncTime={lastSyncTime}
+      />
 
-            <div className="p-3.5 rounded-xl bg-amber-50/60 border border-amber-200 text-xs text-slate-800 leading-relaxed space-y-2">
-              <p>
-                ⚠️ با تایید این گزینه، <strong>تمام اسناد حسابداری، فاکتورها، معاملات ارزی و اشخاص تستی پاکسازی می‌شوند</strong> و یک دیتابیس کاملاً سفید و خام ایجاد می‌گردد.
-              </p>
-              <p className="text-slate-600">
-                • تنظیمات پایه ارزها و بانک‌های اصلی حفظ می‌گردند تا بتوانید بلافاصله فاکتور و اسناد واقعی خود را وارد نمایید.
-              </p>
-              <p className="text-emerald-700 font-semibold">
-                • این پاکسازی به صورت سراسری در فایل پایگاه‌داده سرور لینوکس نیز اعمال شده و تمام گوشی‌ها و کامپیوترهای متصل همگام می‌شوند.
-              </p>
-            </div>
-
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <button
-                onClick={() => setShowBlankConfirmModal(false)}
-                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs text-slate-700 font-semibold cursor-pointer transition"
-              >
-                انصراف
-              </button>
-              <button
-                onClick={handleResetToBlankDatabase}
-                className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-xs font-bold text-white cursor-pointer shadow-lg shadow-amber-500/20 transition"
-              >
-                تایید و خام کردن کامل دیتابیس
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Main Layout - Pocket Mobile Friendly with Vertical Sidebar on Desktop & Fixed Bottom Nav Bar on Mobile */}
+      {/* Main Layout */}
       <div className="max-w-[1600px] w-full mx-auto flex-1 flex flex-col lg:flex-row gap-5 p-2.5 sm:p-6 pb-20 lg:pb-6 overflow-x-hidden">
         {/* Navigation Bar (Desktop Vertical Sidebar Only) */}
         <aside className="hidden lg:block w-64 shrink-0">
@@ -1289,6 +1307,18 @@ export function App() {
                 </button>
               );
             })}
+
+            <div className="pt-2 border-t border-slate-200 mt-1">
+              <button
+                onClick={() => setShowSettingsModal(true)}
+                className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+              >
+                <div className="flex items-center gap-2">
+                  <Settings className="w-4 h-4 text-slate-500" />
+                  <span>تنظیمات و کاربران</span>
+                </div>
+              </button>
+            </div>
           </nav>
         </aside>
 
@@ -1409,7 +1439,7 @@ export function App() {
       <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 border-t border-slate-200 backdrop-blur-xl px-1.5 py-2 flex items-center justify-around shadow-xl">
         <button
           onClick={() => setActiveTab('fx_desk')}
-          className={`flex flex-col items-center gap-1 px-2.5 py-1 rounded-xl transition ${
+          className={`flex flex-col items-center gap-1 px-2 py-1 rounded-xl transition ${
             activeTab === 'fx_desk' ? 'text-amber-700 font-bold bg-amber-50' : 'text-slate-600'
           }`}
         >
@@ -1419,7 +1449,7 @@ export function App() {
 
         <button
           onClick={() => setActiveTab('invoices')}
-          className={`flex flex-col items-center gap-1 px-2.5 py-1 rounded-xl transition ${
+          className={`flex flex-col items-center gap-1 px-2 py-1 rounded-xl transition ${
             activeTab === 'invoices' ? 'text-teal-700 font-bold bg-teal-50' : 'text-slate-600'
           }`}
         >
@@ -1429,7 +1459,7 @@ export function App() {
 
         <button
           onClick={() => setActiveTab('persons')}
-          className={`flex flex-col items-center gap-1 px-2.5 py-1 rounded-xl transition ${
+          className={`flex flex-col items-center gap-1 px-2 py-1 rounded-xl transition ${
             activeTab === 'persons' ? 'text-cyan-700 font-bold bg-cyan-50' : 'text-slate-600'
           }`}
         >
@@ -1439,7 +1469,7 @@ export function App() {
 
         <button
           onClick={() => setActiveTab('banks')}
-          className={`flex flex-col items-center gap-1 px-2.5 py-1 rounded-xl transition ${
+          className={`flex flex-col items-center gap-1 px-2 py-1 rounded-xl transition ${
             activeTab === 'banks' ? 'text-indigo-700 font-bold bg-indigo-50' : 'text-slate-600'
           }`}
         >
@@ -1448,13 +1478,11 @@ export function App() {
         </button>
 
         <button
-          onClick={() => setActiveTab('dashboard')}
-          className={`flex flex-col items-center gap-1 px-2.5 py-1 rounded-xl transition ${
-            activeTab === 'dashboard' ? 'text-emerald-700 font-bold bg-emerald-50' : 'text-slate-600'
-          }`}
+          onClick={() => setShowSettingsModal(true)}
+          className="flex flex-col items-center gap-1 px-2 py-1 rounded-xl text-slate-600 transition"
         >
-          <LayoutDashboard className="w-5 h-5 text-emerald-600" />
-          <span className="text-[10px]">داشبورد</span>
+          <Settings className="w-5 h-5 text-slate-700" />
+          <span className="text-[10px]">تنظیمات</span>
         </button>
       </div>
     </div>

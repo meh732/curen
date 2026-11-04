@@ -1,4 +1,41 @@
-import { AccountingState } from '../types/accounting';
+import { UserAccount, AccountingState } from '../types/accounting';
+
+export const INITIAL_USERS: UserAccount[] = [
+  {
+    id: 'usr-admin',
+    username: 'admin',
+    passwordHash: '123',
+    fullName: 'مدیر کل سیستم',
+    role: 'admin',
+    isActive: true,
+    permissions: {
+      canResetDatabase: true,
+      canManageUsers: true,
+      canManageCurrencies: true,
+      canEditVouchers: true,
+      canViewReports: true,
+      canIssueInvoices: true,
+      canTradeFX: true,
+    },
+  },
+  {
+    id: 'usr-accountant',
+    username: 'hesabdar',
+    passwordHash: '123',
+    fullName: 'حسابدار ارزی صرافی',
+    role: 'accountant',
+    isActive: true,
+    permissions: {
+      canResetDatabase: false,
+      canManageUsers: false,
+      canManageCurrencies: true,
+      canEditVouchers: true,
+      canViewReports: true,
+      canIssueInvoices: true,
+      canTradeFX: true,
+    },
+  },
+];
 
 export const INITIAL_ACCOUNTING_STATE: AccountingState = {
   companyName: 'دفتر حسابداری شخصی و معاملات ارزی من',
@@ -41,6 +78,7 @@ export const INITIAL_ACCOUNTING_STATE: AccountingState = {
       updatedAt: '1404/08/12',
     },
   ],
+  users: INITIAL_USERS,
   accounts: [
     // گروه‌ها (Groups)
     { code: '1', name: 'دارایی‌ها', level: 'group', nature: 'debit', category: 'asset', isSystem: true },
@@ -867,12 +905,13 @@ export const INITIAL_ACCOUNTING_STATE: AccountingState = {
 
 /**
  * دیتابیس کاملاً خام و آماده شروع فعالیت واقعی (بدون هیچ سند، فاکتور، معامله یا شخص تستی)
- * همراه با حساب‌ها، ارزها، و بانک‌ها/صندوق‌های آماده
+ * همراه با حساب‌ها، ارزها، کاربران و بانک‌ها/صندوق‌های آماده
  */
 export const BLANK_ACCOUNTING_STATE: AccountingState = {
   companyName: 'دفتر حسابداری ارزی و مالی من',
   fiscalYear: 'سال مالی ۱۴۰۴',
   currencies: INITIAL_ACCOUNTING_STATE.currencies,
+  users: INITIAL_USERS,
   accounts: INITIAL_ACCOUNTING_STATE.accounts,
   contacts: [],
   banks: INITIAL_ACCOUNTING_STATE.banks,
@@ -885,4 +924,5 @@ export const BLANK_ACCOUNTING_STATE: AccountingState = {
   botConfig: INITIAL_ACCOUNTING_STATE.botConfig,
   botLogs: [],
 };
+
 

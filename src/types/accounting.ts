@@ -239,6 +239,29 @@ export interface FXDeal {
   notes?: string;
 }
 
+export type UserRole = 'admin' | 'accountant' | 'operator' | 'viewer';
+
+export interface UserPermissions {
+  canResetDatabase: boolean;
+  canManageUsers: boolean;
+  canManageCurrencies: boolean;
+  canEditVouchers: boolean;
+  canViewReports: boolean;
+  canIssueInvoices: boolean;
+  canTradeFX: boolean;
+}
+
+export interface UserAccount {
+  id: string;
+  username: string;
+  passwordHash: string; // Stored plain or masked password
+  fullName: string;
+  role: UserRole;
+  permissions: UserPermissions;
+  isActive: boolean;
+  lastLogin?: string;
+}
+
 export interface AccountingState {
   companyName: string;
   fiscalYear: string;
@@ -254,4 +277,6 @@ export interface AccountingState {
   fxDeals: FXDeal[];
   botConfig: BotConfig;
   botLogs: BotDeliveryLog[];
+  users?: UserAccount[];
 }
+
