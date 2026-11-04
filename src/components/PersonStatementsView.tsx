@@ -663,18 +663,13 @@ export const PersonStatementsView: React.FC<PersonStatementsViewProps> = ({
             </div>
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                نوع طرف حساب
+                توضیحات یا برچسب (اختیاری)
               </label>
-              <select
-                value={newType}
-                onChange={(e) => setNewType(e.target.value as Contact['type'])}
-                aria-label="نوع طرف حساب"
-                className="w-full px-3 py-2 text-xs border border-slate-300 rounded bg-white"
-              >
-                <option value="customer">مشتری (خریدار)</option>
-                <option value="supplier">تأمین‌کننده (فروشنده)</option>
-                <option value="both">مشتری و تأمین‌کننده (هر دو)</option>
-              </select>
+              <input
+                type="text"
+                placeholder="مثلاً همکار، صراف، بازار تهران یا خریدار..."
+                className="w-full px-3 py-2 text-xs border border-slate-300 rounded"
+              />
             </div>
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">

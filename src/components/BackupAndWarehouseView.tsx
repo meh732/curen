@@ -37,6 +37,7 @@ interface BackupAndWarehouseViewProps {
   onRecordBotLog: (log: BotDeliveryLog) => void;
   onRestoreFullBackup: (restoredState: AccountingState) => void;
   onRecordInventoryMovement: (movement: InventoryMovement) => void;
+  onResetToBlankDatabase?: () => void;
 }
 
 export const BackupAndWarehouseView: React.FC<BackupAndWarehouseViewProps> = ({
@@ -45,8 +46,9 @@ export const BackupAndWarehouseView: React.FC<BackupAndWarehouseViewProps> = ({
   onRecordBotLog,
   onRestoreFullBackup,
   onRecordInventoryMovement,
+  onResetToBlankDatabase,
 }) => {
-  const [section, setSection] = useState<'backup_bot' | 'warehouse' | 'windows_launcher'>('backup_bot');
+  const [section, setSection] = useState<'backup_bot' | 'network_server' | 'warehouse' | 'windows_launcher'>('backup_bot');
   const [notice, setNotice] = useState<string | null>(null);
 
   // Warehouse movement form state
@@ -210,6 +212,17 @@ exit
           </button>
           <button
             type="button"
+            onClick={() => setSection('network_server')}
+            className={`px-3.5 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 ${
+              section === 'network_server'
+                ? 'bg-white text-slate-900 shadow-xs font-bold'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            شبکه لینوکس و دیتابیس خام
+          </button>
+          <button
+            type="button"
             onClick={() => setSection('warehouse')}
             className={`px-3.5 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 ${
               section === 'warehouse'
@@ -353,7 +366,7 @@ exit
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-slate-50 border border-slate-200 rounded-lg">
                   <label className="flex items-center gap-2 font-semibold text-slate-800 cursor-pointer">
                     <input
                       type="checkbox"
@@ -364,9 +377,32 @@ exit
                         })
                       }
                     />
-                    <span>بکاپ اتوماتیک لحظه‌ای پس از ثبت هر سند یا فاکتور</span>
+                    <span>بکاپ اتوماتیک لحظه‌ای پس از ثبت هر سند، فاکتور یا معامله</span>
                   </label>
-                  <span className="font-mono-num text-slate-500">
+
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-slate-700 font-semibold">
+                      فاصله ارسال اتوماتیک به بات:
+                    </label>
+                    <select
+                      value={state.botConfig.autoBackupIntervalHours || 1}
+                      onChange={(e) =>
+                        onUpdateBotConfig({
+                          autoBackupIntervalHours: Number(e.target.value),
+                        })
+                      }
+                      className="px-2 py-1 text-xs border border-slate-300 rounded bg-white font-mono-num font-bold"
+                    >
+                      <option value={1}>هر ۱ ساعت یکبار (ساعتی اتوماتیک)</option>
+                      <option value={2}>هر ۲ ساعت یکبار</option>
+                      <option value={4}>هر ۴ ساعت یکبار</option>
+                      <option value={6}>هر ۶ ساعت یکبار</option>
+                      <option value={12}>هر ۱۲ ساعت یکبار</option>
+                      <option value={24}>هر ۲۴ ساعت (روزانه)</option>
+                    </select>
+                  </div>
+
+                  <span className="font-mono-num text-xs text-slate-500">
                     آخرین بکاپ: {state.botConfig.lastBackupTime || '—'}
                   </span>
                 </div>
@@ -484,6 +520,83 @@ exit
                   ))}
                 </tbody>
               </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Network Server & Blank Database Options */}
+      {section === 'network_server' && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* کارت اتصال شبکه و دیتابیس مشترک مرکزی */}
+            <div className="bg-white border border-slate-200 rounded-lg p-5 space-y-4">
+              <div className="flex items-center gap-2 text-blue-700">
+                <Monitor className="w-5 h-5" />
+                <h3 className="text-base font-bold text-slate-900">
+                  وضعیت اتصال شبکه، سینک کلاینت‌ها و دیتابیس مشترک سرور
+                </h3>
+              </div>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                هنگامی که ترازبان روی لینوکس یا سرور شبکه نصب است، کلیه دستگاه‌ها (کامپیوترها، لپ‌تاپ‌ها و گوشی‌های همراه) با وارد کردن آی‌پی سرور مستقیماً به همین دیتابیس مشترک متصل می‌شوند. هر سندی که در گوشی یا کامپیوتر ثبت یا ویرایش شود بلافاصله روی سرور ذخیره شده و برای تمام کاربران همگام است.
+              </p>
+
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs space-y-1.5 font-mono-num">
+                <div className="flex justify-between">
+                  <span className="text-slate-600">پورت سرور شبکه:</span>
+                  <span className="font-bold text-blue-900">3000</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-600">آدرس دسترسی از گوشی / کلاینت:</span>
+                  <span className="font-bold text-blue-900" dir="ltr">http://&lt;SERVER_IP&gt;:3000</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-600">وضعیت ذخیره‌سازی مرکزی:</span>
+                  <span className="font-bold text-emerald-700">سرور لینوکس / فول‌استک Express + Vite</span>
+                </div>
+              </div>
+
+              <div className="pt-2">
+                <p className="text-[11px] text-slate-500">
+                  💡 نیازی به پیکربندی دستی کلاینت‌ها نیست؛ تمامی کلاینت‌ها به محض باز کردن صفحه به صورت اتوماتیک دیتابیس سرور را دریافت و ذخیره می‌کنند.
+                </p>
+              </div>
+            </div>
+
+            {/* کارت دیتابیس کاملاً خام و پاک‌سازی داده‌های نمونه */}
+            <div className="bg-white border border-rose-200 rounded-lg p-5 space-y-4">
+              <div className="flex items-center gap-2 text-rose-600">
+                <DatabaseBackup className="w-5 h-5" />
+                <h3 className="text-base font-bold text-slate-900">
+                  شروع فعالیت واقعی: ایجاد دیتابیس کاملاً خام (صفر)
+                </h3>
+              </div>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                اگر می‌خواهید اطلاعات تستی و دمو را پاک کنید تا دفتر حسابداری کاملاً خام و آماده ثبت اسناد و معاملات واقعی شما باشد، از این گزینه استفاده کنید. این کار حساب‌های استاندارد، ارزها و بانک‌ها را نگه می‌دارد اما تمام اسناد، معاملات و اشخاص تستی را صفر می‌کند.
+              </p>
+
+              <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-900 space-y-1">
+                <p className="font-bold">⚠️ هشدار پاک‌سازی:</p>
+                <p className="text-[11px] text-rose-800">
+                  قبل از کلیک، در صورت تمایل از تب «بکاپ اتوماتیک» یک بکاپ ذخیره نمایید. پس از تأیید، دیتابیس روی سرور و تمام دستگاه‌ها کاملاً سفید می‌شود.
+                </p>
+              </div>
+
+              {onResetToBlankDatabase && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (window.confirm('آیا از صفر کردن دیتابیس و شروع فعالیت کاملاً خام و واقعی اطمینان دارید؟ تمامی اسناد، معاملات و فاکتورهای آزمایشی پاک خواهند شد.')) {
+                      onResetToBlankDatabase();
+                      setNotice('دیتابیس سیستم با موفقیت به حالت کاملاً خام (بدون سند تستی) تغییر یافت.');
+                    }
+                  }}
+                  className="w-full py-2.5 px-4 text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-lg flex items-center justify-center gap-2 cursor-pointer shadow-xs transition"
+                >
+                  <DatabaseBackup className="w-4 h-4" />
+                  صفر کردن دیتابیس و شروع واقعی (خام)
+                </button>
+              )}
             </div>
           </div>
         </div>

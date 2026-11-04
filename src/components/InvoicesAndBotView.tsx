@@ -30,6 +30,7 @@ interface InvoicesAndBotViewProps {
   banks: BankAccount[];
   currencies: Currency[];
   onIssueInvoice: (invoice: SalesInvoice) => void;
+  onUpdateInvoice?: (invoice: SalesInvoice) => void;
   onAddContact?: (contact: Contact) => void;
   onDeleteInvoice?: (id: string) => void;
 }
@@ -41,9 +42,11 @@ export const InvoicesAndBotView: React.FC<InvoicesAndBotViewProps> = ({
   banks,
   currencies,
   onIssueInvoice,
+  onUpdateInvoice,
   onAddContact,
   onDeleteInvoice,
 }) => {
+  const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null);
   const [invoiceType, setInvoiceType] = useState<'sales' | 'purchase'>('sales');
   const [invoiceNumber, setInvoiceNumber] = useState(`INV-1404-${102 + invoices.length}`);
   const [date, setDate] = useState('1404/08/12');
@@ -187,41 +190,96 @@ export const InvoicesAndBotView: React.FC<InvoicesAndBotViewProps> = ({
     if (paidSum >= grandTotalIRR) status = 'paid';
     else if (paidSum > 0) status = 'partial';
 
-    const newInvoice: SalesInvoice = {
-      id: `inv-${Date.now()}`,
-      invoiceNumber: invoiceNumber.trim() || `INV-1404-${102 + invoices.length}`,
-      type: invoiceType,
-      date,
-      dueDate: date,
-      contactId,
-      contactName: selectedContact?.name || 'مشتری / طرف حساب',
-      currency: 'IRR',
-      exchangeRate: 1,
-      convertToIRRInPrint: true,
-      warehouseName: 'انبار مرکزی',
-      projectCode: 'GENERAL',
-      items,
-      subtotalForeign: subtotalIRR,
-      subtotalIRR,
-      totalDiscountForeign: totalDiscountIRR,
-      totalDiscountIRR,
-      totalTaxForeign: totalTaxIRR,
-      totalTaxIRR,
-      grandTotalForeign: grandTotalIRR,
-      grandTotalIRR,
-      payments: validPayments,
-      paidAmountIRR: paidSum,
-      remainingAmountIRR: remSum,
-      status,
-      linkedVoucherId: `vch-inv-${Date.now()}`,
-      notes:
-        notes.trim() ||
-        `${invoiceType === 'sales' ? 'فاکتور فروش' : 'فاکتور خرید'} - ${
-          selectedContact?.name || ''
-        }`,
-    };
+    if (editingInvoiceId && onUpdateInvoice) {
+      const existing = invoices.find((i) => i.id === editingInvoiceId);
+      const updatedInvoice: SalesInvoice = {
+        id: editingInvoiceId,
+        invoiceNumber: invoiceNumber.trim() || existing?.invoiceNumber || `INV-1404-${102 + invoices.length}`,
+        type: invoiceType,
+        date,
+        dueDate: date,
+        contactId,
+        contactName: selectedContact?.name || existing?.contactName || 'مشتری / طرف حساب',
+        currency: 'IRR',
+        exchangeRate: 1,
+        convertToIRRInPrint: true,
+        warehouseName: 'انبار مرکزی',
+        projectCode: 'GENERAL',
+        items,
+        subtotalForeign: subtotalIRR,
+        subtotalIRR,
+        totalDiscountForeign: totalDiscountIRR,
+        totalDiscountIRR,
+        totalTaxForeign: totalTaxIRR,
+        totalTaxIRR,
+        grandTotalForeign: grandTotalIRR,
+        grandTotalIRR,
+        payments: validPayments,
+        paidAmountIRR: paidSum,
+        remainingAmountIRR: remSum,
+        status,
+        linkedVoucherId: existing?.linkedVoucherId || `vch-inv-${Date.now()}`,
+        notes: notes.trim(),
+      };
+      onUpdateInvoice(updatedInvoice);
+      setEditingInvoiceId(null);
+    } else {
+      const newInvoice: SalesInvoice = {
+        id: `inv-${Date.now()}`,
+        invoiceNumber: invoiceNumber.trim() || `INV-1404-${102 + invoices.length}`,
+        type: invoiceType,
+        date,
+        dueDate: date,
+        contactId,
+        contactName: selectedContact?.name || 'مشتری / طرف حساب',
+        currency: 'IRR',
+        exchangeRate: 1,
+        convertToIRRInPrint: true,
+        warehouseName: 'انبار مرکزی',
+        projectCode: 'GENERAL',
+        items,
+        subtotalForeign: subtotalIRR,
+        subtotalIRR,
+        totalDiscountForeign: totalDiscountIRR,
+        totalDiscountIRR,
+        totalTaxForeign: totalTaxIRR,
+        totalTaxIRR,
+        grandTotalForeign: grandTotalIRR,
+        grandTotalIRR,
+        payments: validPayments,
+        paidAmountIRR: paidSum,
+        remainingAmountIRR: remSum,
+        status,
+        linkedVoucherId: `vch-inv-${Date.now()}`,
+        notes:
+          notes.trim() ||
+          `${invoiceType === 'sales' ? 'فاکتور فروش' : 'فاکتور خرید'} - ${
+            selectedContact?.name || ''
+          }`,
+      };
 
-    onIssueInvoice(newInvoice);
+      onIssueInvoice(newInvoice);
+    }
+
+    setInvoiceNumber(`INV-1404-${103 + invoices.length}`);
+    setPayments([]);
+    setNotes('');
+  };
+
+  const handleStartEdit = (inv: SalesInvoice) => {
+    setEditingInvoiceId(inv.id);
+    setInvoiceType(inv.type);
+    setInvoiceNumber(inv.invoiceNumber);
+    setDate(inv.date);
+    setContactId(inv.contactId);
+    setItems(inv.items);
+    setPayments(inv.payments || []);
+    setNotes(inv.notes || '');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleCancelEdit = () => {
+    setEditingInvoiceId(null);
     setInvoiceNumber(`INV-1404-${103 + invoices.length}`);
     setPayments([]);
     setNotes('');
@@ -243,11 +301,27 @@ export const InvoicesAndBotView: React.FC<InvoicesAndBotViewProps> = ({
               ) : (
                 <ShoppingCart className="w-5 h-5 text-amber-400" />
               )}
-              ثبت سریع فاکتور خرید و فروش (با دریافت و پرداخت ترکیبی چند بانکی و چند صندوقی)
+              {editingInvoiceId ? 'ویرایش و اصلاح فاکتور' : 'ثبت سریع فاکتور خرید و فروش (با دریافت و پرداخت ترکیبی)'}
             </h2>
             <p className="text-xs text-slate-400 mt-1">
-              کالا یا خدمات را وارد کنید و در همین فاکتور مشخص کنید پول آن از کدام بانک‌ها یا صندوق‌ها (ریالی یا ارزی با تعیین ارزش ارز) دریافت یا پرداخت شده است تا سند بانک و حساب شخص خودکار ثبت شود.
+              {editingInvoiceId
+                ? 'در حال اصلاح اقلام، مبالغ یا نحوه تسویه بانکی/ارزی این فاکتور هستید. پس از تغییرات دکمه ذخیره اصلاحات را بزنید.'
+                : 'کالا یا خدمات را وارد کنید و در همین فاکتور مشخص کنید پول آن از کدام بانک‌ها یا صندوق‌ها (ریالی یا ارزی با تعیین ارزش ارز) دریافت یا پرداخت شده است تا سند بانک و حساب شخص خودکار ثبت شود.'}
             </p>
+            {editingInvoiceId && (
+              <div className="mt-2 flex items-center gap-2">
+                <span className="text-xs font-bold text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded">
+                  در حال ویرایش فاکتور: {invoiceNumber}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleCancelEdit}
+                  className="text-xs text-rose-400 hover:text-rose-300 underline cursor-pointer"
+                >
+                  انصراف از ویرایش
+                </button>
+              </div>
+            )}
           </div>
 
           {/* سوییچ فروش یا خرید */}
@@ -616,6 +690,16 @@ export const InvoicesAndBotView: React.FC<InvoicesAndBotViewProps> = ({
                         ? 'تسویه بخشی (ترکیبی)'
                         : 'نسیه (در حساب شخص)'}
                     </span>
+                    {onUpdateInvoice && (
+                      <button
+                        type="button"
+                        onClick={() => handleStartEdit(inv)}
+                        className="text-teal-400 hover:text-teal-300 p-1 rounded hover:bg-teal-500/10 cursor-pointer text-xs flex items-center gap-1"
+                        title="ویرایش و اصلاح این فاکتور"
+                      >
+                        ویرایش
+                      </button>
+                    )}
                     {onDeleteInvoice && (
                       <button
                         type="button"

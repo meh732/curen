@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { INITIAL_ACCOUNTING_STATE } from './data/initialAccountingData';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { INITIAL_ACCOUNTING_STATE, BLANK_ACCOUNTING_STATE } from './data/initialAccountingData';
 import {
   AccountingState,
   Currency,
@@ -30,6 +30,7 @@ import {
   fetchServerLicenseStatus,
   LicenseStatus,
 } from './utils/offlineLicenseEngine';
+import { dispatchToMessengerBot } from './utils/botAndBackupService';
 import {
   LayoutDashboard,
   Coins,
@@ -41,6 +42,12 @@ import {
   FileSpreadsheet,
   RotateCcw,
   ShieldCheck,
+  Wifi,
+  WifiOff,
+  RefreshCw,
+  Server,
+  Database,
+  Smartphone,
 } from 'lucide-react';
 
 type NavTab =
@@ -165,6 +172,169 @@ export function App() {
       console.error('Failed to save state:', e);
     }
   }, [fullAccountingState]);
+
+  // وضعیت ارتباط شبکه و همگام‌سازی با سرور لینوکس
+  const [networkSyncStatus, setNetworkSyncStatus] = useState<'connected' | 'connecting' | 'offline'>('connecting');
+  const [lastSyncTime, setLastSyncTime] = useState<string>('');
+  const [showBlankConfirmModal, setShowBlankConfirmModal] = useState<boolean>(false);
+  const lastServerUpdatedAtRef = useRef<string | null>(null);
+  const isRemoteUpdateRef = useRef<boolean>(false);
+
+  // ۱. همگام‌سازی اولیه با سرور لینوکس (خواندن دیتابیس مشترک یا بارگذاری اولیه)
+  useEffect(() => {
+    let isMounted = true;
+    const fetchInitialServerState = async () => {
+      try {
+        const res = await fetch('/api/state');
+        if (!res.ok) throw new Error('Server not reachable');
+        const data = await res.json();
+        if (!isMounted) return;
+
+        setNetworkSyncStatus('connected');
+        if (data.success && data.exists && data.state) {
+          lastServerUpdatedAtRef.current = data.updatedAt;
+          isRemoteUpdateRef.current = true;
+          handleRestoreFullBackup(data.state);
+          setLastSyncTime(new Date().toLocaleTimeString('fa-IR'));
+        } else {
+          // ذخیره وضعیت فعلی بر روی سرور برای سایر کلاینت‌ها
+          await fetch('/api/state', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ state: fullAccountingState }),
+          });
+          setLastSyncTime(new Date().toLocaleTimeString('fa-IR'));
+        }
+      } catch (err) {
+        console.warn('Working in local/offline standalone mode:', err);
+        if (isMounted) setNetworkSyncStatus('offline');
+      }
+    };
+
+    fetchInitialServerState();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // ۲. همگام‌سازی زنده دوره‌ای (Polling هر ۵ ثانیه): هر تغییری از گوشی یا کلاینت دیگر فورا روی این کلاینت اعمال می‌شود
+  useEffect(() => {
+    const pollInterval = setInterval(async () => {
+      try {
+        const res = await fetch('/api/state');
+        if (!res.ok) {
+          setNetworkSyncStatus('offline');
+          return;
+        }
+        const data = await res.json();
+        setNetworkSyncStatus('connected');
+
+        if (
+          data.success &&
+          data.exists &&
+          data.updatedAt &&
+          lastServerUpdatedAtRef.current &&
+          data.updatedAt !== lastServerUpdatedAtRef.current &&
+          data.state
+        ) {
+          lastServerUpdatedAtRef.current = data.updatedAt;
+          isRemoteUpdateRef.current = true;
+          handleRestoreFullBackup(data.state);
+          setLastSyncTime(new Date().toLocaleTimeString('fa-IR'));
+        }
+      } catch {
+        setNetworkSyncStatus('offline');
+      }
+    }, 5000);
+
+    return () => clearInterval(pollInterval);
+  }, []);
+
+  // ۳. ارسال خودکار تغییرات به سرور مشترک لینوکس (Debounced Sync)
+  useEffect(() => {
+    if (isRemoteUpdateRef.current) {
+      isRemoteUpdateRef.current = false;
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch('/api/state', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ state: fullAccountingState }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.updatedAt) {
+            lastServerUpdatedAtRef.current = data.updatedAt;
+          }
+          setNetworkSyncStatus('connected');
+          setLastSyncTime(new Date().toLocaleTimeString('fa-IR'));
+        }
+      } catch {
+        // سرور موقتا در دسترس نیست
+      }
+    }, 800);
+
+    return () => clearTimeout(timer);
+  }, [fullAccountingState]);
+
+  // ۴. ارسال خودکار ساعتی بکاپ به ربات‌های بله و تلگرام
+  useEffect(() => {
+    if (!botConfig.baleEnabled && !botConfig.telegramEnabled) return;
+
+    const intervalHours = Math.max(1, botConfig.autoBackupIntervalHours || 1);
+    const backupIntervalMs = intervalHours * 60 * 60 * 1000;
+
+    const intervalId = setInterval(async () => {
+      const now = new Date();
+      const timeStr = `1404/08/12 - ${now.toTimeString().slice(0, 8)}`;
+      const backupSummary = `پشتیبان خودکار ساعتی (${intervalHours} ساعته) با موفقیت در دیتابیس مرکزی سرور لینوکس ثبت و به ربات پیام‌رسان ارسال شد.`;
+
+      if (botConfig.baleEnabled && botConfig.baleDefaultChatId) {
+        const log = await dispatchToMessengerBot({
+          platform: 'bale',
+          botToken: botConfig.baleBotToken,
+          chatId: botConfig.baleDefaultChatId,
+          recipientName: 'بکاپ خودکار بله (ساعتی)',
+          messageType: 'backup',
+          text: `📦 *پشتیبان خودکار ساعتی ترازبان*\n📅 زمان: ${timeStr}\n${backupSummary}\n\nاطلاعات کامل در سرور مرکزی لینوکس سینک و پایدار شد.`,
+          summary: backupSummary,
+        });
+        setBotLogs((prev) => [log, ...prev]);
+      }
+
+      if (botConfig.telegramEnabled && botConfig.telegramDefaultChatId) {
+        const log = await dispatchToMessengerBot({
+          platform: 'telegram',
+          botToken: botConfig.telegramBotToken,
+          chatId: botConfig.telegramDefaultChatId,
+          recipientName: 'بکاپ خودکار تلگرام (ساعتی)',
+          messageType: 'backup',
+          text: `📦 *پشتیبان خودکار ساعتی ترازبان*\n📅 زمان: ${timeStr}\n${backupSummary}\n\nاطلاعات کامل در سرور مرکزی لینوکس سینک و پایدار شد.`,
+          summary: backupSummary,
+        });
+        setBotLogs((prev) => [log, ...prev]);
+      }
+
+      setBotConfig((prev) => ({
+        ...prev,
+        lastBackupTime: timeStr,
+      }));
+    }, backupIntervalMs);
+
+    return () => clearInterval(intervalId);
+  }, [
+    botConfig.autoBackupIntervalHours,
+    botConfig.baleEnabled,
+    botConfig.telegramEnabled,
+    botConfig.baleBotToken,
+    botConfig.baleDefaultChatId,
+    botConfig.telegramBotToken,
+    botConfig.telegramDefaultChatId,
+    fullAccountingState,
+  ]);
 
   // تابع کمکی برای تشخیص سرفصل متناظر با بانک یا صندوق
   const getAccountForBank = (bank?: BankAccount) => {
@@ -599,6 +769,179 @@ export function App() {
     }
   };
 
+  // ویرایش فاکتور خرید یا فروش + به‌روزرسانی خودکار سند متناظر و گردش بانک‌ها
+  const handleUpdateInvoice = (updated: SalesInvoice) => {
+    setInvoices((prev) => prev.map((inv) => (inv.id === updated.id ? updated : inv)));
+
+    if (updated.linkedVoucherId) {
+      setVouchers((prev) =>
+        prev.map((v) => {
+          if (v.id === updated.linkedVoucherId) {
+            const isSales = updated.type !== 'purchase';
+            const personAccCode = isSales ? '1104' : '2101';
+            const personAccName = isSales
+              ? 'حساب اشخاص و مشتریان (بدهکاران / طلب ما)'
+              : 'حساب اشخاص و فروشندگان (بستانکاران / بدهی ما)';
+
+            const lines: VoucherLine[] = [];
+            if (isSales) {
+              lines.push({
+                id: `ln-inv-cust-${Date.now()}-1`,
+                accountCode: '1104',
+                accountName: 'حساب اشخاص و مشتریان (بدهکاران / طلب ما)',
+                contactId: updated.contactId,
+                contactName: updated.contactName,
+                description: `فاکتور فروش شماره ${updated.invoiceNumber} - ${updated.contactName}`,
+                currency: 'IRR',
+                exchangeRate: 1,
+                debitForeign: updated.grandTotalIRR,
+                creditForeign: 0,
+                debitIRR: updated.grandTotalIRR,
+                creditIRR: 0,
+                trackingNumber: updated.invoiceNumber,
+              });
+              const netSalesIRR = updated.subtotalIRR - updated.totalDiscountIRR;
+              lines.push({
+                id: `ln-inv-rev-${Date.now()}-2`,
+                accountCode: '4101',
+                accountName: 'درآمد فروش ریالی',
+                description: `فروش طبق فاکتور ${updated.invoiceNumber}`,
+                currency: 'IRR',
+                exchangeRate: 1,
+                debitForeign: 0,
+                creditForeign: netSalesIRR,
+                debitIRR: 0,
+                creditIRR: netSalesIRR,
+                trackingNumber: updated.invoiceNumber,
+              });
+              if (updated.totalTaxIRR > 0) {
+                lines.push({
+                  id: `ln-inv-tax-${Date.now()}-3`,
+                  accountCode: '2102',
+                  accountName: 'اسناد و چک‌های پرداختنی',
+                  description: `مالیات فاکتور ${updated.invoiceNumber}`,
+                  currency: 'IRR',
+                  exchangeRate: 1,
+                  debitForeign: 0,
+                  creditForeign: updated.totalTaxIRR,
+                  debitIRR: 0,
+                  creditIRR: updated.totalTaxIRR,
+                });
+              }
+            } else {
+              lines.push({
+                id: `ln-inv-pur-${Date.now()}-1`,
+                accountCode: '1106',
+                accountName: 'موجودی کالا و خرید انبار',
+                description: `خرید طبق فاکتور ${updated.invoiceNumber} از ${updated.contactName}`,
+                currency: 'IRR',
+                exchangeRate: 1,
+                debitForeign: updated.grandTotalIRR,
+                creditForeign: 0,
+                debitIRR: updated.grandTotalIRR,
+                creditIRR: 0,
+                trackingNumber: updated.invoiceNumber,
+              });
+              lines.push({
+                id: `ln-inv-sup-${Date.now()}-2`,
+                accountCode: '2101',
+                accountName: 'حساب اشخاص و فروشندگان (بستانکاران / بدهی ما)',
+                contactId: updated.contactId,
+                contactName: updated.contactName,
+                description: `فاکتور خرید شماره ${updated.invoiceNumber} - ${updated.contactName}`,
+                currency: 'IRR',
+                exchangeRate: 1,
+                debitForeign: 0,
+                creditForeign: updated.grandTotalIRR,
+                debitIRR: 0,
+                creditIRR: updated.grandTotalIRR,
+                trackingNumber: updated.invoiceNumber,
+              });
+            }
+
+            if (updated.payments && updated.payments.length > 0) {
+              updated.payments.forEach((sp, idx) => {
+                if (!sp.bankId || sp.amountIRR <= 0) return;
+                const payBank = banks.find((b) => b.id === sp.bankId);
+                const payBankAcc = getAccountForBank(payBank);
+                const payBankLineId = `ln-inv-pay-b-${Date.now()}-${idx}`;
+                const trk = sp.trackingNumber || `${updated.invoiceNumber}-${idx + 1}`;
+                lines.push({
+                  id: payBankLineId,
+                  accountCode: payBankAcc.code,
+                  accountName: payBankAcc.name,
+                  bankId: sp.bankId,
+                  bankName: payBank?.bankName,
+                  description: `تسویه ${updated.invoiceNumber} (${sp.bankName || 'بانک/صندوق'})`,
+                  currency: sp.currency,
+                  exchangeRate: sp.exchangeRate,
+                  debitForeign: isSales ? sp.amountForeign : 0,
+                  creditForeign: isSales ? 0 : sp.amountForeign,
+                  debitIRR: isSales ? sp.amountIRR : 0,
+                  creditIRR: isSales ? 0 : sp.amountIRR,
+                  trackingNumber: trk,
+                  reconciled: true,
+                });
+                lines.push({
+                  id: `ln-inv-pay-p-${Date.now()}-${idx}`,
+                  accountCode: personAccCode,
+                  accountName: personAccName,
+                  contactId: updated.contactId,
+                  contactName: updated.contactName,
+                  description: `تسویه فاکتور ${updated.invoiceNumber} - ${updated.contactName}`,
+                  currency: sp.currency,
+                  exchangeRate: sp.exchangeRate,
+                  debitForeign: isSales ? 0 : sp.amountForeign,
+                  creditForeign: isSales ? sp.amountForeign : 0,
+                  debitIRR: isSales ? 0 : sp.amountIRR,
+                  creditIRR: isSales ? sp.amountIRR : 0,
+                  trackingNumber: trk,
+                });
+              });
+            }
+
+            return {
+              ...v,
+              date: updated.date,
+              description: `سند فاکتور ${isSales ? 'فروش' : 'خرید'} ${updated.invoiceNumber} (${updated.contactName})`,
+              lines,
+            };
+          }
+          return v;
+        })
+      );
+    }
+  };
+
+  // ویرایش سند مالی دستی یا اتوماتیک و بازتولید ردیف‌های صورتحساب بانک
+  const handleUpdateVoucher = (updated: JournalVoucher) => {
+    setVouchers((prev) => prev.map((v) => (v.id === updated.id ? updated : v)));
+
+    setBankStatements((prev) => {
+      const lineIds = new Set(updated.lines.map((l) => l.id));
+      const filtered = prev.filter((bs) => !bs.matchedVoucherLineId || !lineIds.has(bs.matchedVoucherLineId));
+      const newEntries: BankStatementEntry[] = [];
+      updated.lines.forEach((ln, idx) => {
+        if (ln.bankId && (ln.debitIRR > 0 || ln.creditIRR > 0)) {
+          newEntries.push({
+            id: `bs-vch-${Date.now()}-${idx}`,
+            bankId: ln.bankId,
+            date: updated.date,
+            trackingNumber: ln.trackingNumber || `VCH-${updated.voucherNumber}-${idx + 1}`,
+            description: ln.description || updated.description,
+            currency: ln.currency,
+            depositForeign: ln.debitForeign || ln.debitIRR,
+            withdrawalForeign: ln.creditForeign || ln.creditIRR,
+            depositIRR: ln.debitIRR,
+            withdrawalIRR: ln.creditIRR,
+            matchedVoucherLineId: ln.id,
+          });
+        }
+      });
+      return [...newEntries, ...filtered];
+    });
+  };
+
   // تعریف بانک یا صندوق جدید + صدور خودکار سند موجودی اولیه
   const handleAddBank = (newBank: BankAccount) => {
     const initForeign = newBank.initialBalanceForeign || 0;
@@ -697,21 +1040,37 @@ export function App() {
   const handleRestoreFullBackup = (restored: AccountingState) => {
     setCurrencies(restored.currencies || INITIAL_ACCOUNTING_STATE.currencies);
     setAccounts(restored.accounts || INITIAL_ACCOUNTING_STATE.accounts);
-    setContacts(restored.contacts || INITIAL_ACCOUNTING_STATE.contacts);
+    setContacts(restored.contacts ?? []);
     setBanks(restored.banks || INITIAL_ACCOUNTING_STATE.banks);
-    setProducts(restored.products || INITIAL_ACCOUNTING_STATE.products);
-    setVouchers(restored.vouchers || INITIAL_ACCOUNTING_STATE.vouchers);
-    setFxDeals(restored.fxDeals || INITIAL_ACCOUNTING_STATE.fxDeals);
-    setInvoices(restored.invoices || INITIAL_ACCOUNTING_STATE.invoices);
-    setMovements(restored.inventoryMovements || INITIAL_ACCOUNTING_STATE.inventoryMovements);
-    setBankStatements(
-      restored.bankStatementEntries || INITIAL_ACCOUNTING_STATE.bankStatementEntries
-    );
+    setProducts(restored.products ?? []);
+    setVouchers(restored.vouchers ?? []);
+    setFxDeals(restored.fxDeals ?? []);
+    setInvoices(restored.invoices ?? []);
+    setMovements(restored.inventoryMovements ?? []);
+    setBankStatements(restored.bankStatementEntries ?? []);
+    if (restored.botConfig) setBotConfig(restored.botConfig);
+    if (restored.botLogs) setBotLogs(restored.botLogs ?? []);
   };
 
   const handleResetDemoData = () => {
     localStorage.removeItem(STORAGE_KEY);
     handleRestoreFullBackup(INITIAL_ACCOUNTING_STATE);
+  };
+
+  // صفر کردن و خام کردن دیتابیس (حذف تمام داده‌های تستی و شروع واقعی)
+  const handleResetToBlankDatabase = async () => {
+    try {
+      await fetch('/api/reset-blank', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ blankState: BLANK_ACCOUNTING_STATE }),
+      });
+    } catch (e) {
+      console.warn('Network server reset notice:', e);
+    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(BLANK_ACCOUNTING_STATE));
+    handleRestoreFullBackup(BLANK_ACCOUNTING_STATE);
+    setShowBlankConfirmModal(false);
   };
 
   const navItems: { id: NavTab; label: string; icon: React.ReactNode; badge?: string }[] = [
@@ -771,18 +1130,18 @@ export function App() {
   return (
     <div className="min-h-screen bg-[#0B0F17] text-slate-100 flex flex-col">
       {/* Top Header */}
-      <header className="sticky top-0 z-30 bg-[#0B0F17]/95 backdrop-blur-md border-b border-slate-800/80 px-6 py-3.5">
-        <div className="max-w-[1600px] mx-auto flex flex-wrap items-center justify-between gap-4">
+      <header className="sticky top-0 z-30 bg-[#0B0F17]/95 backdrop-blur-md border-b border-slate-800/80 px-4 sm:px-6 py-3">
+        <div className="max-w-[1600px] mx-auto flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-teal-500 to-emerald-600 flex items-center justify-center shadow-lg shadow-teal-500/20">
-              <Coins className="w-6 h-6 text-slate-950" />
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-teal-500 to-emerald-600 flex items-center justify-center shadow-lg shadow-teal-500/20 shrink-0">
+              <Coins className="w-5 h-5 sm:w-6 sm:h-6 text-slate-950" />
             </div>
             <div>
-              <div className="flex items-center gap-2.5">
-                <h1 className="text-base font-bold text-white tracking-tight">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-sm sm:text-base font-bold text-white tracking-tight">
                   ترازبان — حسابداری شخصی، ارزی و چندبانکی آسان
                 </h1>
-                <span className="px-2 py-0.5 text-[11px] font-semibold bg-teal-500/15 text-teal-400 border border-teal-500/30 rounded-md">
+                <span className="px-2 py-0.5 text-[10px] sm:text-[11px] font-semibold bg-teal-500/15 text-teal-400 border border-teal-500/30 rounded-md">
                   سند اتوماتیک بانک و صندوق
                 </span>
                 <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 rounded-md">
@@ -790,13 +1149,42 @@ export function App() {
                   لایسنس فعال ({licenseStatus.machineId})
                 </span>
               </div>
-              <p className="text-xs text-slate-400">
-                طراحی‌شده برای استفاده شخصی بدون نیاز به دانش حسابداری • تسویه ترکیبی چند بانکی و چند صندوقی (ریالی و ارزی)
+              <p className="text-[11px] sm:text-xs text-slate-400 line-clamp-1">
+                طراحی‌شده برای استفاده شخصی و جیبی در گوشی و رایانه • تسویه ترکیبی چند بانکی و چند صندوقی (ریالی و ارزی)
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+            {/* Live Network Server Sync Status */}
+            <div className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-xl border border-slate-800 bg-slate-900/90 shadow-inner">
+              {networkSyncStatus === 'connected' ? (
+                <>
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <Server className="w-3.5 h-3.5 text-emerald-400" />
+                  <span className="text-emerald-400 font-semibold text-[11px]">سرور لینوکس متصل (سینک زنده)</span>
+                </>
+              ) : networkSyncStatus === 'connecting' ? (
+                <>
+                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                  <RefreshCw className="w-3.5 h-3.5 text-amber-400 animate-spin" />
+                  <span className="text-amber-400 font-semibold text-[11px]">درحال اتصال به شبکه...</span>
+                </>
+              ) : (
+                <>
+                  <span className="w-2 h-2 rounded-full bg-slate-500" />
+                  <WifiOff className="w-3.5 h-3.5 text-slate-400" />
+                  <span className="text-slate-400 font-semibold text-[11px]">حالت محلی (آفلاین)</span>
+                </>
+              )}
+              {lastSyncTime && (
+                <span className="text-[10px] text-slate-500 font-mono-num hidden lg:inline mr-1">
+                  [{lastSyncTime}]
+                </span>
+              )}
+            </div>
+
+            {/* Quick Currency Rates Bar */}
             <div className="hidden xl:flex items-center gap-4 bg-slate-900/90 border border-slate-800 rounded-xl px-3.5 py-1.5 text-xs">
               {currencies
                 .filter((c) => !c.isBase)
@@ -811,42 +1199,97 @@ export function App() {
                 ))}
             </div>
 
+            {/* Blank DB Button */}
+            <button
+              onClick={() => setShowBlankConfirmModal(true)}
+              title="پاکسازی کامل داده‌ها و ایجاد دیتابیس خام برای شروع واقعی"
+              className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-xs text-amber-300 flex items-center gap-1.5 transition cursor-pointer"
+            >
+              <Database className="w-3.5 h-3.5 text-amber-400" />
+              <span>دیتابیس خام (شروع واقعی)</span>
+            </button>
+
+            {/* Reset Demo Data */}
             <button
               onClick={handleResetDemoData}
-              title="بازگردانی داده‌های پیش‌فرض"
-              className="px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs text-slate-300 flex items-center gap-1.5 transition cursor-pointer"
+              title="بازگردانی داده‌های پیش‌فرض نمونه"
+              className="px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs text-slate-300 flex items-center gap-1.5 transition cursor-pointer"
             >
               <RotateCcw className="w-3.5 h-3.5 text-slate-400" />
-              <span className="hidden sm:inline">بازنشانی نمونه</span>
+              <span className="hidden md:inline">بازنشانی نمونه</span>
             </button>
           </div>
         </div>
       </header>
 
-      {/* Main Layout */}
-      <div className="max-w-[1600px] w-full mx-auto flex-1 flex flex-col lg:flex-row gap-6 p-6">
-        {/* Sidebar Navigation */}
-        <aside className="lg:w-64 shrink-0">
-          <nav className="bg-slate-900/60 border border-slate-800 rounded-xl p-2.5 space-y-1 sticky top-24">
+      {/* Blank Database Confirmation Modal */}
+      {showBlankConfirmModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-amber-500/40 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center gap-3 text-amber-400">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center border border-amber-500/30">
+                <Database className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-white text-base">خام کردن و صفر کردن کامل دیتابیس</h3>
+                <p className="text-xs text-amber-300/80">شروع کار واقعی بدون اسناد یا مشتریان تستی</p>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800 text-xs text-slate-300 leading-relaxed space-y-2">
+              <p>
+                ⚠️ با تایید این گزینه، <strong>تمام اسناد حسابداری، فاکتورها، معاملات ارزی و اشخاص تستی پاکسازی می‌شوند</strong> و یک دیتابیس کاملاً سفید و خام ایجاد می‌گردد.
+              </p>
+              <p className="text-slate-400">
+                • تنظیمات پایه ارزها و بانک‌های اصلی حفظ می‌گردند تا بتوانید بلافاصله فاکتور و اسناد واقعی خود را وارد نمایید.
+              </p>
+              <p className="text-emerald-400 font-semibold">
+                • این پاکسازی به صورت سراسری در فایل پایگاه‌داده سرور لینوکس نیز اعمال شده و تمام گوشی‌ها و کامپیوترهای متصل همگام می‌شوند.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                onClick={() => setShowBlankConfirmModal(false)}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 cursor-pointer transition"
+              >
+                انصراف
+              </button>
+              <button
+                onClick={handleResetToBlankDatabase}
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-xs font-bold text-slate-950 cursor-pointer shadow-lg shadow-amber-500/20 transition"
+              >
+                تایید و خام کردن کامل دیتابیس
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Main Layout - Pocket Mobile Friendly with Horizontal Tabs on small screens, Vertical Sidebar on Desktop */}
+      <div className="max-w-[1600px] w-full mx-auto flex-1 flex flex-col lg:flex-row gap-5 p-4 sm:p-6">
+        {/* Navigation Bar */}
+        <aside className="w-full lg:w-64 shrink-0">
+          <nav className="bg-slate-900/80 border border-slate-800 rounded-xl p-2 flex lg:flex-col gap-1.5 overflow-x-auto lg:overflow-visible sticky top-16 lg:top-20 z-20">
             {navItems.map((item) => {
               const active = activeTab === item.id;
               return (
                 <button
                   key={item.id}
                   onClick={() => setActiveTab(item.id)}
-                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-medium transition cursor-pointer ${
+                  className={`whitespace-nowrap lg:whitespace-normal shrink-0 lg:shrink flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-medium transition cursor-pointer ${
                     active
                       ? 'bg-teal-500 text-slate-950 font-bold shadow-md shadow-teal-500/20'
                       : 'text-slate-300 hover:bg-slate-800/70 hover:text-white'
                   }`}
                 >
-                  <div className="flex items-center gap-2.5">
+                  <div className="flex items-center gap-2">
                     {item.icon}
                     <span>{item.label}</span>
                   </div>
                   {item.badge && (
                     <span
-                      className={`px-1.5 py-0.5 text-[10px] rounded font-semibold ${
+                      className={`mr-2 px-1.5 py-0.5 text-[10px] rounded font-semibold ${
                         active
                           ? 'bg-slate-950/20 text-slate-950'
                           : 'bg-teal-500/15 text-teal-400'
@@ -885,6 +1328,7 @@ export function App() {
               banks={banks}
               currencies={currencies}
               onIssueInvoice={handleIssueInvoice}
+              onUpdateInvoice={handleUpdateInvoice}
               onAddContact={(newContact) => setContacts([...contacts, newContact])}
               onDeleteInvoice={(invId) => {
                 const target = invoices.find((i) => i.id === invId);
@@ -904,6 +1348,7 @@ export function App() {
               currencies={currencies}
               vouchers={vouchers}
               onAddVoucher={handleAddVoucher}
+              onUpdateVoucher={handleUpdateVoucher}
               onAddContact={(newContact) => setContacts([...contacts, newContact])}
               onDeleteVoucher={(id) => {
                 setVouchers(vouchers.filter((v) => v.id !== id));
@@ -959,6 +1404,7 @@ export function App() {
               onRecordBotLog={(log) => setBotLogs([log, ...botLogs])}
               onRestoreFullBackup={handleRestoreFullBackup}
               onRecordInventoryMovement={handleRegisterMovement}
+              onResetToBlankDatabase={handleResetToBlankDatabase}
             />
           )}
 

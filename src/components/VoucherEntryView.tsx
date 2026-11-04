@@ -39,6 +39,7 @@ interface VoucherEntryViewProps {
   currencies: Currency[];
   vouchers: JournalVoucher[];
   onAddVoucher: (voucher: JournalVoucher) => void;
+  onUpdateVoucher?: (voucher: JournalVoucher) => void;
   onDeleteVoucher?: (id: string) => void;
   onAddContact?: (contact: Contact) => void;
 }
@@ -57,9 +58,11 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
   currencies,
   vouchers,
   onAddVoucher,
+  onUpdateVoucher,
   onDeleteVoucher,
   onAddContact,
 }) => {
+  const [editingVoucherId, setEditingVoucherId] = useState<string | null>(null);
   const [entryTab, setEntryTab] = useState<'auto' | 'manual'>('auto');
   const [autoType, setAutoType] = useState<AutoFinanceType>('receive_from_person');
   const [date, setDate] = useState('1404/08/12');
@@ -378,7 +381,22 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
       lines,
     };
 
-    onAddVoucher(newVoucher);
+    if (editingVoucherId && onUpdateVoucher) {
+      const existing = vouchers.find((v) => v.id === editingVoucherId);
+      onUpdateVoucher({
+        ...newVoucher,
+        id: editingVoucherId,
+        voucherNumber: existing?.voucherNumber || voucherNumber,
+      });
+      setEditingVoucherId(null);
+      setSuccessMsg(`سند شماره ${existing?.voucherNumber || voucherNumber} با موفقیت اصلاح و به‌روز شد.`);
+    } else {
+      onAddVoucher(newVoucher);
+      setSuccessMsg(
+        `سند اتوماتیک شماره ${voucherNumber} با موفقیت ثبت شد و موجودی بانک/صندوق و حساب شخص به‌روز گردید.`
+      );
+    }
+
     setDescription('');
     setTxAmountForeign(0);
     if (splits.length > 0) {
@@ -392,10 +410,58 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
         },
       ]);
     }
-    setSuccessMsg(
-      `سند اتوماتیک شماره ${voucherNumber} با موفقیت ثبت شد و موجودی بانک/صندوق و حساب شخص به‌روز گردید.`
-    );
     setTimeout(() => setSuccessMsg(null), 5000);
+  };
+
+  const handleStartEditVoucher = (v: JournalVoucher) => {
+    setEditingVoucherId(v.id);
+    setDate(v.date);
+    setDescription(v.description);
+
+    // If it has autoType, open auto tab
+    if (v.autoType && v.autoType !== 'manual') {
+      setEntryTab('auto');
+      if (
+        v.autoType === 'receive_from_person' ||
+        v.autoType === 'pay_to_person' ||
+        v.autoType === 'bank_transfer' ||
+        v.autoType === 'expense' ||
+        v.autoType === 'income'
+      ) {
+        setAutoType(v.autoType);
+      }
+      // Populate contact if available
+      const firstContact = v.lines.find((l) => l.contactId);
+      if (firstContact && firstContact.contactId) {
+        setSelectedContactId(firstContact.contactId);
+      }
+      // Populate splits from bank lines
+      const bankLines = v.lines.filter((l) => l.bankId);
+      if (bankLines.length > 0) {
+        const loadedSplits: PaymentSplitLine[] = bankLines.map((bl, i) => ({
+          id: `spl-edit-${i}`,
+          bankId: bl.bankId || '',
+          bankName: bl.bankName || '',
+          currency: bl.currency,
+          amountForeign: bl.debitForeign || bl.creditForeign,
+          exchangeRate: bl.exchangeRate,
+          amountIRR: bl.debitIRR || bl.creditIRR,
+          trackingNumber: bl.trackingNumber || '',
+          description: bl.description,
+        }));
+        setSplits(loadedSplits);
+      }
+    } else {
+      // Manual entry edit
+      setEntryTab('manual');
+      setManualLines(v.lines);
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleCancelEditVoucher = () => {
+    setEditingVoucherId(null);
+    setDescription('');
   };
 
   // ثبت سند دستی
@@ -486,6 +552,21 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
             </button>
           </div>
         </div>
+
+        {editingVoucherId && (
+          <div className="mb-4 bg-amber-500/15 border border-amber-500/40 rounded-xl p-3 flex items-center justify-between text-xs text-amber-300">
+            <span className="font-bold">
+              در حال ویرایش و اصلاح سند شماره: {vouchers.find((v) => v.id === editingVoucherId)?.voucherNumber}
+            </span>
+            <button
+              type="button"
+              onClick={handleCancelEditVoucher}
+              className="text-xs text-rose-400 hover:text-rose-300 underline cursor-pointer"
+            >
+              انصراف از ویرایش
+            </button>
+          </div>
+        )}
 
         {successMsg && (
           <div className="mb-5 bg-emerald-500/15 border border-emerald-500/40 rounded-xl p-3.5 flex items-center gap-2.5 text-xs text-emerald-300 font-bold">
@@ -1108,6 +1189,16 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
                     <span className="text-xs font-bold text-emerald-400 font-mono-num">
                       جمع سند: {formatNumber(sumIRR)} ریال
                     </span>
+                    {onUpdateVoucher && (
+                      <button
+                        type="button"
+                        onClick={() => handleStartEditVoucher(v)}
+                        className="text-teal-400 hover:text-teal-300 p-1 rounded hover:bg-teal-500/10 cursor-pointer text-xs flex items-center gap-1"
+                        title="ویرایش و اصلاح این سند"
+                      >
+                        ویرایش
+                      </button>
+                    )}
                     {onDeleteVoucher && v.id !== 'vch-1' && (
                       <button
                         type="button"
