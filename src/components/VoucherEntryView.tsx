@@ -513,26 +513,26 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
   return (
     <div className="space-y-6">
       {/* نوار انتخاب حالت اتوماتیک (شخصی و راحت) یا سند دستی */}
-      <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-6">
-        <div className="flex flex-wrap items-center justify-between gap-4 mb-6 pb-4 border-b border-slate-800">
+      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-6 pb-4 border-b border-slate-200">
           <div>
-            <h2 className="text-lg font-bold text-white flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-teal-400" />
+            <h2 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-teal-600" />
               امور مالی و ثبت اتوماتیک دریافت، پرداخت، انتقال و هزینه
             </h2>
-            <p className="text-xs text-slate-400 mt-1">
+            <p className="text-xs text-slate-600 mt-1">
               بدون نیاز به دانش حسابداری، فقط نوع عملیات را انتخاب کنید تا سند بانک، صندوق و حساب شخص به صورت ۱۰۰٪ خودکار صادر شود.
             </p>
           </div>
 
-          <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800">
+          <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
             <button
               type="button"
               onClick={() => setEntryTab('auto')}
               className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
                 entryTab === 'auto'
-                  ? 'bg-teal-500 text-slate-950 shadow'
-                  : 'text-slate-400 hover:text-white'
+                  ? 'bg-teal-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               <Sparkles className="w-3.5 h-3.5" />
@@ -543,8 +543,8 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
               onClick={() => setEntryTab('manual')}
               className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
                 entryTab === 'manual'
-                  ? 'bg-slate-800 text-white'
-                  : 'text-slate-400 hover:text-white'
+                  ? 'bg-slate-800 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               <BookOpen className="w-3.5 h-3.5" />
@@ -554,14 +554,14 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
         </div>
 
         {editingVoucherId && (
-          <div className="mb-4 bg-amber-500/15 border border-amber-500/40 rounded-xl p-3 flex items-center justify-between text-xs text-amber-300">
-            <span className="font-bold">
+          <div className="mb-4 bg-amber-50 border border-amber-300 rounded-xl p-3 flex items-center justify-between text-xs text-amber-900 font-bold">
+            <span>
               در حال ویرایش و اصلاح سند شماره: {vouchers.find((v) => v.id === editingVoucherId)?.voucherNumber}
             </span>
             <button
               type="button"
               onClick={handleCancelEditVoucher}
-              className="text-xs text-rose-400 hover:text-rose-300 underline cursor-pointer"
+              className="text-xs text-rose-700 hover:text-rose-800 underline cursor-pointer"
             >
               انصراف از ویرایش
             </button>
@@ -569,8 +569,8 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
         )}
 
         {successMsg && (
-          <div className="mb-5 bg-emerald-500/15 border border-emerald-500/40 rounded-xl p-3.5 flex items-center gap-2.5 text-xs text-emerald-300 font-bold">
-            <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+          <div className="mb-5 bg-emerald-50 border border-emerald-300 rounded-xl p-3.5 flex items-center gap-2.5 text-xs text-emerald-900 font-bold">
+            <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
             <span>{successMsg}</span>
           </div>
         )}
@@ -584,20 +584,20 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
                 onClick={() => setAutoType('receive_from_person')}
                 className={`p-3.5 rounded-xl border text-right transition flex flex-col justify-between cursor-pointer ${
                   autoType === 'receive_from_person'
-                    ? 'bg-emerald-500/15 border-emerald-500 text-white shadow-lg shadow-emerald-500/10'
-                    : 'bg-slate-950/70 border-slate-800 text-slate-400 hover:border-slate-700'
+                    ? 'bg-emerald-50 border-emerald-500 text-emerald-950 font-bold shadow-xs'
+                    : 'bg-slate-50/70 border-slate-200 text-slate-700 hover:border-slate-300'
                 }`}
               >
                 <div className="flex items-center justify-between mb-2">
-                  <ArrowDownLeft className="w-5 h-5 text-emerald-400" />
-                  <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold">
+                  <ArrowDownLeft className="w-5 h-5 text-emerald-600" />
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold">
                     ورود پول / ارز
                   </span>
                 </div>
-                <div className="text-xs font-bold text-white">
+                <div className="text-xs font-bold text-slate-900">
                   دریافت از شخص و واریز به بانک/صندوق
                 </div>
-                <p className="text-[11px] text-slate-400 mt-1">
+                <p className="text-[11px] text-slate-600 mt-1">
                   مشتری یا شخص پول/ارز به بانک یا صندوق شما داده است
                 </p>
               </button>
@@ -607,18 +607,18 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
                 onClick={() => setAutoType('pay_to_person')}
                 className={`p-3.5 rounded-xl border text-right transition flex flex-col justify-between cursor-pointer ${
                   autoType === 'pay_to_person'
-                    ? 'bg-rose-500/15 border-rose-500 text-white shadow-lg shadow-rose-500/10'
-                    : 'bg-slate-950/70 border-slate-800 text-slate-400 hover:border-slate-700'
+                    ? 'bg-rose-50 border-rose-500 text-rose-950 font-bold shadow-xs'
+                    : 'bg-slate-50/70 border-slate-200 text-slate-700 hover:border-slate-300'
                 }`}
               >
                 <div className="flex items-center justify-between mb-2">
-                  <ArrowUpRight className="w-5 h-5 text-rose-400" />
-                  <span className="text-[10px] px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 font-bold">
+                  <ArrowUpRight className="w-5 h-5 text-rose-600" />
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-rose-100 text-rose-800 font-bold">
                     خروج پول / ارز
                   </span>
                 </div>
-                <div className="text-xs font-bold text-white">پرداخت به شخص از بانک/صندوق</div>
-                <p className="text-[11px] text-slate-400 mt-1">
+                <div className="text-xs font-bold text-slate-900">پرداخت به شخص از بانک/صندوق</div>
+                <p className="text-[11px] text-slate-600 mt-1">
                   از بانک یا صندوق خودتان به شخص پول یا ارز پرداخت کرده‌اید
                 </p>
               </button>
@@ -628,18 +628,18 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
                 onClick={() => setAutoType('bank_transfer')}
                 className={`p-3.5 rounded-xl border text-right transition flex flex-col justify-between cursor-pointer ${
                   autoType === 'bank_transfer'
-                    ? 'bg-sky-500/15 border-sky-500 text-white shadow-lg shadow-sky-500/10'
-                    : 'bg-slate-950/70 border-slate-800 text-slate-400 hover:border-slate-700'
+                    ? 'bg-sky-50 border-sky-500 text-sky-950 font-bold shadow-xs'
+                    : 'bg-slate-50/70 border-slate-200 text-slate-700 hover:border-slate-300'
                 }`}
               >
                 <div className="flex items-center justify-between mb-2">
-                  <ArrowLeftRight className="w-5 h-5 text-sky-400" />
-                  <span className="text-[10px] px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 font-bold">
+                  <ArrowLeftRight className="w-5 h-5 text-sky-600" />
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-sky-100 text-sky-800 font-bold">
                     جابجایی داخلی
                   </span>
                 </div>
-                <div className="text-xs font-bold text-white">انتقال بین بانک‌ها و صندوق‌ها</div>
-                <p className="text-[11px] text-slate-400 mt-1">
+                <div className="text-xs font-bold text-slate-900">انتقال بین بانک‌ها و صندوق‌ها</div>
+                <p className="text-[11px] text-slate-600 mt-1">
                   کارت به کارت یا جابجایی پول بین بانک‌ها و صندوق‌های خودتان
                 </p>
               </button>
@@ -649,18 +649,18 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
                 onClick={() => setAutoType('expense')}
                 className={`p-3.5 rounded-xl border text-right transition flex flex-col justify-between cursor-pointer ${
                   autoType === 'expense'
-                    ? 'bg-amber-500/15 border-amber-500 text-white shadow-lg shadow-amber-500/10'
-                    : 'bg-slate-950/70 border-slate-800 text-slate-400 hover:border-slate-700'
+                    ? 'bg-amber-50 border-amber-500 text-amber-950 font-bold shadow-xs'
+                    : 'bg-slate-50/70 border-slate-200 text-slate-700 hover:border-slate-300'
                 }`}
               >
                 <div className="flex items-center justify-between mb-2">
-                  <Receipt className="w-5 h-5 text-amber-400" />
-                  <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold">
+                  <Receipt className="w-5 h-5 text-amber-600" />
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-bold">
                     ثبت خرج
                   </span>
                 </div>
-                <div className="text-xs font-bold text-white">ثبت هزینه شخصی / کاری</div>
-                <p className="text-[11px] text-slate-400 mt-1">
+                <div className="text-xs font-bold text-slate-900">ثبت هزینه شخصی / کاری</div>
+                <p className="text-[11px] text-slate-600 mt-1">
                   پرداخت اجاره، حقوق، کارمزد یا هزینه‌های شخصی از بانک/صندوق
                 </p>
               </button>
@@ -670,18 +670,18 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
                 onClick={() => setAutoType('income')}
                 className={`p-3.5 rounded-xl border text-right transition flex flex-col justify-between cursor-pointer ${
                   autoType === 'income'
-                    ? 'bg-teal-500/15 border-teal-500 text-white shadow-lg shadow-teal-500/10'
-                    : 'bg-slate-950/70 border-slate-800 text-slate-400 hover:border-slate-700'
+                    ? 'bg-teal-50 border-teal-500 text-teal-950 font-bold shadow-xs'
+                    : 'bg-slate-50/70 border-slate-200 text-slate-700 hover:border-slate-300'
                 }`}
               >
                 <div className="flex items-center justify-between mb-2">
-                  <TrendingUp className="w-5 h-5 text-teal-400" />
-                  <span className="text-[10px] px-2 py-0.5 rounded bg-teal-500/20 text-teal-300 font-bold">
+                  <TrendingUp className="w-5 h-5 text-teal-600" />
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-teal-100 text-teal-800 font-bold">
                     شارژ حساب
                   </span>
                 </div>
-                <div className="text-xs font-bold text-white">درآمد متفرقه / شارژ بانک</div>
-                <p className="text-[11px] text-slate-400 mt-1">
+                <div className="text-xs font-bold text-slate-900">درآمد متفرقه / شارژ بانک</div>
+                <p className="text-[11px] text-slate-600 mt-1">
                   واریز درآمد متفرقه یا افزایش موجودی بانک و صندوق
                 </p>
               </button>
@@ -689,12 +689,12 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
 
             {/* محتوای فرم بر اساس نوع عملیات انتخابی */}
             {(autoType === 'receive_from_person' || autoType === 'pay_to_person') && (
-              <div className="space-y-5 bg-slate-950/50 border border-slate-800 rounded-xl p-5">
+              <div className="space-y-5 bg-slate-50/70 border border-slate-200 rounded-xl p-5">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
                   <div>
                     <div className="flex items-center justify-between mb-1">
-                      <label className="text-xs font-bold text-slate-300 flex items-center gap-1">
-                        <User className="w-3.5 h-3.5 text-teal-400" />
+                      <label className="text-xs font-bold text-slate-800 flex items-center gap-1">
+                        <User className="w-3.5 h-3.5 text-teal-600" />
                         {autoType === 'receive_from_person'
                           ? 'دریافت وجه/ارز از کدام شخص؟'
                           : 'پرداخت وجه/ارز به کدام شخص؟'}
@@ -703,7 +703,7 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
                         <button
                           type="button"
                           onClick={() => setShowQuickContact(!showQuickContact)}
-                          className="text-[11px] text-teal-400 hover:text-teal-300 flex items-center gap-1 cursor-pointer"
+                          className="text-[11px] font-bold text-teal-700 hover:text-teal-800 flex items-center gap-1 cursor-pointer"
                         >
                           <UserPlus className="w-3 h-3" />
                           + شخص جدید
@@ -713,7 +713,7 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
                     <select
                       value={selectedContactId}
                       onChange={(e) => setSelectedContactId(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white focus:border-teal-500 focus:outline-none"
+                      className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2.5 text-sm text-slate-900 focus:border-teal-600 focus:ring-1 focus:ring-teal-600"
                     >
                       {contacts.map((c) => (
                         <option key={c.id} value={c.id}>
@@ -724,26 +724,26 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-xs text-slate-400 mb-1">تاریخ عملیات</label>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">تاریخ عملیات</label>
                     <input
                       type="text"
                       value={date}
                       onChange={(e) => setDate(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono-num"
+                      className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 font-mono-num focus:border-teal-600 focus:ring-1 focus:ring-teal-600"
                     />
                   </div>
 
                   {/* نمایش مانده لحظه‌ای شخص انتخاب شده */}
                   {selectedContactStatement && (
-                    <div className="bg-slate-900 border border-slate-800 rounded-lg p-2.5 flex items-center justify-between">
-                      <span className="text-xs text-slate-400">وضعیت فعلی حساب این شخص:</span>
+                    <div className="bg-white border border-slate-200 rounded-lg p-2.5 flex items-center justify-between shadow-xs">
+                      <span className="text-xs text-slate-600">وضعیت فعلی حساب این شخص:</span>
                       <span
-                        className={`text-xs font-bold font-mono-num ${
+                        className={`text-xs font-extrabold font-mono-num ${
                           selectedContactStatement.finalStatusIRR === 'بدهکار'
-                            ? 'text-emerald-400'
+                            ? 'text-emerald-700'
                             : selectedContactStatement.finalStatusIRR === 'بستانکار'
-                            ? 'text-rose-400'
-                            : 'text-slate-300'
+                            ? 'text-rose-700'
+                            : 'text-slate-600'
                         }`}
                       >
                         {selectedContactStatement.finalStatusIRR === 'تسویه'
@@ -759,30 +759,30 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
                 </div>
 
                 {showQuickContact && (
-                  <div className="bg-slate-900 border border-teal-500/40 rounded-xl p-3 flex flex-wrap items-end gap-3">
+                  <div className="bg-white border border-teal-300 rounded-xl p-3 flex flex-wrap items-end gap-3 shadow-xs">
                     <div className="flex-1 min-w-[200px]">
-                      <label className="block text-[11px] text-teal-300 mb-1">نام شخص</label>
+                      <label className="block text-[11px] font-bold text-teal-800 mb-1">نام شخص</label>
                       <input
                         type="text"
                         value={newContactName}
                         onChange={(e) => setNewContactName(e.target.value)}
                         placeholder="مثلاً: رضا محمدی"
-                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white"
+                        className="w-full bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs text-slate-900 focus:border-teal-600"
                       />
                     </div>
                     <div className="w-48">
-                      <label className="block text-[11px] text-slate-400 mb-1">شماره تماس</label>
+                      <label className="block text-[11px] font-medium text-slate-700 mb-1">شماره تماس</label>
                       <input
                         type="text"
                         value={newContactPhone}
                         onChange={(e) => setNewContactPhone(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white font-mono-num"
+                        className="w-full bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs text-slate-900 font-mono-num focus:border-teal-600"
                       />
                     </div>
                     <button
                       type="button"
                       onClick={handleQuickCreateContact}
-                      className="px-4 py-1.5 rounded-lg bg-teal-500 hover:bg-teal-400 text-slate-950 font-bold text-xs cursor-pointer"
+                      className="px-4 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs cursor-pointer shadow-xs"
                     >
                       ذخیره شخص
                     </button>
@@ -815,10 +815,10 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
             {(autoType === 'bank_transfer' ||
               autoType === 'expense' ||
               autoType === 'income') && (
-              <div className="space-y-4 bg-slate-950/50 border border-slate-800 rounded-xl p-5">
+              <div className="space-y-4 bg-slate-50/70 border border-slate-200 rounded-xl p-5">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-xs text-slate-400 mb-1">
+                    <label className="block text-xs font-medium text-slate-700 mb-1">
                       {autoType === 'bank_transfer'
                         ? 'از بانک یا صندوق مبدأ (برداشت)'
                         : autoType === 'expense'
@@ -828,7 +828,7 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
                     <select
                       value={sourceBankId}
                       onChange={(e) => handleSourceBankChange(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+                      className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:border-teal-600 focus:ring-1 focus:ring-teal-600"
                     >
                       {banks.map((b) => (
                         <option key={b.id} value={b.id}>
@@ -841,13 +841,13 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
 
                   {autoType === 'bank_transfer' && (
                     <div>
-                      <label className="block text-xs text-slate-400 mb-1">
+                      <label className="block text-xs font-medium text-slate-700 mb-1">
                         به بانک یا صندوق مقصد (واریز)
                       </label>
                       <select
                         value={destBankId}
                         onChange={(e) => setDestBankId(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+                        className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:border-teal-600 focus:ring-1 focus:ring-teal-600"
                       >
                         {banks.map((b) => (
                           <option key={b.id} value={b.id}>
@@ -861,11 +861,11 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
 
                   {autoType === 'expense' && (
                     <div>
-                      <label className="block text-xs text-slate-400 mb-1">نوع هزینه</label>
+                      <label className="block text-xs font-medium text-slate-700 mb-1">نوع هزینه</label>
                       <select
                         value={expenseAccountCode}
                         onChange={(e) => setExpenseAccountCode(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+                        className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:border-teal-600 focus:ring-1 focus:ring-teal-600"
                       >
                         {moeinAccounts
                           .filter((a) => a.category === 'expense')
@@ -880,11 +880,11 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
 
                   {autoType === 'income' && (
                     <div>
-                      <label className="block text-xs text-slate-400 mb-1">منبع واریز / شارژ</label>
+                      <label className="block text-xs font-medium text-slate-700 mb-1">منبع واریز / شارژ</label>
                       <select
                         value={incomeAccountCode}
                         onChange={(e) => setIncomeAccountCode(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+                        className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:border-teal-600 focus:ring-1 focus:ring-teal-600"
                       >
                         {moeinAccounts
                           .filter((a) => a.category === 'revenue' || a.category === 'equity')
@@ -898,12 +898,12 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
                   )}
 
                   <div>
-                    <label className="block text-xs text-slate-400 mb-1">تاریخ</label>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">تاریخ</label>
                     <input
                       type="text"
                       value={date}
                       onChange={(e) => setDate(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono-num"
+                      className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 font-mono-num focus:border-teal-600 focus:ring-1 focus:ring-teal-600"
                     />
                   </div>
                 </div>
@@ -911,7 +911,7 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
                 {/* مبلغ و تعیین ارزش ارز در صورت ارزی بودن */}
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end pt-2">
                   <div>
-                    <label className="block text-xs text-slate-400 mb-1">نوع پول / ارز</label>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">نوع پول / ارز</label>
                     <select
                       value={txCurrency}
                       onChange={(e) => {
@@ -919,7 +919,7 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
                         setTxCurrency(c);
                         setTxExchangeRate(getRateForCurrency(c));
                       }}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+                      className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:border-teal-600 focus:ring-1 focus:ring-teal-600"
                     >
                       <option value="IRR">ریال ایران (IRR)</option>
                       {currencies
@@ -933,7 +933,7 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-xs text-slate-400 mb-1">
+                    <label className="block text-xs font-medium text-slate-700 mb-1">
                       {txCurrency === 'IRR' ? 'مبلغ (ریال)' : `مبلغ ارزی (${txCurrency})`}
                     </label>
                     <input
@@ -942,14 +942,14 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
                       value={txAmountForeign ? formatNumber(txAmountForeign) : ''}
                       onChange={(e) => setTxAmountForeign(parseFormattedNumber(e.target.value))}
                       placeholder="مثلاً 10,000,000"
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono-num"
+                      className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 font-mono-num focus:border-teal-600 focus:ring-1 focus:ring-teal-600"
                     />
                   </div>
 
                   {txCurrency !== 'IRR' && (
                     <div>
-                      <label className="block text-xs text-amber-300 mb-1 flex items-center gap-1">
-                        <Coins className="w-3.5 h-3.5" />
+                      <label className="block text-xs font-bold text-amber-800 mb-1 flex items-center gap-1">
+                        <Coins className="w-3.5 h-3.5 text-amber-600" />
                         تعیین ارزش هر ۱ {txCurrency} (به ریال)
                       </label>
                       <input
@@ -957,14 +957,14 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
                         inputMode="numeric"
                         value={txExchangeRate ? formatNumber(txExchangeRate) : ''}
                         onChange={(e) => setTxExchangeRate(parseFormattedNumber(e.target.value))}
-                        className="w-full bg-amber-950/30 border border-amber-500/40 rounded-lg px-3 py-2 text-sm text-amber-200 font-mono-num"
+                        className="w-full bg-amber-50 border border-amber-300 rounded-lg px-3 py-2 text-sm text-amber-900 font-mono-num focus:border-amber-600 focus:ring-1 focus:ring-amber-600"
                       />
                     </div>
                   )}
 
-                  <div className="bg-slate-900 border border-teal-500/30 rounded-lg px-3.5 py-2 flex items-center justify-between">
-                    <span className="text-xs text-slate-400">معادل ریالی سند:</span>
-                    <span className="text-sm font-bold text-teal-400 font-mono-num">
+                  <div className="bg-white border border-teal-300 rounded-lg px-3.5 py-2 flex items-center justify-between shadow-xs">
+                    <span className="text-xs text-slate-600">معادل ریالی سند:</span>
+                    <span className="text-sm font-extrabold text-teal-700 font-mono-num">
                       {formatNumber(txComputedIRR)} ریال
                     </span>
                   </div>
@@ -980,13 +980,13 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="توضیحات یا بابت (اختیاری - اگر خالی بگذارید سیستم خودش شرح استاندارد می‌نویسد)..."
-                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3.5 py-2.5 text-xs text-white focus:border-teal-500 focus:outline-none"
+                  className="w-full bg-white border border-slate-300 rounded-lg px-3.5 py-2.5 text-xs text-slate-900 focus:border-teal-600 focus:ring-1 focus:ring-teal-600"
                 />
               </div>
 
               <button
                 type="submit"
-                className="px-6 py-2.5 rounded-xl bg-teal-500 hover:bg-teal-400 text-slate-950 font-bold text-sm flex items-center gap-2 transition shadow-lg shadow-teal-500/20 cursor-pointer"
+                className="px-6 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-extrabold text-sm flex items-center gap-2 transition shadow-xs cursor-pointer"
               >
                 <CheckCircle2 className="w-4 h-4" />
                 ثبت اتوماتیک سند مالی و به‌روزرسانی بانک/حساب
@@ -998,22 +998,22 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
           <form onSubmit={handleManualSubmit} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="block text-xs text-slate-400 mb-1">تاریخ سند</label>
+                <label className="block text-xs font-medium text-slate-700 mb-1">تاریخ سند</label>
                 <input
                   type="text"
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono-num"
+                  className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 font-mono-num focus:border-teal-600 focus:ring-1 focus:ring-teal-600"
                 />
               </div>
               <div className="md:col-span-2">
-                <label className="block text-xs text-slate-400 mb-1">شرح کلی سند</label>
+                <label className="block text-xs font-medium text-slate-700 mb-1">شرح کلی سند</label>
                 <input
                   type="text"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="شرح سند..."
-                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+                  className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:border-teal-600 focus:ring-1 focus:ring-teal-600"
                 />
               </div>
             </div>
@@ -1022,7 +1022,7 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
               {manualLines.map((line, idx) => (
                 <div
                   key={line.id}
-                  className="grid grid-cols-1 md:grid-cols-12 gap-2 bg-slate-950/60 p-2.5 rounded-lg border border-slate-800 items-center"
+                  className="grid grid-cols-1 md:grid-cols-12 gap-2 bg-slate-50 p-2.5 rounded-lg border border-slate-200 items-center"
                 >
                   <div className="md:col-span-3">
                     <select
@@ -1032,7 +1032,7 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
                         next[idx] = { ...next[idx], accountCode: e.target.value };
                         setManualLines(next);
                       }}
-                      className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white"
+                      className="w-full bg-white border border-slate-300 rounded px-2 py-1.5 text-xs text-slate-900 focus:border-teal-600"
                     >
                       {moeinAccounts.map((a) => (
                         <option key={a.code} value={a.code}>
@@ -1049,7 +1049,7 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
                         next[idx] = { ...next[idx], contactId: e.target.value || undefined };
                         setManualLines(next);
                       }}
-                      className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white"
+                      className="w-full bg-white border border-slate-300 rounded px-2 py-1.5 text-xs text-slate-900 focus:border-teal-600"
                     >
                       <option value="">-- بدون شخص --</option>
                       {contacts.map((c) => (
@@ -1067,7 +1067,7 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
                         next[idx] = { ...next[idx], bankId: e.target.value || undefined };
                         setManualLines(next);
                       }}
-                      className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white"
+                      className="w-full bg-white border border-slate-300 rounded px-2 py-1.5 text-xs text-slate-900 focus:border-teal-600"
                     >
                       <option value="">-- بدون بانک/صندوق --</option>
                       {banks.map((b) => (
@@ -1091,7 +1091,7 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
                         };
                         setManualLines(next);
                       }}
-                      className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white font-mono-num"
+                      className="w-full bg-white border border-slate-300 rounded px-2 py-1.5 text-xs text-slate-900 font-mono-num focus:border-teal-600"
                     />
                   </div>
                   <div className="md:col-span-2">
@@ -1108,7 +1108,7 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
                         };
                         setManualLines(next);
                       }}
-                      className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white font-mono-num"
+                      className="w-full bg-white border border-slate-300 rounded px-2 py-1.5 text-xs text-slate-900 font-mono-num focus:border-teal-600"
                     />
                   </div>
                   <div className="md:col-span-1 text-center">
@@ -1118,7 +1118,7 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
                         manualLines.length > 2 &&
                         setManualLines(manualLines.filter((_, i) => i !== idx))
                       }
-                      className="text-rose-400 hover:text-rose-300 cursor-pointer"
+                      className="text-rose-600 hover:text-rose-700 cursor-pointer"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -1143,7 +1143,7 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
                     },
                   ])
                 }
-                className="text-xs bg-slate-800 hover:bg-slate-700 text-teal-400 px-3 py-1.5 rounded-lg flex items-center gap-1 cursor-pointer"
+                className="text-xs bg-slate-100 hover:bg-slate-200 text-teal-800 border border-slate-200 px-3 py-1.5 rounded-lg flex items-center gap-1 cursor-pointer font-bold"
               >
                 <Plus className="w-3.5 h-3.5" />
                 افزودن آرتیکل
@@ -1152,7 +1152,7 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
               <button
                 type="submit"
                 disabled={!isManualBalanced}
-                className="px-5 py-2 rounded-xl bg-teal-500 disabled:bg-slate-800 disabled:text-slate-500 text-slate-950 font-bold text-xs cursor-pointer"
+                className="px-5 py-2 rounded-xl bg-teal-600 disabled:bg-slate-200 disabled:text-slate-400 text-white font-extrabold text-xs cursor-pointer shadow-xs"
               >
                 ثبت سند دستی
               </button>
@@ -1162,9 +1162,9 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
       </div>
 
       {/* فهرست اسناد مالی ثبت‌شده (اتوماتیک و دستی) */}
-      <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-6">
-        <h3 className="text-base font-bold text-white mb-4 flex items-center gap-2">
-          <Landmark className="w-5 h-5 text-teal-400" />
+      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
+        <h3 className="text-base font-extrabold text-slate-900 mb-4 flex items-center gap-2">
+          <Landmark className="w-5 h-5 text-teal-600" />
           تاریخچه اسناد مالی و تراکنش‌های ثبت‌شده ({formatNumber(vouchers.length)} سند)
         </h3>
 
@@ -1174,26 +1174,26 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
             return (
               <div
                 key={v.id}
-                className="bg-slate-950/70 border border-slate-800 rounded-xl p-4 space-y-2.5"
+                className="bg-slate-50/80 border border-slate-200 rounded-xl p-4 space-y-2.5"
               >
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/80 pb-2">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-2">
                   <div className="flex flex-wrap items-center gap-2.5">
-                    <span className="px-2 py-0.5 rounded bg-teal-500/15 text-teal-300 font-mono-num text-xs font-bold">
+                    <span className="px-2 py-0.5 rounded bg-teal-100 text-teal-800 font-mono-num text-xs font-bold border border-teal-200">
                       سند #{v.voucherNumber}
                     </span>
-                    <span className="text-xs text-slate-400 font-mono-num">{v.date}</span>
-                    <span className="text-sm font-bold text-white">{v.description}</span>
+                    <span className="text-xs text-slate-500 font-mono-num">{v.date}</span>
+                    <span className="text-sm font-bold text-slate-900">{v.description}</span>
                   </div>
 
                   <div className="flex items-center gap-3">
-                    <span className="text-xs font-bold text-emerald-400 font-mono-num">
+                    <span className="text-xs font-extrabold text-emerald-700 font-mono-num">
                       جمع سند: {formatNumber(sumIRR)} ریال
                     </span>
                     {onUpdateVoucher && (
                       <button
                         type="button"
                         onClick={() => handleStartEditVoucher(v)}
-                        className="text-teal-400 hover:text-teal-300 p-1 rounded hover:bg-teal-500/10 cursor-pointer text-xs flex items-center gap-1"
+                        className="text-teal-700 hover:text-teal-800 p-1 rounded hover:bg-teal-50 cursor-pointer text-xs flex items-center gap-1 font-bold"
                         title="ویرایش و اصلاح این سند"
                       >
                         ویرایش
@@ -1203,7 +1203,7 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
                       <button
                         type="button"
                         onClick={() => onDeleteVoucher(v.id)}
-                        className="text-rose-400 hover:text-rose-300 p-1 rounded hover:bg-rose-500/10 cursor-pointer"
+                        className="text-rose-600 hover:text-rose-700 p-1 rounded hover:bg-rose-50 cursor-pointer"
                         title="حذف این سند"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -1221,32 +1221,32 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
                     return (
                       <div
                         key={ln.id}
-                        className="bg-slate-900/80 border border-slate-800/80 rounded-lg px-3 py-2 flex items-center justify-between gap-2"
+                        className="bg-white border border-slate-200 rounded-lg px-3 py-2 flex items-center justify-between gap-2 shadow-xs"
                       >
                         <div className="truncate">
-                          <span className="font-bold text-slate-200">{ln.accountName}</span>
+                          <span className="font-bold text-slate-900">{ln.accountName}</span>
                           {bankObj && (
-                            <span className="text-teal-400 mr-1.5">({bankObj.bankName})</span>
+                            <span className="text-teal-700 font-bold mr-1.5">({bankObj.bankName})</span>
                           )}
                           {contactObj && (
-                            <span className="text-amber-300 mr-1.5">({contactObj.name})</span>
+                            <span className="text-amber-800 font-bold mr-1.5">({contactObj.name})</span>
                           )}
-                          <p className="text-[11px] text-slate-400 truncate mt-0.5">
+                          <p className="text-[11px] text-slate-500 truncate mt-0.5">
                             {ln.description}
                           </p>
                         </div>
                         <div className="text-left shrink-0 font-mono-num">
                           {ln.debitIRR > 0 ? (
-                            <span className="text-emerald-400 font-bold">
+                            <span className="text-emerald-700 font-bold">
                               بدهکار: {formatNumber(ln.debitIRR)}
                             </span>
                           ) : (
-                            <span className="text-rose-400 font-bold">
+                            <span className="text-rose-700 font-bold">
                               بستانکار: {formatNumber(ln.creditIRR)}
                             </span>
                           )}
                           {ln.currency !== 'IRR' && (
-                            <div className="text-[10px] text-amber-300">
+                            <div className="text-[10px] text-amber-800 font-semibold">
                               ({formatNumber(ln.debitForeign || ln.creditForeign)} {ln.currency} ×{' '}
                               {formatNumber(ln.exchangeRate)})
                             </div>

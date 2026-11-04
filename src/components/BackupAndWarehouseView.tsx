@@ -611,7 +611,44 @@ exit
                 <Package className="w-4 h-4 text-blue-700" />
                 موجودی لحظه‌ای کالاها و قطعات انبار (ارزیابی ارزی و ریالی)
               </h3>
-              <div className="overflow-x-auto border border-slate-200 rounded-lg">
+              {/* Mobile Inventory Cards (sm:hidden) */}
+              <div className="sm:hidden space-y-3">
+                {state.products.map((p) => (
+                  <div
+                    key={p.id}
+                    className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 space-y-2 text-xs"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono-num font-bold text-blue-800">
+                        {p.sku}
+                      </span>
+                      <span className="font-mono-num font-extrabold text-slate-900 bg-slate-200 px-2 py-0.5 rounded">
+                        موجودی: {p.stockQty} {p.unit}
+                      </span>
+                    </div>
+
+                    <div className="font-bold text-slate-900">{p.name}</div>
+                    <div className="text-[11px] text-slate-600">موقعیت: {p.warehouseLocation}</div>
+
+                    <div className="pt-2 border-t border-slate-200 flex items-center justify-between text-[11px] font-mono-num">
+                      <span className="text-slate-600">ارزش واحد ارزی:</span>
+                      <span className="font-bold text-slate-800">
+                        {formatNumber(p.defaultPriceForeign, 2)} {p.defaultCurrency}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-[11px] font-mono-num">
+                      <span className="text-slate-600">ارزش کل موجودی:</span>
+                      <span className="font-extrabold text-slate-900">
+                        {formatNumber(p.stockQty * p.defaultPriceIRR)} ریال
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Desktop Table */}
+              <div className="hidden sm:block overflow-x-auto border border-slate-200 rounded-lg">
                 <table className="w-full text-right border-collapse text-xs">
                   <thead>
                     <tr className="bg-slate-100 border-b border-slate-200 font-bold text-slate-700">

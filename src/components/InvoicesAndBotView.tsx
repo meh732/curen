@@ -458,7 +458,140 @@ export const InvoicesAndBotView: React.FC<InvoicesAndBotViewProps> = ({
               </button>
             </div>
 
-            <div className="overflow-x-auto border border-slate-800 rounded-xl">
+            {/* Mobile Cards for Phone Screens */}
+            <div className="sm:hidden space-y-3">
+              {items.map((item, idx) => (
+                <div
+                  key={item.id}
+                  className="bg-slate-950 border border-slate-800 rounded-xl p-3.5 space-y-3 relative"
+                >
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <span className="text-xs font-bold text-teal-400">
+                      ردیف {idx + 1}: موضوع معامله
+                    </span>
+                    {items.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeItem(idx)}
+                        className="text-rose-400 hover:text-rose-300 p-1 flex items-center gap-1 text-xs cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        <span>حذف</span>
+                      </button>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">
+                      انتخاب ارز یا کالا
+                    </label>
+                    <select
+                      value={item.productId}
+                      onChange={(e) => handleItemChange(idx, { productId: e.target.value })}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white"
+                    >
+                      {products.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name} (موجودی: {p.stockQty} {p.unit})
+                        </option>
+                      ))}
+                      <option value="__custom__">✏️ نام دلخواه ارز / خدمات...</option>
+                    </select>
+                    {item.productId === '__custom__' && (
+                      <input
+                        type="text"
+                        value={item.productName}
+                        onChange={(e) => handleItemChange(idx, { productName: e.target.value })}
+                        placeholder="شرح معامله را بنویسید..."
+                        className="w-full bg-slate-900 border border-teal-500/40 rounded-lg p-2 mt-1.5 text-xs text-white"
+                        required
+                      />
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[11px] text-slate-400 mb-1">مقدار / تعداد</label>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={item.quantity ? formatNumber(item.quantity) : ''}
+                        onChange={(e) =>
+                          handleItemChange(idx, {
+                            quantity: Math.max(0, parseFormattedNumber(e.target.value)),
+                          })
+                        }
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white font-mono-num"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] text-slate-400 mb-1">
+                        نرخ / فی (ریال)
+                      </label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={item.unitPriceIRR ? formatNumber(item.unitPriceIRR) : ''}
+                        onChange={(e) =>
+                          handleItemChange(idx, {
+                            unitPriceIRR: parseFormattedNumber(e.target.value),
+                          })
+                        }
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white font-mono-num"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[11px] text-slate-400 mb-1">
+                        تخفیف (ریال)
+                      </label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={item.discountIRR ? formatNumber(item.discountIRR) : ''}
+                        onChange={(e) =>
+                          handleItemChange(idx, {
+                            discountIRR: parseFormattedNumber(e.target.value),
+                          })
+                        }
+                        placeholder="0"
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white font-mono-num"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] text-slate-400 mb-1">
+                        کارمزد/مالیات (%)
+                      </label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={item.taxPercent ? formatNumber(item.taxPercent) : '0'}
+                        onChange={(e) =>
+                          handleItemChange(idx, {
+                            taxPercent: parseFormattedNumber(e.target.value),
+                          })
+                        }
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white font-mono-num"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="bg-slate-900/90 border border-teal-500/30 rounded-lg p-2.5 flex items-center justify-between text-xs">
+                    <span className="text-slate-400">جمع این ردیف:</span>
+                    <span className="font-bold text-teal-400 font-mono-num">
+                      {formatNumber(item.totalIRR)} ریال
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Desktop Table */}
+            <div className="hidden sm:block border border-slate-800 rounded-xl overflow-hidden">
               <table className="w-full text-right text-xs">
                 <thead className="bg-slate-950/90 text-slate-400 border-b border-slate-800">
                   <tr>

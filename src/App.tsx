@@ -1131,90 +1131,72 @@ export function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0B0F17] text-slate-100 flex flex-col">
+    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col">
       {/* PWA Install Banner */}
       <PWAInstallPrompt />
 
       {/* Top Header */}
-      <header className="sticky top-0 z-30 bg-[#0B0F17]/95 backdrop-blur-md border-b border-slate-800/80 px-4 sm:px-6 py-3">
-        <div className="max-w-[1600px] mx-auto flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-teal-500 to-emerald-600 flex items-center justify-center shadow-lg shadow-teal-500/20 shrink-0">
-              <Coins className="w-5 h-5 sm:w-6 sm:h-6 text-slate-950" />
+      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-xs px-3 sm:px-6 py-2.5">
+        <div className="max-w-[1600px] mx-auto flex items-center justify-between gap-2 sm:gap-4 overflow-hidden">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-teal-500 to-emerald-600 flex items-center justify-center shadow-md shadow-teal-500/20 shrink-0">
+              <Coins className="w-4 h-4 sm:w-6 sm:h-6 text-white" />
             </div>
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-sm sm:text-base font-bold text-white tracking-tight">
-                  ترازبان ارزی — نرم‌افزار صرافی و معاملات ارزی
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <h1 className="text-xs sm:text-base font-bold text-slate-900 tracking-tight truncate">
+                  ترازبان ارزی — حسابداری صرافی
                 </h1>
-                <span className="px-2 py-0.5 text-[10px] sm:text-[11px] font-semibold bg-teal-500/15 text-teal-400 border border-teal-500/30 rounded-md">
-                  تسویه ترکیبی چندارزی
-                </span>
-                <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 rounded-md">
-                  <ShieldCheck className="w-3 h-3" />
-                  لایسنس فعال ({licenseStatus.machineId})
+                <span className="hidden xs:inline-block px-1.5 sm:px-2 py-0.5 text-[9px] sm:text-[11px] font-bold bg-teal-50 text-teal-700 border border-teal-200 rounded-md shrink-0">
+                  تسویه چندارزی
                 </span>
               </div>
-              <p className="text-[11px] sm:text-xs text-slate-400 line-clamp-1">
-                طراحی‌شده برای صرافی و حسابداری معاملات ارزی در گوشی و رایانه • تسویه ترکیبی بانک و صندوق
+              <p className="hidden sm:block text-[11px] sm:text-xs text-slate-500 line-clamp-1">
+                طراحی‌شده برای صرافی و حسابداری معاملات ارزی در گوشی و رایانه
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {/* Live Network Server Sync Status */}
-            <div className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-xl border border-slate-800 bg-slate-900/90 shadow-inner">
+            <div className="flex items-center gap-1 px-2 py-1 text-[10px] sm:text-xs rounded-xl border border-slate-200 bg-slate-50">
               {networkSyncStatus === 'connected' ? (
                 <>
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  <Server className="w-3.5 h-3.5 text-emerald-400" />
-                  <span className="text-emerald-400 font-semibold text-[11px]">سرور لینوکس متصل</span>
+                  <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                  <Server className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-emerald-600 shrink-0" />
+                  <span className="text-emerald-700 font-bold text-[10px] sm:text-[11px] hidden xs:inline">متصل به سرور</span>
                 </>
               ) : networkSyncStatus === 'connecting' ? (
                 <>
-                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-                  <RefreshCw className="w-3.5 h-3.5 text-amber-400 animate-spin" />
-                  <span className="text-amber-400 font-semibold text-[11px]">درحال اتصال...</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse shrink-0" />
+                  <RefreshCw className="w-3 h-3 text-amber-600 animate-spin shrink-0" />
+                  <span className="text-amber-700 font-bold text-[10px] hidden xs:inline">اتصال...</span>
                 </>
               ) : (
                 <>
-                  <span className="w-2 h-2 rounded-full bg-slate-500" />
-                  <WifiOff className="w-3.5 h-3.5 text-slate-400" />
-                  <span className="text-slate-400 font-semibold text-[11px]">آفلاین</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-slate-400 shrink-0" />
+                  <WifiOff className="w-3 h-3 text-slate-500 shrink-0" />
+                  <span className="text-slate-600 font-bold text-[10px] hidden xs:inline">آفلاین</span>
                 </>
               )}
             </div>
 
-            {/* Quick Currency Rates Bar & Manage Currencies Button */}
-            <div className="flex items-center gap-2 bg-slate-900/90 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs">
-              <div className="hidden xl:flex items-center gap-3">
-                {currencies
-                  .filter((c) => !c.isBase)
-                  .map((c) => (
-                    <div key={c.code} className="flex items-center gap-1">
-                      <span className="text-slate-400 font-semibold">{c.code}:</span>
-                      <span className="font-mono-num text-white font-bold">
-                        {c.defaultRateToIRR.toLocaleString('en-US')}
-                      </span>
-                    </div>
-                  ))}
-              </div>
-              <button
-                onClick={() => setShowCurrencyModal(true)}
-                className="px-2 py-0.5 rounded bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 font-bold text-[11px] border border-teal-500/30 transition cursor-pointer"
-              >
-                + مدیریت ارزها ({currencies.length})
-              </button>
-            </div>
+            {/* Manage Currencies Button */}
+            <button
+              onClick={() => setShowCurrencyModal(true)}
+              className="px-2 py-1 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-800 font-bold text-[10px] sm:text-[11px] border border-teal-200 transition cursor-pointer shrink-0"
+            >
+              + ارزها ({currencies.length})
+            </button>
 
             {/* Reset Demo Data */}
             <button
               onClick={handleResetDemoData}
               title="بازگردانی داده‌های پیش‌فرض نمونه"
-              className="px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs text-slate-300 flex items-center gap-1.5 transition cursor-pointer"
+              className="px-2 py-1 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 text-[10px] sm:text-xs text-slate-700 flex items-center gap-1 transition cursor-pointer shrink-0"
             >
-              <RotateCcw className="w-3.5 h-3.5 text-slate-400" />
-              <span className="hidden md:inline">بازنشانی نمونه</span>
+              <RotateCcw className="w-3 h-3 text-slate-500" />
+              <span className="hidden sm:inline">ریست نمونه</span>
             </button>
           </div>
         </div>
@@ -1230,26 +1212,26 @@ export function App() {
 
       {/* Blank Database Confirmation Modal */}
       {showBlankConfirmModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-amber-500/40 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
-            <div className="flex items-center gap-3 text-amber-400">
-              <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center border border-amber-500/30">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center gap-3 text-amber-600">
+              <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center border border-amber-200">
                 <Database className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="font-bold text-white text-base">خام کردن و صفر کردن کامل دیتابیس</h3>
-                <p className="text-xs text-amber-300/80">شروع کار واقعی بدون اسناد یا مشتریان تستی</p>
+                <h3 className="font-bold text-slate-900 text-base">خام کردن و صفر کردن کامل دیتابیس</h3>
+                <p className="text-xs text-slate-500">شروع کار واقعی بدون اسناد یا مشتریان تستی</p>
               </div>
             </div>
 
-            <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800 text-xs text-slate-300 leading-relaxed space-y-2">
+            <div className="p-3.5 rounded-xl bg-amber-50/60 border border-amber-200 text-xs text-slate-800 leading-relaxed space-y-2">
               <p>
                 ⚠️ با تایید این گزینه، <strong>تمام اسناد حسابداری، فاکتورها، معاملات ارزی و اشخاص تستی پاکسازی می‌شوند</strong> و یک دیتابیس کاملاً سفید و خام ایجاد می‌گردد.
               </p>
-              <p className="text-slate-400">
+              <p className="text-slate-600">
                 • تنظیمات پایه ارزها و بانک‌های اصلی حفظ می‌گردند تا بتوانید بلافاصله فاکتور و اسناد واقعی خود را وارد نمایید.
               </p>
-              <p className="text-emerald-400 font-semibold">
+              <p className="text-emerald-700 font-semibold">
                 • این پاکسازی به صورت سراسری در فایل پایگاه‌داده سرور لینوکس نیز اعمال شده و تمام گوشی‌ها و کامپیوترهای متصل همگام می‌شوند.
               </p>
             </div>
@@ -1257,13 +1239,13 @@ export function App() {
             <div className="flex items-center justify-end gap-3 pt-2">
               <button
                 onClick={() => setShowBlankConfirmModal(false)}
-                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 cursor-pointer transition"
+                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs text-slate-700 font-semibold cursor-pointer transition"
               >
                 انصراف
               </button>
               <button
                 onClick={handleResetToBlankDatabase}
-                className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-xs font-bold text-slate-950 cursor-pointer shadow-lg shadow-amber-500/20 transition"
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-xs font-bold text-white cursor-pointer shadow-lg shadow-amber-500/20 transition"
               >
                 تایید و خام کردن کامل دیتابیس
               </button>
@@ -1273,10 +1255,10 @@ export function App() {
       )}
 
       {/* Main Layout - Pocket Mobile Friendly with Vertical Sidebar on Desktop & Fixed Bottom Nav Bar on Mobile */}
-      <div className="max-w-[1600px] w-full mx-auto flex-1 flex flex-col lg:flex-row gap-5 p-3 sm:p-6 pb-24 lg:pb-6">
-        {/* Navigation Bar (Desktop Sidebar & Tablet Top Row) */}
-        <aside className="w-full lg:w-64 shrink-0">
-          <nav className="bg-slate-900/80 border border-slate-800 rounded-xl p-2 hidden sm:flex lg:flex-col gap-1.5 overflow-x-auto lg:overflow-visible sticky top-16 lg:top-20 z-20">
+      <div className="max-w-[1600px] w-full mx-auto flex-1 flex flex-col lg:flex-row gap-5 p-2.5 sm:p-6 pb-20 lg:pb-6 overflow-x-hidden">
+        {/* Navigation Bar (Desktop Vertical Sidebar Only) */}
+        <aside className="hidden lg:block w-64 shrink-0">
+          <nav className="bg-white border border-slate-200 rounded-xl p-2 flex flex-col gap-1.5 sticky top-20 z-20 shadow-xs">
             {navItems.map((item) => {
               const active = activeTab === item.id;
               return (
@@ -1285,8 +1267,8 @@ export function App() {
                   onClick={() => setActiveTab(item.id)}
                   className={`whitespace-nowrap lg:whitespace-normal shrink-0 lg:shrink flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-medium transition cursor-pointer ${
                     active
-                      ? 'bg-teal-500 text-slate-950 font-bold shadow-md shadow-teal-500/20'
-                      : 'text-slate-300 hover:bg-slate-800/70 hover:text-white'
+                      ? 'bg-teal-600 text-white font-bold shadow-md shadow-teal-600/20'
+                      : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
                   }`}
                 >
                   <div className="flex items-center gap-2">
@@ -1297,8 +1279,8 @@ export function App() {
                     <span
                       className={`mr-2 px-1.5 py-0.5 text-[10px] rounded font-semibold ${
                         active
-                          ? 'bg-slate-950/20 text-slate-950'
-                          : 'bg-teal-500/15 text-teal-400'
+                          ? 'bg-white/20 text-white'
+                          : 'bg-teal-50 text-teal-700 border border-teal-200'
                       }`}
                     >
                       {item.badge}
@@ -1424,58 +1406,59 @@ export function App() {
       </div>
 
       {/* Sticky Bottom Mobile Navigation Bar for Phone Screens */}
-      <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-slate-950/95 border-t border-slate-800 backdrop-blur-xl px-1.5 py-2 flex items-center justify-around shadow-2xl">
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 border-t border-slate-200 backdrop-blur-xl px-1.5 py-2 flex items-center justify-around shadow-xl">
         <button
           onClick={() => setActiveTab('fx_desk')}
-          className={`flex flex-col items-center gap-1 px-2 py-1 rounded-xl transition ${
-            activeTab === 'fx_desk' ? 'text-amber-400 font-bold bg-amber-500/10' : 'text-slate-400'
+          className={`flex flex-col items-center gap-1 px-2.5 py-1 rounded-xl transition ${
+            activeTab === 'fx_desk' ? 'text-amber-700 font-bold bg-amber-50' : 'text-slate-600'
           }`}
         >
-          <Coins className="w-5 h-5" />
+          <Coins className="w-5 h-5 text-amber-600" />
           <span className="text-[10px]">معامله صرافی</span>
         </button>
 
         <button
           onClick={() => setActiveTab('invoices')}
-          className={`flex flex-col items-center gap-1 px-2 py-1 rounded-xl transition ${
-            activeTab === 'invoices' ? 'text-teal-400 font-bold bg-teal-500/10' : 'text-slate-400'
+          className={`flex flex-col items-center gap-1 px-2.5 py-1 rounded-xl transition ${
+            activeTab === 'invoices' ? 'text-teal-700 font-bold bg-teal-50' : 'text-slate-600'
           }`}
         >
-          <ShoppingBag className="w-5 h-5" />
+          <ShoppingBag className="w-5 h-5 text-teal-600" />
           <span className="text-[10px]">فاکتور ارزی</span>
         </button>
 
         <button
           onClick={() => setActiveTab('persons')}
-          className={`flex flex-col items-center gap-1 px-2 py-1 rounded-xl transition ${
-            activeTab === 'persons' ? 'text-cyan-400 font-bold bg-cyan-500/10' : 'text-slate-400'
+          className={`flex flex-col items-center gap-1 px-2.5 py-1 rounded-xl transition ${
+            activeTab === 'persons' ? 'text-cyan-700 font-bold bg-cyan-50' : 'text-slate-600'
           }`}
         >
-          <Users className="w-5 h-5" />
+          <Users className="w-5 h-5 text-cyan-600" />
           <span className="text-[10px]">طرف حساب‌ها</span>
         </button>
 
         <button
           onClick={() => setActiveTab('banks')}
-          className={`flex flex-col items-center gap-1 px-2 py-1 rounded-xl transition ${
-            activeTab === 'banks' ? 'text-indigo-400 font-bold bg-indigo-500/10' : 'text-slate-400'
+          className={`flex flex-col items-center gap-1 px-2.5 py-1 rounded-xl transition ${
+            activeTab === 'banks' ? 'text-indigo-700 font-bold bg-indigo-50' : 'text-slate-600'
           }`}
         >
-          <Landmark className="w-5 h-5" />
+          <Landmark className="w-5 h-5 text-indigo-600" />
           <span className="text-[10px]">خزانه و بانک</span>
         </button>
 
         <button
           onClick={() => setActiveTab('dashboard')}
-          className={`flex flex-col items-center gap-1 px-2 py-1 rounded-xl transition ${
-            activeTab === 'dashboard' ? 'text-emerald-400 font-bold bg-emerald-500/10' : 'text-slate-400'
+          className={`flex flex-col items-center gap-1 px-2.5 py-1 rounded-xl transition ${
+            activeTab === 'dashboard' ? 'text-emerald-700 font-bold bg-emerald-50' : 'text-slate-600'
           }`}
         >
-          <LayoutDashboard className="w-5 h-5" />
+          <LayoutDashboard className="w-5 h-5 text-emerald-600" />
           <span className="text-[10px]">داشبورد</span>
         </button>
       </div>
     </div>
   );
 }
+
 export default App;

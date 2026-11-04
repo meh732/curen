@@ -233,18 +233,18 @@ export const PersonStatementsView: React.FC<PersonStatementsViewProps> = ({
       )}
 
       {activeTab === 'statement' && selectedContact && statement && (
-        <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-5 space-y-5">
+        <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 space-y-4 shadow-sm">
           {/* Controls Row */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-end border-b border-slate-800 pb-4">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-end border-b border-slate-200 pb-4">
             <div className="lg:col-span-4">
-              <label className="block text-xs font-semibold text-slate-300 mb-1">
+              <label className="block text-xs font-bold text-slate-700 mb-1">
                 انتخاب شخص / شرکت طرف حساب
               </label>
               <select
                 value={selectedContact.id}
                 onChange={(e) => setSelectedContactId(e.target.value)}
                 aria-label="انتخاب شخص طرف حساب"
-                className="w-full px-3 py-2 text-xs font-semibold bg-slate-950 text-white border border-slate-700 rounded-lg focus:border-teal-500 focus:outline-none"
+                className="w-full px-3 py-2 text-xs font-semibold bg-white text-slate-900 border border-slate-300 rounded-lg focus:border-teal-500 focus:outline-none"
               >
                 {state.contacts.map((c) => (
                   <option key={c.id} value={c.id}>
@@ -256,31 +256,31 @@ export const PersonStatementsView: React.FC<PersonStatementsViewProps> = ({
 
             {/* Dual Statement Mode Selector */}
             <div className="lg:col-span-4">
-              <label className="block text-xs font-semibold text-slate-300 mb-1">
+              <label className="block text-xs font-bold text-slate-700 mb-1">
                 نوع نمایش صورتحساب استاندارد شخص (دو حالته)
               </label>
-              <div className="grid grid-cols-2 gap-1 p-1 bg-slate-950 rounded-lg border border-slate-800">
+              <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-lg border border-slate-200">
                 <button
                   type="button"
                   onClick={() => setStatementMode('rial')}
-                  className={`py-1.5 px-3 text-xs font-bold rounded-md transition-colors whitespace-nowrap cursor-pointer ${
+                  className={`py-2 px-2.5 text-xs font-bold rounded-md transition-colors cursor-pointer ${
                     statementMode === 'rial'
-                      ? 'bg-teal-500 text-slate-950 font-bold shadow-xs'
-                      : 'text-slate-400 hover:text-white'
+                      ? 'bg-teal-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  ۱. صورتحساب استاندارد ریالی
+                  ۱. صورتحساب ریالی
                 </button>
                 <button
                   type="button"
                   onClick={() => setStatementMode('foreign')}
-                  className={`py-1.5 px-3 text-xs font-bold rounded-md transition-colors whitespace-nowrap cursor-pointer ${
+                  className={`py-2 px-2.5 text-xs font-bold rounded-md transition-colors cursor-pointer ${
                     statementMode === 'foreign'
-                      ? 'bg-teal-500 text-slate-950 font-bold shadow-xs'
-                      : 'text-slate-400 hover:text-white'
+                      ? 'bg-teal-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  ۲. صورتحساب استاندارد ارزی
+                  ۲. صورتحساب ارزی
                 </button>
               </div>
             </div>
@@ -289,23 +289,23 @@ export const PersonStatementsView: React.FC<PersonStatementsViewProps> = ({
               <button
                 type="button"
                 onClick={() => handleExportOrPrint('download_pdf')}
-                className="px-3 py-2 text-xs font-bold bg-blue-700 hover:bg-blue-800 text-white rounded flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
+                className="px-3 py-2 text-xs font-bold bg-blue-700 hover:bg-blue-800 text-white rounded-lg flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer shadow-xs"
               >
                 <FileDown className="w-3.5 h-3.5" />
-                خروجی PDF استاندارد
+                دانلود PDF
               </button>
               <button
                 type="button"
                 onClick={() => handleExportOrPrint('print')}
-                className="px-3 py-2 text-xs font-bold bg-slate-800 hover:bg-slate-900 text-white rounded flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
+                className="px-3 py-2 text-xs font-bold bg-slate-800 hover:bg-slate-900 text-white rounded-lg flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer shadow-xs"
               >
                 <Printer className="w-3.5 h-3.5" />
-                چاپ رسمی A4
+                چاپ A4
               </button>
               <button
                 type="button"
                 onClick={() => handleSendStatementToBot('bale')}
-                className="px-2.5 py-2 text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white rounded flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer"
+                className="px-2.5 py-2 text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer"
               >
                 <Send className="w-3.5 h-3.5" />
                 بله
@@ -313,7 +313,7 @@ export const PersonStatementsView: React.FC<PersonStatementsViewProps> = ({
               <button
                 type="button"
                 onClick={() => handleSendStatementToBot('telegram')}
-                className="px-2.5 py-2 text-xs font-bold bg-sky-700 hover:bg-sky-800 text-white rounded flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer"
+                className="px-2.5 py-2 text-xs font-bold bg-sky-700 hover:bg-sky-800 text-white rounded-lg flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer"
               >
                 <Send className="w-3.5 h-3.5" />
                 تلگرام
@@ -322,9 +322,9 @@ export const PersonStatementsView: React.FC<PersonStatementsViewProps> = ({
           </div>
 
           {/* Contact Info & Summary KPI Strip */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-slate-50 p-4 rounded-lg border border-slate-200">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
             <div>
-              <div className="text-[11px] text-slate-500">مشخصات طرف حساب</div>
+              <div className="text-[11px] text-slate-500 font-medium">مشخصات طرف حساب</div>
               <div className="text-sm font-bold text-slate-900 mt-0.5">{selectedContact.name}</div>
               <div className="text-xs text-slate-600 mt-1 font-mono-num">
                 کد تفصیلی: {selectedContact.code} · تلفن: {selectedContact.phone}
@@ -332,7 +332,7 @@ export const PersonStatementsView: React.FC<PersonStatementsViewProps> = ({
             </div>
 
             <div>
-              <div className="text-[11px] text-slate-500">جمع کل بدهکار (ریالی و ارزی)</div>
+              <div className="text-[11px] text-slate-500 font-medium">جمع کل بدهکار (ریالی و ارزی)</div>
               <div className="text-sm font-bold font-mono-num text-slate-900 mt-0.5">
                 {formatNumber(statement.totalDebitIRR)} ریال
               </div>
@@ -347,7 +347,7 @@ export const PersonStatementsView: React.FC<PersonStatementsViewProps> = ({
             </div>
 
             <div>
-              <div className="text-[11px] text-slate-500">جمع کل بستانکار (ریالی و ارزی)</div>
+              <div className="text-[11px] text-slate-500 font-medium">جمع کل بستانکار (ریالی و ارزی)</div>
               <div className="text-sm font-bold font-mono-num text-slate-900 mt-0.5">
                 {formatNumber(statement.totalCreditIRR)} ریال
               </div>
@@ -362,18 +362,18 @@ export const PersonStatementsView: React.FC<PersonStatementsViewProps> = ({
             </div>
 
             <div>
-              <div className="text-[11px] text-slate-500">
+              <div className="text-[11px] text-slate-500 font-medium">
                 مانده نهایی ({statementMode === 'rial' ? 'صورتحساب ریالی' : 'صورتحساب ارزی'})
               </div>
               {statementMode === 'rial' ? (
-                <div className="text-base font-extrabold font-mono-num text-blue-900 mt-0.5">
+                <div className="text-base font-extrabold font-mono-num text-teal-800 mt-0.5">
                   {formatNumber(statement.finalBalanceIRR)} ریال ({statement.finalStatusIRR})
                 </div>
               ) : (
                 <div className="space-y-1 mt-0.5">
                   {Object.entries(statement.currencyBreakdown).length > 0 ? (
                     Object.entries(statement.currencyBreakdown).map(([curr, b]) => (
-                      <div key={curr} className="text-xs font-bold font-mono-num text-blue-900">
+                      <div key={curr} className="text-xs font-bold font-mono-num text-teal-800">
                         {formatCurrencyAmount(b.balanceForeign, curr)} {curr} ({b.status})
                       </div>
                     ))
@@ -387,19 +387,19 @@ export const PersonStatementsView: React.FC<PersonStatementsViewProps> = ({
 
           {/* Currency filter when in Foreign Statement mode */}
           {statementMode === 'foreign' && (
-            <div className="flex flex-wrap items-center justify-between gap-2 bg-blue-50/60 border border-blue-200 rounded-lg px-4 py-2.5 text-xs">
-              <span className="font-semibold text-blue-950">
-                فیلتر ارز در صورتحساب ارزی استاندارد:
+            <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2 text-xs">
+              <span className="font-bold text-slate-800">
+                فیلتر ارز در صورتحساب ارزی:
               </span>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1 flex-wrap">
                 {(['ALL', 'USD', 'AED', 'CNY', 'EUR', 'IRR'] as const).map((c) => (
                   <button
                     key={c}
                     type="button"
                     onClick={() => setCurrencyFilter(c)}
-                    className={`px-2.5 py-1 rounded font-mono-num font-semibold ${
+                    className={`px-2.5 py-1 rounded font-mono-num font-bold text-xs cursor-pointer ${
                       currencyFilter === c
-                        ? 'bg-blue-700 text-white'
+                        ? 'bg-teal-600 text-white'
                         : 'bg-white text-slate-700 border border-slate-200'
                     }`}
                   >
@@ -410,8 +410,83 @@ export const PersonStatementsView: React.FC<PersonStatementsViewProps> = ({
             </div>
           )}
 
-          {/* Standard Accounting Ledger Table */}
-          <div className="overflow-x-auto border border-slate-200 rounded-lg">
+          {/* Mobile Ledger Transaction Cards (Phone Screens - No Horizontal Scroll!) */}
+          <div className="sm:hidden space-y-3">
+            {statement.rows.length === 0 ? (
+              <div className="p-6 text-center text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-xl">
+                هیچ گردش مالی برای این طرف حساب یافت نشد.
+              </div>
+            ) : (
+              statement.rows.map((row, idx) => (
+                <div
+                  key={row.lineId}
+                  className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2 text-xs"
+                >
+                  <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono-num text-slate-400">#{idx + 1}</span>
+                      <span className="font-mono-num font-bold text-blue-700">
+                        سند #{row.voucherNumber}
+                      </span>
+                    </div>
+                    <span className="font-mono-num text-slate-500">{row.date}</span>
+                  </div>
+
+                  <div className="text-slate-800 font-semibold">{row.description}</div>
+
+                  {statementMode === 'rial' ? (
+                    <div className="grid grid-cols-2 gap-2 bg-white p-2.5 rounded-lg border border-slate-200 font-mono-num">
+                      <div>
+                        <span className="text-[10px] text-slate-400 block">بدهکار (ریال)</span>
+                        <span className="font-bold text-slate-900">
+                          {row.debitIRR > 0 ? formatNumber(row.debitIRR) : '—'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-400 block">بستانکار (ریال)</span>
+                        <span className="font-bold text-slate-900">
+                          {row.creditIRR > 0 ? formatNumber(row.creditIRR) : '—'}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2 bg-white p-2.5 rounded-lg border border-slate-200 font-mono-num">
+                      <div>
+                        <span className="text-[10px] text-slate-400 block">بدهکار ارزی</span>
+                        <span className="font-bold text-slate-900">
+                          {row.debitForeign > 0
+                            ? `${formatCurrencyAmount(row.debitForeign, row.currency)} ${row.currency}`
+                            : '—'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-400 block">بستانکار ارزی</span>
+                        <span className="font-bold text-slate-900">
+                          {row.creditForeign > 0
+                            ? `${formatCurrencyAmount(row.creditForeign, row.currency)} ${row.currency}`
+                            : '—'}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between pt-1 font-mono-num">
+                    <span className="text-slate-500">مانده در گردش:</span>
+                    <span className="font-bold text-teal-800">
+                      {statementMode === 'rial'
+                        ? `${formatNumber(row.runningBalanceIRR)} ریال (${row.balanceStatusIRR})`
+                        : `${formatCurrencyAmount(row.runningBalanceForeign, row.currency)} ${
+                            row.currency
+                          } (${row.balanceStatusForeign})`}
+                    </span>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Desktop Table (Tablet / Desktop Screens) */}
+          <div className="hidden sm:block overflow-x-auto border border-slate-200 rounded-lg">
             <table className="w-full text-right border-collapse">
               <thead>
                 {statementMode === 'rial' ? (
@@ -425,7 +500,7 @@ export const PersonStatementsView: React.FC<PersonStatementsViewProps> = ({
                     <th className="py-2.5 px-3 text-left">بدهکار (ریال)</th>
                     <th className="py-2.5 px-3 text-left">بستانکار (ریال)</th>
                     <th className="py-2.5 px-3 text-center">تشخیص</th>
-                    <th className="py-2.5 px-3 text-left bg-blue-50 text-blue-950">
+                    <th className="py-2.5 px-3 text-left bg-teal-50 text-teal-950">
                       مانده در گردش (ریال)
                     </th>
                   </tr>
@@ -440,7 +515,7 @@ export const PersonStatementsView: React.FC<PersonStatementsViewProps> = ({
                     <th className="py-2.5 px-3 text-left bg-emerald-50/70">بدهکار ارزی</th>
                     <th className="py-2.5 px-3 text-left bg-emerald-50/70">بستانکار ارزی</th>
                     <th className="py-2.5 px-3 text-center">تشخیص ارزی</th>
-                    <th className="py-2.5 px-3 text-left bg-emerald-100/60 text-emerald-950">
+                    <th className="py-2.5 px-3 text-left bg-teal-50 text-teal-950">
                       مانده در گردش ارزی
                     </th>
                     <th className="py-2.5 px-3 text-left text-slate-600">
@@ -493,7 +568,7 @@ export const PersonStatementsView: React.FC<PersonStatementsViewProps> = ({
                             {row.balanceStatusIRR}
                           </span>
                         </td>
-                        <td className="py-2.5 px-3 font-mono-num text-left font-bold bg-blue-50/40 text-slate-900">
+                        <td className="py-2.5 px-3 font-mono-num text-left font-bold bg-teal-50/60 text-slate-900">
                           {formatNumber(row.runningBalanceIRR)}
                         </td>
                       </tr>
@@ -520,7 +595,7 @@ export const PersonStatementsView: React.FC<PersonStatementsViewProps> = ({
                         <td className="py-2.5 px-3 text-center font-bold">
                           {row.balanceStatusForeign}
                         </td>
-                        <td className="py-2.5 px-3 font-mono-num text-left font-bold bg-emerald-100/40 text-emerald-950">
+                        <td className="py-2.5 px-3 font-mono-num text-left font-bold bg-teal-50/60 text-teal-950">
                           {formatCurrencyAmount(row.runningBalanceForeign, row.currency)} {row.currency}
                         </td>
                         <td className="py-2.5 px-3 font-mono-num text-left text-slate-600">
@@ -538,18 +613,18 @@ export const PersonStatementsView: React.FC<PersonStatementsViewProps> = ({
 
       {/* Debtors & Creditors Report Tab */}
       {activeTab === 'debtors_creditors' && (
-        <div className="bg-white border border-slate-200 rounded-lg p-5 space-y-4">
+        <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 space-y-4 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                 <ArrowUpDown className="w-4 h-4 text-blue-700" />
-                گزارش استاندارد بدهکاران و بستانکاران (اشخاص حقیقی و حقوقی - ریالی و ارزی)
+                گزارش جامع بدهکاران و بستانکاران (ریالی و ارزی)
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
-                کلیک روی هر شخص، کاردکس صورتحساب استاندارد ریالی و ارزی او را باز می‌کند.
+                کلیک روی هر شخص، کاردکس صورتحساب او را باز می‌کند.
               </p>
             </div>
-            <div className="relative w-72">
+            <div className="relative w-full sm:w-72">
               <Search className="w-4 h-4 text-slate-400 absolute right-3 top-2.5" />
               <input
                 type="text"
@@ -557,12 +632,52 @@ export const PersonStatementsView: React.FC<PersonStatementsViewProps> = ({
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="جستجوی نام یا کد طرف حساب..."
                 aria-label="جستجوی بدهکاران و بستانکاران"
-                className="w-full pr-9 pl-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded focus:bg-white focus:border-blue-600 focus:outline-none"
+                className="w-full pr-9 pl-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:border-teal-600 focus:outline-none"
               />
             </div>
           </div>
 
-          <div className="overflow-x-auto border border-slate-200 rounded-lg">
+          {/* Mobile Cards for Debtors & Creditors */}
+          <div className="sm:hidden space-y-3">
+            {debtorsAndCreditors.map(({ contact, statement: st }) => (
+              <div
+                key={contact.id}
+                onClick={() => {
+                  setSelectedContactId(contact.id);
+                  setActiveTab('statement');
+                }}
+                className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2 text-xs cursor-pointer active:bg-slate-100 transition"
+              >
+                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                  <span className="font-bold text-slate-900 text-sm">{contact.name}</span>
+                  <span className="font-mono-num text-xs text-slate-500">{contact.code}</span>
+                </div>
+
+                <div className="flex items-center justify-between font-mono-num">
+                  <span className="text-slate-500">مانده قطعی:</span>
+                  <span className="font-bold text-slate-900">{formatNumber(st.finalBalanceIRR)} ریال</span>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">وضعیت حساب:</span>
+                  <span
+                    className={`font-bold ${
+                      st.finalStatusIRR === 'بدهکار'
+                        ? 'text-amber-700'
+                        : st.finalStatusIRR === 'بستانکار'
+                        ? 'text-emerald-700'
+                        : 'text-slate-500'
+                    }`}
+                  >
+                    {st.finalStatusIRR}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop Table */}
+          <div className="hidden sm:block overflow-x-auto border border-slate-200 rounded-lg">
             <table className="w-full text-right border-collapse">
               <thead>
                 <tr className="bg-slate-100 border-b border-slate-200 text-xs font-bold text-slate-700">
@@ -623,7 +738,7 @@ export const PersonStatementsView: React.FC<PersonStatementsViewProps> = ({
                           setSelectedContactId(contact.id);
                           setActiveTab('statement');
                         }}
-                        className="px-2.5 py-1 text-xs font-semibold text-blue-700 hover:underline"
+                        className="px-2.5 py-1 text-xs font-semibold text-teal-700 hover:underline cursor-pointer"
                       >
                         مشاهده صورتحساب ریالی/ارزی
                       </button>

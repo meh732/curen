@@ -123,14 +123,14 @@ export const MultiPaymentSplitsEditor: React.FC<MultiPaymentSplitsEditorProps> =
   };
 
   return (
-    <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-4 space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
+    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-4 shadow-xs">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
         <div>
-          <h4 className="text-sm font-bold text-white flex items-center gap-2">
-            <Landmark className="w-4 h-4 text-teal-400" />
+          <h4 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+            <Landmark className="w-4 h-4 text-teal-600" />
             {title}
           </h4>
-          {subtitle && <p className="text-xs text-slate-400 mt-0.5">{subtitle}</p>}
+          {subtitle && <p className="text-xs text-slate-600 mt-0.5">{subtitle}</p>}
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -138,9 +138,9 @@ export const MultiPaymentSplitsEditor: React.FC<MultiPaymentSplitsEditorProps> =
             <button
               type="button"
               onClick={() => handleAddSplit(true)}
-              className="px-3 py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+              className="px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-xs"
             >
-              <CheckCircle2 className="w-3.5 h-3.5" />
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
               {splits.length === 0
                 ? `تسویه کامل (${formatNumber(remainingIRR)} ریال)`
                 : `افزودن ردیف برای الباقی (${formatNumber(remainingIRR)} ریال)`}
@@ -149,17 +149,17 @@ export const MultiPaymentSplitsEditor: React.FC<MultiPaymentSplitsEditorProps> =
           <button
             type="button"
             onClick={() => handleAddSplit(false)}
-            className="px-3 py-1.5 rounded-lg bg-teal-500/15 hover:bg-teal-500/25 text-teal-300 border border-teal-500/30 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+            className="px-3 py-1.5 rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-300 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-xs"
           >
-            <Plus className="w-3.5 h-3.5" />
+            <Plus className="w-3.5 h-3.5 text-teal-600" />
             افزودن بانک یا صندوق (ترکیبی)
           </button>
         </div>
       </div>
 
       {splits.length === 0 ? (
-        <div className="bg-slate-900/60 border border-dashed border-slate-800 rounded-lg p-4 text-center">
-          <p className="text-xs text-slate-400">
+        <div className="bg-white border border-dashed border-slate-300 rounded-lg p-4 text-center">
+          <p className="text-xs text-slate-600">
             هیچ ردیف {mode === 'receipt' ? 'دریافتی' : 'پرداختی'} ثبت نشده است.{' '}
             {totalTargetIRR > 0
               ? `در صورت عدم ثبت، کل مبلغ (${formatNumber(totalTargetIRR)} ریال) به عنوان نسیه در حساب ${
@@ -177,14 +177,14 @@ export const MultiPaymentSplitsEditor: React.FC<MultiPaymentSplitsEditorProps> =
             return (
               <div
                 key={split.id}
-                className="bg-slate-900/90 border border-slate-800 rounded-lg p-3 space-y-3 relative transition hover:border-slate-700"
+                className="bg-white border border-slate-200 rounded-lg p-3 space-y-3 relative transition hover:border-slate-300 shadow-xs"
               >
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-teal-400 flex items-center gap-1.5">
+                  <span className="text-xs font-bold text-teal-800 flex items-center gap-1.5">
                     {selectedBank?.kind === 'cash_box' ? (
-                      <Wallet className="w-3.5 h-3.5 text-amber-400" />
+                      <Wallet className="w-3.5 h-3.5 text-amber-600" />
                     ) : (
-                      <Landmark className="w-3.5 h-3.5 text-teal-400" />
+                      <Landmark className="w-3.5 h-3.5 text-teal-600" />
                     )}
                     ردیف {idx + 1}: {mode === 'receipt' ? 'واریز به' : 'برداشت از'}{' '}
                     {selectedBank?.bankName || 'بانک / صندوق'}
@@ -194,7 +194,7 @@ export const MultiPaymentSplitsEditor: React.FC<MultiPaymentSplitsEditorProps> =
                       <button
                         type="button"
                         onClick={() => handleFillRemainingOnRow(split.id)}
-                        className="text-[11px] px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 transition cursor-pointer"
+                        className="text-[11px] px-2 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition cursor-pointer"
                       >
                         قرار دادن کل الباقی در این ردیف
                       </button>
@@ -202,7 +202,7 @@ export const MultiPaymentSplitsEditor: React.FC<MultiPaymentSplitsEditorProps> =
                     <button
                       type="button"
                       onClick={() => handleRemoveSplit(split.id)}
-                      className="text-rose-400 hover:text-rose-300 p-1 rounded hover:bg-rose-500/10 transition cursor-pointer"
+                      className="text-rose-600 hover:text-rose-700 p-1 rounded hover:bg-rose-50 transition cursor-pointer"
                       title="حذف این ردیف"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -213,13 +213,13 @@ export const MultiPaymentSplitsEditor: React.FC<MultiPaymentSplitsEditorProps> =
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
                   {/* انتخاب بانک یا صندوق */}
                   <div className="md:col-span-4">
-                    <label className="block text-[11px] text-slate-400 mb-1">
+                    <label className="block text-[11px] font-medium text-slate-700 mb-1">
                       انتخاب بانک یا صندوق ({mode === 'receipt' ? 'مقصد واریز' : 'مبدأ پرداخت'})
                     </label>
                     <select
                       value={split.bankId}
                       onChange={(e) => handleUpdateSplit(split.id, { bankId: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-2 text-xs text-white focus:border-teal-500 focus:outline-none"
+                      className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-2 text-xs text-slate-900 focus:border-teal-600 focus:ring-1 focus:ring-teal-600"
                     >
                       {banks.map((b) => (
                         <option key={b.id} value={b.id}>
@@ -232,13 +232,13 @@ export const MultiPaymentSplitsEditor: React.FC<MultiPaymentSplitsEditorProps> =
 
                   {/* نوع ارز پرداختی / دریافتی */}
                   <div className="md:col-span-2">
-                    <label className="block text-[11px] text-slate-400 mb-1">نوع پول / ارز</label>
+                    <label className="block text-[11px] font-medium text-slate-700 mb-1">نوع پول / ارز</label>
                     <select
                       value={split.currency}
                       onChange={(e) =>
                         handleUpdateSplit(split.id, { currency: e.target.value as CurrencyCode })
                       }
-                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-2 text-xs text-white focus:border-teal-500 focus:outline-none"
+                      className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-2 text-xs text-slate-900 focus:border-teal-600 focus:ring-1 focus:ring-teal-600"
                     >
                       <option value="IRR">ریال ایران (IRR)</option>
                       {currencies
@@ -253,7 +253,7 @@ export const MultiPaymentSplitsEditor: React.FC<MultiPaymentSplitsEditorProps> =
 
                   {/* مبلغ */}
                   <div className={isForeign ? 'md:col-span-2' : 'md:col-span-4'}>
-                    <label className="block text-[11px] text-slate-400 mb-1">
+                    <label className="block text-[11px] font-medium text-slate-700 mb-1">
                       {isForeign ? `مبلغ ارزی (${split.currency})` : 'مبلغ (ریال)'}
                     </label>
                     <input
@@ -266,15 +266,15 @@ export const MultiPaymentSplitsEditor: React.FC<MultiPaymentSplitsEditorProps> =
                         })
                       }
                       placeholder={isForeign ? 'مثلاً 1,000' : 'مثلاً 50,000,000'}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-2 text-xs text-white font-mono-num focus:border-teal-500 focus:outline-none"
+                      className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-2 text-xs text-slate-900 font-mono-num focus:border-teal-600 focus:ring-1 focus:ring-teal-600"
                     />
                   </div>
 
                   {/* اگر ارزی بود: تعیین نرخ ارزش ارز به ریال */}
                   {isForeign && (
                     <div className="md:col-span-2">
-                      <label className="block text-[11px] text-amber-300 mb-1 flex items-center gap-1">
-                        <Coins className="w-3 h-3" />
+                      <label className="block text-[11px] font-bold text-amber-800 mb-1 flex items-center gap-1">
+                        <Coins className="w-3 h-3 text-amber-600" />
                         ارزش هر واحد (ریال)
                       </label>
                       <input
@@ -287,14 +287,14 @@ export const MultiPaymentSplitsEditor: React.FC<MultiPaymentSplitsEditorProps> =
                           })
                         }
                         placeholder="نرخ به ریال"
-                        className="w-full bg-amber-950/30 border border-amber-500/40 rounded-lg px-2.5 py-2 text-xs text-amber-200 font-mono-num focus:border-amber-400 focus:outline-none"
+                        className="w-full bg-amber-50 border border-amber-300 rounded-lg px-2.5 py-2 text-xs text-amber-900 font-mono-num focus:border-amber-600 focus:ring-1 focus:ring-amber-600"
                       />
                     </div>
                   )}
 
                   {/* شماره پیگیری / توضیح کوتاه */}
                   <div className="md:col-span-2">
-                    <label className="block text-[11px] text-slate-400 mb-1">شماره پیگیری / فیش</label>
+                    <label className="block text-[11px] font-medium text-slate-700 mb-1">شماره پیگیری / فیش</label>
                     <input
                       type="text"
                       value={split.trackingNumber || ''}
@@ -302,20 +302,20 @@ export const MultiPaymentSplitsEditor: React.FC<MultiPaymentSplitsEditorProps> =
                         handleUpdateSplit(split.id, { trackingNumber: e.target.value })
                       }
                       placeholder="اختیاری"
-                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-2 text-xs text-white focus:border-teal-500 focus:outline-none"
+                      className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-2 text-xs text-slate-900 focus:border-teal-600 focus:ring-1 focus:ring-teal-600"
                     />
                   </div>
                 </div>
 
                 {/* نمایش معادل ریالی در صورت ارزی بودن */}
                 {isForeign && (
-                  <div className="flex items-center justify-between bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-1.5 text-xs">
-                    <span className="text-amber-300 flex items-center gap-1.5">
-                      <ArrowLeftRight className="w-3.5 h-3.5" />
+                  <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5 text-xs">
+                    <span className="text-amber-900 font-medium flex items-center gap-1.5">
+                      <ArrowLeftRight className="w-3.5 h-3.5 text-amber-700" />
                       محاسبه خودکار ارزش ریالی این ردیف ارزی ({formatNumber(split.amountForeign)}{' '}
                       {split.currency} × {formatNumber(split.exchangeRate)} ریال):
                     </span>
-                    <span className="font-bold text-amber-200 font-mono-num">
+                    <span className="font-extrabold text-amber-900 font-mono-num">
                       {formatNumber(split.amountIRR)} ریال
                     </span>
                   </div>
@@ -327,21 +327,21 @@ export const MultiPaymentSplitsEditor: React.FC<MultiPaymentSplitsEditorProps> =
       )}
 
       {/* نوار خلاصه وضعیت تسویه */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-slate-800/80">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-slate-200">
         {totalTargetIRR > 0 && (
-          <div className="bg-slate-900/80 rounded-lg p-2.5 border border-slate-800 flex items-center justify-between">
-            <span className="text-xs text-slate-400">مبلغ کل فاکتور / معامله:</span>
-            <span className="text-xs font-bold text-white font-mono-num">
+          <div className="bg-white rounded-lg p-2.5 border border-slate-200 flex items-center justify-between">
+            <span className="text-xs text-slate-600">مبلغ کل فاکتور / معامله:</span>
+            <span className="text-xs font-bold text-slate-900 font-mono-num">
               {formatNumber(totalTargetIRR)} ریال
             </span>
           </div>
         )}
 
-        <div className="bg-teal-950/30 rounded-lg p-2.5 border border-teal-500/30 flex items-center justify-between">
-          <span className="text-xs text-teal-300">
+        <div className="bg-teal-50 rounded-lg p-2.5 border border-teal-200 flex items-center justify-between">
+          <span className="text-xs font-bold text-teal-900">
             جمع {mode === 'receipt' ? 'دریافتی (واریز به بانک/صندوق)' : 'پرداختی (خروج از بانک/صندوق)'}:
           </span>
-          <span className="text-xs font-bold text-teal-300 font-mono-num">
+          <span className="text-xs font-extrabold text-teal-800 font-mono-num">
             {formatNumber(totalPaidIRR)} ریال
           </span>
         </div>
@@ -350,18 +350,18 @@ export const MultiPaymentSplitsEditor: React.FC<MultiPaymentSplitsEditorProps> =
           <div
             className={`rounded-lg p-2.5 border flex items-center justify-between ${
               remainingIRR === 0 && overpaidIRR === 0
-                ? 'bg-emerald-950/30 border-emerald-500/30 text-emerald-300'
-                : 'bg-amber-950/30 border-amber-500/30 text-amber-300'
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                : 'bg-amber-50 border-amber-200 text-amber-900'
             }`}
           >
-            <span className="text-xs">
+            <span className="text-xs font-bold">
               {overpaidIRR > 0
                 ? 'مبلغ مازاد پرداختی (بستانکاری شخص):'
                 : remainingIRR === 0
                 ? 'وضعیت تسویه:'
                 : `مانده در حساب ${contactName || 'شخص'} (نسیه):`}
             </span>
-            <span className="text-xs font-bold font-mono-num">
+            <span className="text-xs font-extrabold font-mono-num">
               {overpaidIRR > 0
                 ? `${formatNumber(overpaidIRR)} ریال`
                 : remainingIRR === 0

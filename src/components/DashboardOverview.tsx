@@ -105,130 +105,138 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
     .reduce((s, p) => s + p.balanceIRR, 0);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-full overflow-x-hidden">
       {/* دکمه‌های دسترسی سریع برای فرد غیرحسابدار */}
       {onNavigate && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <button
             type="button"
             onClick={() => onNavigate('invoices')}
-            className="bg-teal-500/15 hover:bg-teal-500/25 border border-teal-500/40 rounded-xl p-4 text-right transition flex items-center justify-between group cursor-pointer"
+            className="bg-teal-50 hover:bg-teal-100/80 border border-teal-200 rounded-xl p-4 text-right transition flex items-center justify-between group cursor-pointer shadow-xs"
           >
             <div>
-              <div className="text-xs font-bold text-teal-300 flex items-center gap-1.5">
-                <ShoppingBag className="w-4 h-4" />
+              <div className="text-xs font-bold text-teal-800 flex items-center gap-1.5">
+                <ShoppingBag className="w-4 h-4 text-teal-600" />
                 ثبت فاکتور خرید یا فروش
               </div>
-              <p className="text-[11px] text-slate-400 mt-1">
+              <p className="text-[11px] text-slate-600 mt-1">
                 با تسویه ترکیبی چند بانکی و چند صندوقی
               </p>
             </div>
-            <ChevronLeft className="w-4 h-4 text-teal-400 group-hover:-translate-x-1 transition" />
+            <ChevronLeft className="w-4 h-4 text-teal-600 group-hover:-translate-x-1 transition" />
           </button>
 
           <button
             type="button"
             onClick={() => onNavigate('vouchers')}
-            className="bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 rounded-xl p-4 text-right transition flex items-center justify-between group cursor-pointer"
+            className="bg-emerald-50 hover:bg-emerald-100/80 border border-emerald-200 rounded-xl p-4 text-right transition flex items-center justify-between group cursor-pointer shadow-xs"
           >
             <div>
-              <div className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
-                <Sparkles className="w-4 h-4" />
+              <div className="text-xs font-bold text-emerald-800 flex items-center gap-1.5">
+                <Sparkles className="w-4 h-4 text-emerald-600" />
                 امور مالی و سند اتوماتیک
               </div>
-              <p className="text-[11px] text-slate-400 mt-1">
+              <p className="text-[11px] text-slate-600 mt-1">
                 دریافت از شخص، پرداخت از بانک، انتقال و هزینه
               </p>
             </div>
-            <ChevronLeft className="w-4 h-4 text-emerald-400 group-hover:-translate-x-1 transition" />
+            <ChevronLeft className="w-4 h-4 text-emerald-600 group-hover:-translate-x-1 transition" />
           </button>
 
           <button
             type="button"
             onClick={() => onNavigate('fx_desk')}
-            className="bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 rounded-xl p-4 text-right transition flex items-center justify-between group cursor-pointer"
+            className="bg-amber-50 hover:bg-amber-100/80 border border-amber-200 rounded-xl p-4 text-right transition flex items-center justify-between group cursor-pointer shadow-xs"
           >
             <div>
-              <div className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
-                <Coins className="w-4 h-4" />
+              <div className="text-xs font-bold text-amber-900 flex items-center gap-1.5">
+                <Coins className="w-4 h-4 text-amber-600" />
                 خرید و فروش ارز
               </div>
-              <p className="text-[11px] text-slate-400 mt-1">
+              <p className="text-[11px] text-slate-600 mt-1">
                 ورود/خروج ارز و تسویه چند بانکی اتوماتیک
               </p>
             </div>
-            <ChevronLeft className="w-4 h-4 text-amber-400 group-hover:-translate-x-1 transition" />
+            <ChevronLeft className="w-4 h-4 text-amber-600 group-hover:-translate-x-1 transition" />
           </button>
 
           <button
             type="button"
             onClick={() => onNavigate('persons')}
-            className="bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/40 rounded-xl p-4 text-right transition flex items-center justify-between group cursor-pointer"
+            className="bg-sky-50 hover:bg-sky-100/80 border border-sky-200 rounded-xl p-4 text-right transition flex items-center justify-between group cursor-pointer shadow-xs"
           >
             <div>
-              <div className="text-xs font-bold text-sky-300 flex items-center gap-1.5">
-                <Users className="w-4 h-4" />
+              <div className="text-xs font-bold text-sky-900 flex items-center gap-1.5">
+                <Users className="w-4 h-4 text-sky-600" />
                 دفتر حساب اشخاص
               </div>
-              <p className="text-[11px] text-slate-400 mt-1">
+              <p className="text-[11px] text-slate-600 mt-1">
                 مشاهده ریز طلب و بدهی هر شخص + PDF
               </p>
             </div>
-            <ChevronLeft className="w-4 h-4 text-sky-400 group-hover:-translate-x-1 transition" />
+            <ChevronLeft className="w-4 h-4 text-sky-600 group-hover:-translate-x-1 transition" />
           </button>
         </div>
       )}
 
       {/* ۴ کارت خلاصه وضعیت دارایی، طلب و بدهی شخصی */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-5">
+        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-slate-400">موجودی بانک‌ها و صندوق ریالی</span>
-            <Landmark className="w-5 h-5 text-teal-400" />
+            <span className="text-xs font-medium text-slate-500">موجودی بانک‌ها و صندوق ریالی</span>
+            <div className="p-2 bg-teal-50 rounded-lg">
+              <Landmark className="w-5 h-5 text-teal-600" />
+            </div>
           </div>
-          <div className="text-xl font-bold text-white font-mono-num">
+          <div className="text-xl font-extrabold text-slate-900 font-mono-num">
             {formatNumber(totalRialBanksIRR)}{' '}
-            <span className="text-xs text-slate-400 font-normal">ریال</span>
+            <span className="text-xs text-slate-500 font-normal">ریال</span>
           </div>
-          <p className="text-[11px] text-teal-400 mt-2">جمع کل پول نقد و حساب‌های بانکی ریالی</p>
+          <p className="text-[11px] text-teal-700 font-medium mt-2">جمع کل پول نقد و حساب‌های بانکی ریالی</p>
         </div>
 
-        <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-5">
+        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-slate-400">ارزش صندوق‌ها و حساب‌های ارزی</span>
-            <Coins className="w-5 h-5 text-amber-400" />
+            <span className="text-xs font-medium text-slate-500">ارزش صندوق‌ها و حساب‌های ارزی</span>
+            <div className="p-2 bg-amber-50 rounded-lg">
+              <Coins className="w-5 h-5 text-amber-600" />
+            </div>
           </div>
-          <div className="text-xl font-bold text-amber-300 font-mono-num">
+          <div className="text-xl font-extrabold text-amber-900 font-mono-num">
             {formatNumber(totalForeignVaultsIRR)}{' '}
-            <span className="text-xs text-slate-400 font-normal">ریال</span>
+            <span className="text-xs text-slate-500 font-normal">ریال</span>
           </div>
-          <p className="text-[11px] text-slate-400 mt-2">
+          <p className="text-[11px] text-slate-600 mt-2">
             معادل ریالی دلار، درهم، یورو و یوان موجود
           </p>
         </div>
 
-        <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-5">
+        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-slate-400">کل طلب ما از اشخاص (بدهکاران)</span>
-            <ArrowDownLeft className="w-5 h-5 text-emerald-400" />
+            <span className="text-xs font-medium text-slate-500">کل طلب ما از اشخاص (بدهکاران)</span>
+            <div className="p-2 bg-emerald-50 rounded-lg">
+              <ArrowDownLeft className="w-5 h-5 text-emerald-600" />
+            </div>
           </div>
-          <div className="text-xl font-bold text-emerald-400 font-mono-num">
+          <div className="text-xl font-extrabold text-emerald-700 font-mono-num">
             {formatNumber(totalReceivablesIRR)}{' '}
-            <span className="text-xs text-slate-400 font-normal">ریال</span>
+            <span className="text-xs text-slate-500 font-normal">ریال</span>
           </div>
-          <p className="text-[11px] text-slate-400 mt-2">پولی که مشتریان و اشخاص باید به ما بدهند</p>
+          <p className="text-[11px] text-slate-600 mt-2">پولی که مشتریان و اشخاص باید به ما بدهند</p>
         </div>
 
-        <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-5">
+        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-slate-400">کل بدهی ما به اشخاص (طلبکاران)</span>
-            <ArrowUpRight className="w-5 h-5 text-rose-400" />
+            <span className="text-xs font-medium text-slate-500">کل بدهی ما به اشخاص (طلبکاران)</span>
+            <div className="p-2 bg-rose-50 rounded-lg">
+              <ArrowUpRight className="w-5 h-5 text-rose-600" />
+            </div>
           </div>
-          <div className="text-xl font-bold text-rose-400 font-mono-num">
+          <div className="text-xl font-extrabold text-rose-700 font-mono-num">
             {formatNumber(totalPayablesIRR)}{' '}
-            <span className="text-xs text-slate-400 font-normal">ریال</span>
+            <span className="text-xs text-slate-500 font-normal">ریال</span>
           </div>
-          <p className="text-[11px] text-slate-400 mt-2">
+          <p className="text-[11px] text-slate-600 mt-2">
             پولی که ما باید به اشخاص و همکاران بپردازیم
           </p>
         </div>
@@ -237,17 +245,17 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
       {/* دو ستون اصلی: ۱. موجودی تک‌تک بانک‌ها و صندوق‌ها | ۲. مانده حساب اشخاص */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* لیست بانک‌ها و صندوق‌ها */}
-        <div className="lg:col-span-7 bg-slate-900/60 border border-slate-800 rounded-xl p-5">
+        <div className="lg:col-span-7 bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-bold text-white flex items-center gap-2">
-              <Wallet className="w-4 h-4 text-teal-400" />
+            <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+              <Wallet className="w-4 h-4 text-teal-600" />
               موجودی لحظه‌ای بانک‌ها و صندوق‌های من
             </h3>
             {onNavigate && (
               <button
                 type="button"
                 onClick={() => onNavigate('banks')}
-                className="text-xs text-teal-400 hover:text-teal-300 cursor-pointer"
+                className="text-xs font-bold text-teal-700 hover:text-teal-800 cursor-pointer"
               >
                 مدیریت بانک‌ها و صندوق‌ها ←
               </button>
@@ -258,23 +266,23 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
             {bankSummaries.map((b) => (
               <div
                 key={b.id}
-                className="bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 flex items-center justify-between"
+                className="bg-slate-50/80 border border-slate-200 rounded-xl p-3.5 flex items-center justify-between"
               >
                 <div>
-                  <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
                     <span>{b.kind === 'cash_box' ? '📦' : '🏦'}</span>
                     <span>{b.bankName}</span>
                   </div>
-                  <span className="text-[11px] text-slate-400">{b.branchName}</span>
+                  <span className="text-[11px] text-slate-500">{b.branchName}</span>
                 </div>
 
                 <div className="text-left font-mono-num">
-                  <div className="text-xs font-bold text-emerald-400">
+                  <div className="text-xs font-extrabold text-teal-700">
                     {formatNumber(b.currency === 'IRR' ? b.liveIRR : b.liveForeign)}{' '}
                     {b.currency === 'IRR' ? 'ریال' : b.currency}
                   </div>
                   {b.currency !== 'IRR' && (
-                    <div className="text-[10px] text-amber-300">
+                    <div className="text-[10px] font-bold text-amber-700">
                       معادل {formatNumber(b.liveIRR)} ریال
                     </div>
                   )}
@@ -285,17 +293,17 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
         </div>
 
         {/* لیست وضعیت حساب اشخاص */}
-        <div className="lg:col-span-5 bg-slate-900/60 border border-slate-800 rounded-xl p-5">
+        <div className="lg:col-span-5 bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-bold text-white flex items-center gap-2">
-              <Users className="w-4 h-4 text-teal-400" />
+            <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+              <Users className="w-4 h-4 text-teal-600" />
               خلاصه حساب اشخاص (طلب و بدهی)
             </h3>
             {onNavigate && (
               <button
                 type="button"
                 onClick={() => onNavigate('persons')}
-                className="text-xs text-teal-400 hover:text-teal-300 cursor-pointer"
+                className="text-xs font-bold text-teal-700 hover:text-teal-800 cursor-pointer"
               >
                 صورتحساب کامل اشخاص ←
               </button>
@@ -306,26 +314,26 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
             {personSummaries.map(({ contact, balanceIRR, status }) => (
               <div
                 key={contact.id}
-                className="bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 flex items-center justify-between"
+                className="bg-slate-50/80 border border-slate-200 rounded-xl p-3.5 flex items-center justify-between"
               >
                 <div>
-                  <div className="text-xs font-bold text-white">{contact.name}</div>
-                  <div className="text-[11px] text-slate-400">{contact.phone || 'بدون شماره'}</div>
+                  <div className="text-xs font-bold text-slate-900">{contact.name}</div>
+                  <div className="text-[11px] text-slate-500">{contact.phone || 'بدون شماره'}</div>
                 </div>
 
                 <div className="text-left font-mono-num">
                   <div
-                    className={`text-xs font-bold ${
+                    className={`text-xs font-extrabold ${
                       status === 'بدهکار'
-                        ? 'text-emerald-400'
+                        ? 'text-emerald-700'
                         : status === 'بستانکار'
-                        ? 'text-rose-400'
-                        : 'text-slate-400'
+                        ? 'text-rose-700'
+                        : 'text-slate-500'
                     }`}
                   >
                     {status === 'تسویه' ? 'تسویه کامل' : `${formatNumber(balanceIRR)} ریال`}
                   </div>
-                  <div className="text-[10px] text-slate-400">
+                  <div className="text-[10px] text-slate-500 font-medium">
                     {status === 'بدهکار'
                       ? 'بدهکار به ما (طلب ما)'
                       : status === 'بستانکار'

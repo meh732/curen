@@ -517,7 +517,65 @@ export const StandardAccountingReportsView: React.FC<
           </div>
         </div>
 
-        <div className="overflow-x-auto border border-slate-300 rounded-lg">
+        {/* Mobile Ledger Cards (sm:hidden) to avoid horizontal scrolling on phones */}
+        <div className="sm:hidden space-y-3">
+          {ledgerReport.rows.length === 0 ? (
+            <div className="py-8 text-center text-slate-500 text-xs">
+              هیچ گردش حسابی برای این ردیف یافت نشد.
+            </div>
+          ) : (
+            ledgerReport.rows.map((row) => (
+              <div
+                key={row.lineId}
+                className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2 text-xs"
+              >
+                <div className="flex items-center justify-between font-mono-num">
+                  <span className="font-bold text-blue-700">سند #{row.voucherNumber}</span>
+                  <span className="text-slate-500 text-[11px]">{row.date}</span>
+                </div>
+
+                <div className="font-bold text-slate-900 leading-snug">
+                  {row.description}
+                </div>
+
+                <div className="text-[11px] text-slate-600">
+                  سرفصل: {row.accountCode} - {row.accountName}
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-200 font-mono-num text-[11px]">
+                  <div>
+                    <span className="text-slate-500 block">بدهکار:</span>
+                    <span className="font-bold text-amber-800">
+                      {currencyMode === 'rial'
+                        ? `${formatNumber(row.debitIRR)} ریال`
+                        : `${formatCurrencyAmount(row.debitForeign, row.currency)} ${row.currency}`}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block">بستانکار:</span>
+                    <span className="font-bold text-emerald-800">
+                      {currencyMode === 'rial'
+                        ? `${formatNumber(row.creditIRR)} ریال`
+                        : `${formatCurrencyAmount(row.creditForeign, row.currency)} ${row.currency}`}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-slate-200 flex items-center justify-between font-mono-num">
+                  <span className="text-slate-600 font-medium">مانده تا این ردیف:</span>
+                  <span className="font-extrabold text-blue-950 bg-blue-100/80 px-2 py-0.5 rounded">
+                    {currencyMode === 'rial'
+                      ? `${formatNumber(row.runningBalanceIRR)} ریال (${row.diagnosisIRR})`
+                      : `${formatCurrencyAmount(row.runningBalanceForeign, row.currency)} ${row.currency} (${row.diagnosisForeign})`}
+                  </span>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Desktop Table */}
+        <div className="hidden sm:block overflow-x-auto border border-slate-300 rounded-lg">
           <table className="w-full text-right border-collapse text-xs">
             <thead>
               {currencyMode === 'rial' ? (
