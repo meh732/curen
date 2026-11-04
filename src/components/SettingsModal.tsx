@@ -732,38 +732,39 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <div className="space-y-4 text-xs">
               <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="font-bold text-slate-700">وضعیت اتصال به سرور لینوکس:</span>
+                  <span className="font-bold text-slate-700">وضعیت اتصال به سرور مرکزی لینوکس:</span>
                   <span
-                    className={`font-extrabold px-2.5 py-0.5 rounded-md ${
+                    className={`font-extrabold px-2.5 py-1 rounded-md flex items-center gap-1.5 ${
                       networkSyncStatus === 'connected'
-                        ? 'bg-emerald-100 text-emerald-800'
+                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
                         : networkSyncStatus === 'connecting'
-                        ? 'bg-amber-100 text-amber-800'
-                        : 'bg-slate-200 text-slate-700'
+                        ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                        : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
                     }`}
                   >
-                    {networkSyncStatus === 'connected'
-                      ? 'متصل به سرور مرکزی'
-                      : networkSyncStatus === 'connecting'
-                      ? 'در حال برقراری ارتباط...'
-                      : 'حالت آفلاین (مستقل)'}
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <span>متصل به سرور مرکزی (سینک آنی شبکه)</span>
                   </span>
                 </div>
 
-                <div className="flex items-center justify-between text-slate-600 font-mono-num pt-1">
-                  <span>آخرین همگام‌سازی شبکه:</span>
-                  <span>{lastSyncTime || 'لحظاتی پیش'}</span>
+                <div className="flex items-center justify-between text-slate-600 font-mono-num pt-1 border-t border-slate-200">
+                  <span>آخرین همگام‌سازی دیتابیس مشترک:</span>
+                  <span className="font-bold text-slate-900">{lastSyncTime || 'هم‌اکنون (لحظاتی پیش)'}</span>
                 </div>
               </div>
 
-              <div className="p-4 rounded-xl bg-blue-50/70 border border-blue-200 text-slate-800 space-y-1.5 leading-relaxed">
-                <div className="font-bold text-blue-900 flex items-center gap-1.5">
-                  <ShieldCheck className="w-4 h-4 text-blue-700" />
-                  عملکرد ۱۰۰٪ آفلاین و بدون نیاز به اینترنت بین‌الملل:
+              <div className="p-4 rounded-xl bg-emerald-50/80 border border-emerald-200 text-slate-800 space-y-2 leading-relaxed">
+                <div className="font-extrabold text-emerald-950 flex items-center gap-1.5 text-xs">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                  همگام‌سازی کامل شبکه محلی صرافی (بدون نیاز به اینترنت):
                 </div>
                 <p>
-                  نرم‌افزار ترازبان روی شبکه داخلی (اینترانت/شبکه محلی صرافی) بدون اتکا به اینترنت بین‌الملل اجرا می‌شود. تمامی اطلاعات به طور خودکار روی دیتابیس سرور لینوکس پایداری می‌یابند.
+                  تمامی سیستم‌ها و گوشی‌های متصل به سرور مرکزی لینوکس، اسناد، فاکتورها، حساب اشخاص و کاربران را به صورت <strong>همزمان روی یک دیتابیس مشترک</strong> ثبت و حذف می‌نمایند.
                 </p>
+                <ul className="list-disc list-inside space-y-1 text-slate-700 font-semibold pt-1">
+                  <li>ثبت یا حذف هر سند توسط هر کاربر، بلافاصله روی تمام کلاینت‌های شبکه لینوکس اعمال می‌شود.</li>
+                  <li>عدم وابستگی به اینترنت بین‌الملل به معنی کارکرد کامل روی شبکه داخلی (اینترانت صرافی) است.</li>
+                </ul>
               </div>
             </div>
           )}

@@ -908,13 +908,13 @@ export const INITIAL_ACCOUNTING_STATE: AccountingState = {
  * همراه با حساب‌ها، ارزها، کاربران و بانک‌ها/صندوق‌های آماده
  */
 export const BLANK_ACCOUNTING_STATE: AccountingState = {
-  companyName: 'دفتر حسابداری ارزی و مالی من',
+  companyName: '',
   fiscalYear: 'سال مالی ۱۴۰۴',
   currencies: INITIAL_ACCOUNTING_STATE.currencies,
-  users: INITIAL_USERS,
+  users: [],
   accounts: INITIAL_ACCOUNTING_STATE.accounts,
   contacts: [],
-  banks: INITIAL_ACCOUNTING_STATE.banks,
+  banks: [],
   products: [],
   inventoryMovements: [],
   vouchers: [],

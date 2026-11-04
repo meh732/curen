@@ -29,6 +29,7 @@ import { OfflineActivationModal } from './components/OfflineActivationModal';
 import { CurrencyManagerModal } from './components/CurrencyManagerModal';
 import { SettingsModal } from './components/SettingsModal';
 import { LoginModal } from './components/LoginModal';
+import { InitialSetupWizardModal } from './components/InitialSetupWizardModal';
 import { PWAInstallPrompt } from './components/PWAInstallPrompt';
 import {
   loadLicenseStatus,
@@ -46,7 +47,6 @@ import {
   Landmark,
   FileSpreadsheet,
   RotateCcw,
-  ShieldCheck,
   WifiOff,
   RefreshCw,
   Server,
@@ -66,7 +66,7 @@ type NavTab =
   | 'inventory'
   | 'reports';
 
-const STORAGE_KEY = 'TARAZBAN_PERSONAL_ACCOUNTING_STATE_V9';
+const STORAGE_KEY = 'TARAZBAN_PERSONAL_ACCOUNTING_STATE_V10';
 const CURRENT_USER_SESSION_KEY = 'TARAZBAN_CURRENT_USER_SESSION';
 
 export function App() {
@@ -74,7 +74,7 @@ export function App() {
     loadLicenseStatus()
   );
 
-  // بررسی خودکار فایل لایسنس سروری (در صورت استقرار روی هاست/سرور)
+  // بررسی خودکار فایل لایسنس سروری
   useEffect(() => {
     if (licenseStatus.isActivated) return;
     fetchServerLicenseStatus()
@@ -102,6 +102,9 @@ export function App() {
 
   const savedState = loadInitialState();
 
+  const [companyName, setCompanyName] = useState<string>(
+    savedState?.companyName || INITIAL_ACCOUNTING_STATE.companyName
+  );
   const [currencies, setCurrencies] = useState<Currency[]>(
     savedState?.currencies || INITIAL_ACCOUNTING_STATE.currencies
   );
@@ -109,34 +112,34 @@ export function App() {
     savedState?.accounts || INITIAL_ACCOUNTING_STATE.accounts
   );
   const [contacts, setContacts] = useState<Contact[]>(
-    savedState?.contacts || INITIAL_ACCOUNTING_STATE.contacts
+    savedState?.contacts ?? INITIAL_ACCOUNTING_STATE.contacts
   );
   const [banks, setBanks] = useState<BankAccount[]>(
-    savedState?.banks || INITIAL_ACCOUNTING_STATE.banks
+    savedState?.banks ?? INITIAL_ACCOUNTING_STATE.banks
   );
   const [products, setProducts] = useState<ProductItem[]>(
-    savedState?.products || INITIAL_ACCOUNTING_STATE.products
+    savedState?.products ?? INITIAL_ACCOUNTING_STATE.products
   );
   const [vouchers, setVouchers] = useState<JournalVoucher[]>(
-    savedState?.vouchers || INITIAL_ACCOUNTING_STATE.vouchers
+    savedState?.vouchers ?? INITIAL_ACCOUNTING_STATE.vouchers
   );
   const [fxDeals, setFxDeals] = useState<FXDeal[]>(
-    savedState?.fxDeals || INITIAL_ACCOUNTING_STATE.fxDeals
+    savedState?.fxDeals ?? INITIAL_ACCOUNTING_STATE.fxDeals
   );
   const [invoices, setInvoices] = useState<SalesInvoice[]>(
-    savedState?.invoices || INITIAL_ACCOUNTING_STATE.invoices
+    savedState?.invoices ?? INITIAL_ACCOUNTING_STATE.invoices
   );
   const [movements, setMovements] = useState<InventoryMovement[]>(
-    savedState?.inventoryMovements || INITIAL_ACCOUNTING_STATE.inventoryMovements
+    savedState?.inventoryMovements ?? INITIAL_ACCOUNTING_STATE.inventoryMovements
   );
   const [bankStatements, setBankStatements] = useState<BankStatementEntry[]>(
-    savedState?.bankStatementEntries || INITIAL_ACCOUNTING_STATE.bankStatementEntries
+    savedState?.bankStatementEntries ?? INITIAL_ACCOUNTING_STATE.bankStatementEntries
   );
   const [botConfig, setBotConfig] = useState<BotConfig>(
     savedState?.botConfig || INITIAL_ACCOUNTING_STATE.botConfig
   );
   const [botLogs, setBotLogs] = useState<BotDeliveryLog[]>(
-    savedState?.botLogs || INITIAL_ACCOUNTING_STATE.botLogs
+    savedState?.botLogs ?? INITIAL_ACCOUNTING_STATE.botLogs
   );
   const [users, setUsers] = useState<UserAccount[]>(
     savedState?.users || INITIAL_ACCOUNTING_STATE.users || INITIAL_USERS
@@ -154,7 +157,7 @@ export function App() {
 
   const fullAccountingState: AccountingState = useMemo(
     () => ({
-      companyName: INITIAL_ACCOUNTING_STATE.companyName,
+      companyName: companyName || INITIAL_ACCOUNTING_STATE.companyName,
       fiscalYear: INITIAL_ACCOUNTING_STATE.fiscalYear,
       currencies,
       accounts,
@@ -171,6 +174,7 @@ export function App() {
       users,
     }),
     [
+      companyName,
       currencies,
       accounts,
       contacts,
@@ -199,12 +203,13 @@ export function App() {
   const [networkSyncStatus, setNetworkSyncStatus] = useState<'connected' | 'connecting' | 'offline'>('connecting');
   const [lastSyncTime, setLastSyncTime] = useState<string>('');
   const [showBlankConfirmModal, setShowBlankConfirmModal] = useState<boolean>(false);
+  const [showBlankSetupWizard, setShowBlankSetupWizard] = useState<boolean>(false);
   const [showCurrencyModal, setShowCurrencyModal] = useState<boolean>(false);
   const [showSettingsModal, setShowSettingsModal] = useState<boolean>(false);
   const lastServerUpdatedAtRef = useRef<string | null>(null);
   const isRemoteUpdateRef = useRef<boolean>(false);
 
-  // ۱. همگام‌سازی اولیه با سرور لینوکس (خواندن دیتابیس مشترک یا بارگذاری اولیه)
+  // ۱. همگام‌سازی اولیه با سرور لینوکس
   useEffect(() => {
     let isMounted = true;
     const fetchInitialServerState = async () => {
@@ -221,7 +226,6 @@ export function App() {
           handleRestoreFullBackup(data.state);
           setLastSyncTime(new Date().toLocaleTimeString('fa-IR'));
         } else {
-          // ذخیره وضعیت فعلی بر روی سرور برای سایر کلاینت‌ها
           await fetch('/api/state', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -241,7 +245,7 @@ export function App() {
     };
   }, []);
 
-  // ۲. همگام‌سازی زنده دوره‌ای (Polling هر ۲ ثانیه برای همگام‌سازی آنی تمام کلاینت‌های شبکه لینوکس)
+  // ۲. همگام‌سازی زنده دوره‌ای (Polling هر ۲ ثانیه برای سینک آنی کلاینت‌ها)
   useEffect(() => {
     const pollInterval = setInterval(async () => {
       try {
@@ -360,7 +364,6 @@ export function App() {
     fullAccountingState,
   ]);
 
-  // تابع کمکی برای تشخیص سرفصل متناظر با بانک یا صندوق
   const getAccountForBank = (bank?: BankAccount) => {
     if (!bank) return { code: '1102', name: 'موجودی بانک‌های ریالی' };
     if (bank.currency !== 'IRR') {
@@ -375,7 +378,6 @@ export function App() {
     return { code: '1102', name: 'موجودی بانک‌های ریالی' };
   };
 
-  // ثبت معامله خرید و فروش ارز + ثبت خودکار اسناد دریافت/پرداخت چندبانکی و چندصندوقی
   const handleExecuteFXDeal = (deal: FXDeal) => {
     setFxDeals([deal, ...fxDeals]);
 
@@ -394,7 +396,6 @@ export function App() {
     const vaultLineId = `ln-fx-vault-${Date.now()}-1`;
 
     const lines: VoucherLine[] = [
-      // ۱. ردیف ورود یا خروج ارز به صندوق/حساب ارزی ما
       {
         id: vaultLineId,
         accountCode: vaultAcc.code,
@@ -413,7 +414,6 @@ export function App() {
         trackingNumber: deal.dealNumber,
         reconciled: true,
       },
-      // ۲. ردیف ثبت اصل معامله در حساب شخص
       {
         id: `ln-fx-person-${Date.now()}-2`,
         accountCode: personAccCode,
@@ -452,13 +452,12 @@ export function App() {
       });
     }
 
-    // ۳. ثبت خودکار ردیف‌های دریافت یا پرداخت چند بانکی / چند صندوقی در همان سند
     if (deal.payments && deal.payments.length > 0) {
       deal.payments.forEach((sp, idx) => {
         if (!sp.bankId || sp.amountIRR <= 0) return;
         const payBank = banks.find((b) => b.id === sp.bankId);
         const payBankAcc = getAccountForBank(payBank);
-        const isReceipt = !isBuy; // در فروش ارز، پول دریافت می‌کنیم؛ در خرید ارز، پول پرداخت می‌کنیم
+        const isReceipt = !isBuy;
 
         const splitDesc = `${
           isReceipt ? 'واریز به' : 'برداشت از'
@@ -468,7 +467,6 @@ export function App() {
         const payBankLineId = `ln-fx-pay-b-${Date.now()}-${idx}`;
         const trk = sp.trackingNumber || `${deal.dealNumber}-${idx + 1}`;
 
-        // آرتیکل بانک / صندوق
         lines.push({
           id: payBankLineId,
           accountCode: payBankAcc.code,
@@ -486,7 +484,6 @@ export function App() {
           reconciled: true,
         });
 
-        // آرتیکل تسویه حساب شخص
         lines.push({
           id: `ln-fx-pay-p-${Date.now()}-${idx}`,
           accountCode: personAccCode,
@@ -501,7 +498,7 @@ export function App() {
           debitForeign: isReceipt ? 0 : sp.amountForeign,
           creditForeign: isReceipt ? sp.amountForeign : 0,
           debitIRR: isReceipt ? 0 : sp.amountIRR,
-          creditIRR: isReceipt ? 0 : sp.amountIRR,
+          creditIRR: isReceipt ? sp.amountIRR : 0,
           trackingNumber: trk,
         });
 
@@ -541,13 +538,11 @@ export function App() {
     }
   };
 
-  // صدور فاکتور خرید یا فروش + ثبت خودکار اسناد بانک‌ها و صندوق‌های ترکیبی و حساب شخص
   const handleIssueInvoice = (invoice: SalesInvoice) => {
     setInvoices([invoice, ...invoices]);
 
     const isSales = invoice.type !== 'purchase';
 
-    // ۱. به‌روزرسانی موجودی انبار برای کالاهای انتخاب‌شده از انبار
     const newMovements: InventoryMovement[] = [];
     const updatedProducts = products.map((p) => {
       const soldItem = invoice.items.find((i) => i.productId === p.id);
@@ -581,7 +576,6 @@ export function App() {
       setMovements([...newMovements, ...movements]);
     }
 
-    // ۲. ساخت آرتیکل‌های سند حسابداری اتوماتیک فاکتور
     const personAccCode = isSales ? '1104' : '2101';
     const personAccName = isSales
       ? 'حساب اشخاص و مشتریان (بدهکاران / طلب ما)'
@@ -590,7 +584,6 @@ export function App() {
     const lines: VoucherLine[] = [];
 
     if (isSales) {
-      // بدهکار کردن مشتری بابت کل فاکتور فروش
       lines.push({
         id: `ln-inv-cust-${Date.now()}-1`,
         accountCode: '1104',
@@ -607,7 +600,6 @@ export function App() {
         trackingNumber: invoice.invoiceNumber,
       });
 
-      // بستانکار کردن درآمد فروش
       const netSalesIRR = invoice.subtotalIRR - invoice.totalDiscountIRR;
       lines.push({
         id: `ln-inv-rev-${Date.now()}-2`,
@@ -638,7 +630,6 @@ export function App() {
         });
       }
     } else {
-      // فاکتور خرید: بدهکار کردن موجودی کالا/خرید (1106) و بستانکار کردن فروشنده (2101)
       lines.push({
         id: `ln-inv-pur-${Date.now()}-1`,
         accountCode: '1106',
@@ -670,7 +661,6 @@ export function App() {
       });
     }
 
-    // ۳. ثبت خودکار تمامی ردیف‌های دریافت یا پرداخت ترکیبی (چند بانکی / چند صندوقی / ارزی)
     const newBankStatements: BankStatementEntry[] = [];
     if (invoice.payments && invoice.payments.length > 0) {
       invoice.payments.forEach((sp, idx) => {
@@ -686,7 +676,6 @@ export function App() {
         const payBankLineId = `ln-inv-pay-b-${Date.now()}-${idx}`;
         const trk = sp.trackingNumber || `${invoice.invoiceNumber}-${idx + 1}`;
 
-        // ردیف بانک یا صندوق
         lines.push({
           id: payBankLineId,
           accountCode: payBankAcc.code,
@@ -704,7 +693,6 @@ export function App() {
           reconciled: true,
         });
 
-        // ردیف کسر از حساب شخص (تسویه)
         lines.push({
           id: `ln-inv-pay-p-${Date.now()}-${idx}`,
           accountCode: personAccCode,
@@ -765,7 +753,6 @@ export function App() {
     }
   };
 
-  // ثبت سند مالی (اتوماتیک یا دستی) + همگام‌سازی خودکار صورتحساب بانک
   const handleAddVoucher = (v: JournalVoucher) => {
     setVouchers([v, ...vouchers]);
 
@@ -793,7 +780,6 @@ export function App() {
     }
   };
 
-  // ویرایش فاکتور خرید یا فروش + به‌روزرسانی خودکار سند متناظر و گردش بانک‌ها
   const handleUpdateInvoice = (updated: SalesInvoice) => {
     setInvoices((prev) => prev.map((inv) => (inv.id === updated.id ? updated : inv)));
 
@@ -937,7 +923,6 @@ export function App() {
     }
   };
 
-  // ویرایش سند مالی دستی یا اتوماتیک و بازتولید ردیف‌های صورتحساب بانک
   const handleUpdateVoucher = (updated: JournalVoucher) => {
     setVouchers((prev) => prev.map((v) => (v.id === updated.id ? updated : v)));
 
@@ -966,12 +951,10 @@ export function App() {
     });
   };
 
-  // تعریف بانک یا صندوق جدید + صدور خودکار سند موجودی اولیه
   const handleAddBank = (newBank: BankAccount) => {
     const initForeign = newBank.initialBalanceForeign || 0;
     const initIRR = newBank.initialBalanceIRR || 0;
 
-    // ذخیره بانک با موجودی اولیه صفر در فیلد پایه و ثبت موجودی اولیه در سند افتتاحیه تا تراز آزمایشی و بانک ۱۰۰٪ منطبق باشند
     const cleanBank: BankAccount = {
       ...newBank,
       initialBalanceForeign: 0,
@@ -1062,10 +1045,11 @@ export function App() {
   };
 
   const handleRestoreFullBackup = (restored: AccountingState) => {
+    if (restored.companyName) setCompanyName(restored.companyName);
     setCurrencies(restored.currencies || INITIAL_ACCOUNTING_STATE.currencies);
     setAccounts(restored.accounts || INITIAL_ACCOUNTING_STATE.accounts);
     setContacts(restored.contacts ?? []);
-    setBanks(restored.banks || INITIAL_ACCOUNTING_STATE.banks);
+    setBanks(restored.banks ?? []);
     setProducts(restored.products ?? []);
     setVouchers(restored.vouchers ?? []);
     setFxDeals(restored.fxDeals ?? []);
@@ -1082,20 +1066,43 @@ export function App() {
     handleRestoreFullBackup(INITIAL_ACCOUNTING_STATE);
   };
 
-  // صفر کردن و خام کردن دیتابیس (حذف تمام داده‌های تستی و شروع واقعی)
-  const handleResetToBlankDatabase = async () => {
+  // صفر کردن و خام کردن دیتابیس (باز کردن ویزارد انتخاب نام صرافی و ادمین جدید)
+  const handleOpenBlankSetupWizard = () => {
+    setShowSettingsModal(false);
+    setShowBlankSetupWizard(true);
+  };
+
+  const handleCompleteSetupWizard = async (
+    newState: AccountingState,
+    adminUser: UserAccount
+  ) => {
     try {
       await fetch('/api/reset-blank', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ blankState: BLANK_ACCOUNTING_STATE }),
+        body: JSON.stringify({ blankState: newState }),
       });
     } catch (e) {
       console.warn('Network server reset notice:', e);
     }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(BLANK_ACCOUNTING_STATE));
-    handleRestoreFullBackup(BLANK_ACCOUNTING_STATE);
-    setShowBlankConfirmModal(false);
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
+    setCompanyName(newState.companyName);
+    setCurrencies(newState.currencies);
+    setAccounts(newState.accounts);
+    setContacts([]);
+    setBanks([]); // 100% EMPTY - No pre-defined banks!
+    setProducts([]);
+    setVouchers([]);
+    setFxDeals([]);
+    setInvoices([]);
+    setMovements([]);
+    setBankStatements([]);
+    setUsers(newState.users || [adminUser]);
+
+    setCurrentUser(adminUser);
+    sessionStorage.setItem(CURRENT_USER_SESSION_KEY, JSON.stringify(adminUser));
+    setShowBlankSetupWizard(false);
   };
 
   const handleLogout = () => {
@@ -1172,6 +1179,13 @@ export function App() {
       {/* PWA Install Banner */}
       <PWAInstallPrompt />
 
+      {/* Setup Wizard Modal for 100% Blank Reset */}
+      <InitialSetupWizardModal
+        isOpen={showBlankSetupWizard}
+        onClose={() => setShowBlankSetupWizard(false)}
+        onCompleteSetup={handleCompleteSetupWizard}
+      />
+
       {/* Top Header */}
       <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-xs px-3 sm:px-6 py-2.5">
         <div className="max-w-[1600px] mx-auto flex items-center justify-between gap-2 sm:gap-4 overflow-hidden">
@@ -1182,7 +1196,7 @@ export function App() {
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 flex-wrap">
                 <h1 className="text-xs sm:text-base font-bold text-slate-900 tracking-tight truncate">
-                  ترازبان ارزی — حسابداری صرافی
+                  {companyName || 'ترازبان ارزی — حسابداری صرافی'}
                 </h1>
                 <span className="hidden xs:inline-block px-1.5 sm:px-2 py-0.5 text-[9px] sm:text-[11px] font-bold bg-teal-50 text-teal-700 border border-teal-200 rounded-md shrink-0">
                   تسویه چندارزی
@@ -1259,13 +1273,13 @@ export function App() {
         onUpdateCurrencies={setCurrencies}
       />
 
-      {/* Settings Modal (Includes Database Reset, User Management, Bot Config & Server Sync) */}
+      {/* Settings Modal */}
       <SettingsModal
         isOpen={showSettingsModal}
         onClose={() => setShowSettingsModal(false)}
         state={fullAccountingState}
         currentUser={currentUser}
-        onResetToBlankDatabase={handleResetToBlankDatabase}
+        onResetToBlankDatabase={handleOpenBlankSetupWizard}
         onUpdateBotConfig={(patch) => setBotConfig({ ...botConfig, ...patch })}
         onUpdateUsers={setUsers}
         networkSyncStatus={networkSyncStatus}
@@ -1422,7 +1436,7 @@ export function App() {
               onRecordBotLog={(log) => setBotLogs([log, ...botLogs])}
               onRestoreFullBackup={handleRestoreFullBackup}
               onRecordInventoryMovement={handleRegisterMovement}
-              onResetToBlankDatabase={handleResetToBlankDatabase}
+              onResetToBlankDatabase={handleOpenBlankSetupWizard}
             />
           )}
 
