@@ -1,471 +1,341 @@
 import React, { useMemo } from 'react';
-import { AccountingState } from '../types/accounting';
 import {
-  buildPersonStatement,
-  calculateCurrencyVaultPositions,
-  formatCurrencyAmount,
-  formatNumber,
-  reconcileBankTransactions,
-} from '../utils/accountingEngine';
+  Currency,
+  Account,
+  JournalVoucher,
+  FXDeal,
+  SalesInvoice,
+  BankAccount,
+  Contact,
+} from '../types/accounting';
+import { buildPersonStatement, formatNumber } from '../utils/accountingEngine';
 import {
-  FileSpreadsheet,
-  Users,
+  Wallet,
   Landmark,
-  DatabaseBackup,
-  ArrowLeft,
-  ArrowLeftRight,
-  Printer,
-  Monitor,
-  TrendingUp,
+  Coins,
+  Users,
+  ShoppingBag,
+  Sparkles,
+  ArrowDownLeft,
+  ArrowUpRight,
+  ChevronLeft,
 } from 'lucide-react';
 
 interface DashboardOverviewProps {
-  state: AccountingState;
-  onNavigate: (
-    tab:
-      | 'dashboard'
-      | 'fx_desk'
-      | 'reports'
-      | 'vouchers'
-      | 'statements'
-      | 'invoices'
-      | 'banks'
-      | 'backup'
-  ) => void;
-  onQuickBackup: () => void;
+  currencies: Currency[];
+  accounts: Account[];
+  vouchers: JournalVoucher[];
+  fxDeals: FXDeal[];
+  invoices: SalesInvoice[];
+  banks?: BankAccount[];
+  contacts?: Contact[];
+  onNavigate?: (tab: string) => void;
+  onUpdateCurrencies: (currencies: Currency[]) => void;
 }
 
 export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
-  state,
+  currencies,
+  vouchers,
+  banks = [],
+  contacts = [],
   onNavigate,
-  onQuickBackup,
 }) => {
-  const stats = useMemo(() => {
-    let totalReceivablesIRR = 0;
-    let totalPayablesIRR = 0;
+  // محاسبه موجودی لحظه‌ای هر بانک و صندوق
+  const bankSummaries = useMemo(() => {
+    return banks.map((b) => {
+      const rate =
+        b.currency === 'IRR'
+          ? 1
+          : currencies.find((c) => c.code === b.currency)?.defaultRateToIRR || 1;
+      let balForeign = b.initialBalanceForeign || 0;
+      let balIRR = b.initialBalanceIRR || 0;
 
-    for (const c of state.contacts) {
-      const st = buildPersonStatement(state.vouchers, c.id, 'ALL');
-      if (st.finalStatusIRR === 'بدهکار') {
-        totalReceivablesIRR += st.finalBalanceIRR;
-      } else if (st.finalStatusIRR === 'بستانکار') {
-        totalPayablesIRR += st.finalBalanceIRR;
+      vouchers.forEach((v) => {
+        v.lines.forEach((ln) => {
+          if (ln.bankId === b.id) {
+            if (b.currency === 'IRR') {
+              balForeign += ln.debitIRR - ln.creditIRR;
+              balIRR += ln.debitIRR - ln.creditIRR;
+            } else {
+              balForeign += (ln.debitForeign || 0) - (ln.creditForeign || 0);
+              balIRR += ln.debitIRR - ln.creditIRR;
+            }
+          }
+        });
+      });
+
+      if (b.currency !== 'IRR') {
+        balIRR = Math.round(balForeign * rate);
       }
-    }
 
-    const vaultPositions = calculateCurrencyVaultPositions(
-      state.currencies,
-      state.fxDeals || []
-    );
-
-    const totalRealizedFXProfitIRR = vaultPositions.reduce(
-      (sum, v) => sum + v.realizedProfitIRR,
-      0
-    );
-
-    const bankSummaries = state.banks.map((b) => {
-      const rec = reconcileBankTransactions(
-        b.id,
-        b.initialBalanceForeign,
-        b.initialBalanceIRR,
-        state.vouchers,
-        state.bankStatementEntries
-      );
-      return { bank: b, rec };
+      return {
+        ...b,
+        liveForeign: balForeign,
+        liveIRR: balIRR,
+      };
     });
+  }, [banks, vouchers, currencies]);
 
-    return {
-      totalReceivablesIRR,
-      totalPayablesIRR,
-      vaultPositions,
-      totalRealizedFXProfitIRR,
-      bankSummaries,
-    };
-  }, [state]);
+  // محاسبه وضعیت طلب و بدهی تک‌تک اشخاص
+  const personSummaries = useMemo(() => {
+    return contacts.map((c) => {
+      const st = buildPersonStatement(vouchers, c.id);
+      return {
+        contact: c,
+        balanceIRR: st.finalBalanceIRR,
+        status: st.finalStatusIRR, // 'بدهکار' = طلب ما از شخص | 'بستانکار' = بدهی ما به شخص
+      };
+    });
+  }, [contacts, vouchers]);
+
+  const totalRialBanksIRR = bankSummaries
+    .filter((b) => b.currency === 'IRR')
+    .reduce((s, b) => s + b.liveIRR, 0);
+
+  const totalForeignVaultsIRR = bankSummaries
+    .filter((b) => b.currency !== 'IRR')
+    .reduce((s, b) => s + b.liveIRR, 0);
+
+  const totalReceivablesIRR = personSummaries
+    .filter((p) => p.status === 'بدهکار')
+    .reduce((s, p) => s + p.balanceIRR, 0);
+
+  const totalPayablesIRR = personSummaries
+    .filter((p) => p.status === 'بستانکار')
+    .reduce((s, p) => s + p.balanceIRR, 0);
 
   return (
     <div className="space-y-6">
-      {/* Beginner-Friendly Welcome & 4-Step Action Hub */}
-      <div className="bg-white border border-slate-200 rounded-lg p-5 space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 pb-4">
-          <div>
-            <h2 className="text-lg font-extrabold text-slate-900">
-              میز کار ساده و روان خرید و فروش ارز و حسابداری دوارزی ویندوز — {state.companyName}
-            </h2>
-            <p className="text-xs text-slate-600 mt-1">
-              تمامی اعداد ۳ رقم ۳ رقم جدا شده‌اند و مبالغ ارزی (دلار، یورو، درهم، یوان) دارای اعشار دقیق (.00) هستند. برای شروع کار یکی از ۴ کلید اصلی زیر را انتخاب کنید:
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => onNavigate('fx_desk')}
-              className="px-4 py-2.5 text-xs font-extrabold bg-emerald-700 hover:bg-emerald-800 text-white rounded-md flex items-center gap-1.5 cursor-pointer"
-            >
-              <ArrowLeftRight className="w-4 h-4" />
-              + ثبت سریع خرید یا فروش ارز (F1)
-            </button>
-            <button
-              type="button"
-              onClick={() => onNavigate('reports')}
-              className="px-4 py-2.5 text-xs font-extrabold bg-blue-700 hover:bg-blue-800 text-white rounded-md flex items-center gap-1.5 cursor-pointer"
-            >
-              <Printer className="w-4 h-4" />
-              گزارشات استاندارد و خروجی PDF (F3)
-            </button>
-          </div>
-        </div>
-
-        {/* 4 Beginner-Friendly Step Cards */}
+      {/* دکمه‌های دسترسی سریع برای فرد غیرحسابدار */}
+      {onNavigate && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <button
             type="button"
-            onClick={() => onNavigate('fx_desk')}
-            className="text-right p-4 rounded-lg border border-emerald-200 bg-emerald-50/50 hover:bg-emerald-50 transition-colors space-y-1.5 cursor-pointer"
+            onClick={() => onNavigate('invoices')}
+            className="bg-teal-500/15 hover:bg-teal-500/25 border border-teal-500/40 rounded-xl p-4 text-right transition flex items-center justify-between group cursor-pointer"
           >
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-extrabold text-emerald-900">
-                ۱. میز خرید و فروش ارز (صرافی)
-              </span>
-              <ArrowLeftRight className="w-4 h-4 text-emerald-700" />
+            <div>
+              <div className="text-xs font-bold text-teal-300 flex items-center gap-1.5">
+                <ShoppingBag className="w-4 h-4" />
+                ثبت فاکتور خرید یا فروش
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1">
+                با تسویه ترکیبی چند بانکی و چند صندوقی
+              </p>
             </div>
-            <p className="text-[11px] text-slate-600 leading-relaxed">
-              ثبت خرید یا فروش دلار، درهم، یوان و یورو با محاسبه خودکار معادل ریالی، سود نوسان و صدور خودکار سند.
-            </p>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => onNavigate('reports')}
-            className="text-right p-4 rounded-lg border border-blue-200 bg-blue-50/50 hover:bg-blue-50 transition-colors space-y-1.5 cursor-pointer"
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-extrabold text-blue-900">
-                ۲. گزارش بانک، اشخاص و هزینه (PDF)
-              </span>
-              <Printer className="w-4 h-4 text-blue-700" />
-            </div>
-            <p className="text-[11px] text-slate-600 leading-relaxed">
-              کاردکس استاندارد حسابداری با ستون بدهکار، بستانکار و مانده از بالا به پایین + دانلود PDF و چاپ A4.
-            </p>
+            <ChevronLeft className="w-4 h-4 text-teal-400 group-hover:-translate-x-1 transition" />
           </button>
 
           <button
             type="button"
             onClick={() => onNavigate('vouchers')}
-            className="text-right p-4 rounded-lg border border-slate-200 bg-slate-50/70 hover:bg-slate-100 transition-colors space-y-1.5 cursor-pointer"
+            className="bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 rounded-xl p-4 text-right transition flex items-center justify-between group cursor-pointer"
           >
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-extrabold text-slate-900">
-                ۳. ثبت سند حسابداری و هزینه (F2)
-              </span>
-              <FileSpreadsheet className="w-4 h-4 text-slate-700" />
+            <div>
+              <div className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
+                <Sparkles className="w-4 h-4" />
+                امور مالی و سند اتوماتیک
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1">
+                دریافت از شخص، پرداخت از بانک، انتقال و هزینه
+              </p>
             </div>
-            <p className="text-[11px] text-slate-600 leading-relaxed">
-              ثبت اسناد روزانه، هزینه‌ها، واریز و برداشت بانکی به ریال یا ارز با تبدیل خودکار ۳ رقم ۳ رقم.
-            </p>
+            <ChevronLeft className="w-4 h-4 text-emerald-400 group-hover:-translate-x-1 transition" />
           </button>
 
-          <button
-            type="button"
-            onClick={() => onNavigate('backup')}
-            className="text-right p-4 rounded-lg border border-amber-200 bg-amber-50/50 hover:bg-amber-50 transition-colors space-y-1.5 cursor-pointer"
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-extrabold text-amber-950">
-                ۴. بکاپ اتوماتیک، بات و انبار
-              </span>
-              <DatabaseBackup className="w-4 h-4 text-amber-700" />
-            </div>
-            <p className="text-[11px] text-slate-600 leading-relaxed">
-              تنظیمات بکاپ اتوماتیک، ارسال به بازوی بله و تلگرام و مدیریت کاردکس لحظه‌ای انبار.
-            </p>
-          </button>
-        </div>
-      </div>
-
-      {/* 4-Column Executive KPI Strip */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white border border-slate-200 rounded-lg p-4 space-y-2">
-          <div className="flex items-center justify-between text-xs text-slate-500">
-            <span>سود قطعی خرید و فروش ارز (اسپرد)</span>
-            <TrendingUp className="w-4 h-4 text-emerald-600" />
-          </div>
-          <div className="text-base font-extrabold font-mono-num text-emerald-800">
-            +{formatNumber(stats.totalRealizedFXProfitIRR)} ریال
-          </div>
           <button
             type="button"
             onClick={() => onNavigate('fx_desk')}
-            className="text-xs font-semibold text-blue-700 hover:underline flex items-center gap-1 cursor-pointer"
+            className="bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 rounded-xl p-4 text-right transition flex items-center justify-between group cursor-pointer"
           >
-            مشاهده تراز خزانه و معاملات ارز
-            <ArrowLeft className="w-3 h-3" />
+            <div>
+              <div className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                <Coins className="w-4 h-4" />
+                خرید و فروش ارز
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1">
+                ورود/خروج ارز و تسویه چند بانکی اتوماتیک
+              </p>
+            </div>
+            <ChevronLeft className="w-4 h-4 text-amber-400 group-hover:-translate-x-1 transition" />
           </button>
-        </div>
 
-        <div className="bg-white border border-slate-200 rounded-lg p-4 space-y-2">
-          <div className="flex items-center justify-between text-xs text-slate-500">
-            <span>مطالبات از بدهکاران (معادل ریالی کل)</span>
-            <Users className="w-4 h-4 text-amber-600" />
-          </div>
-          <div className="text-base font-extrabold font-mono-num text-slate-900">
-            {formatNumber(stats.totalReceivablesIRR)} ریال
-          </div>
           <button
             type="button"
-            onClick={() => onNavigate('reports')}
-            className="text-xs font-semibold text-blue-700 hover:underline flex items-center gap-1 cursor-pointer"
+            onClick={() => onNavigate('persons')}
+            className="bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/40 rounded-xl p-4 text-right transition flex items-center justify-between group cursor-pointer"
           >
-            گزارش استاندارد اشخاص + خروجی PDF
-            <ArrowLeft className="w-3 h-3" />
+            <div>
+              <div className="text-xs font-bold text-sky-300 flex items-center gap-1.5">
+                <Users className="w-4 h-4" />
+                دفتر حساب اشخاص
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1">
+                مشاهده ریز طلب و بدهی هر شخص + PDF
+              </p>
+            </div>
+            <ChevronLeft className="w-4 h-4 text-sky-400 group-hover:-translate-x-1 transition" />
           </button>
         </div>
+      )}
 
-        <div className="bg-white border border-slate-200 rounded-lg p-4 space-y-2">
-          <div className="flex items-center justify-between text-xs text-slate-500">
-            <span>بدهی به بستانکاران (تأمین‌کنندگان ارزی/ریالی)</span>
-            <Users className="w-4 h-4 text-blue-600" />
+      {/* ۴ کارت خلاصه وضعیت دارایی، طلب و بدهی شخصی */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-5">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-slate-400">موجودی بانک‌ها و صندوق ریالی</span>
+            <Landmark className="w-5 h-5 text-teal-400" />
           </div>
-          <div className="text-base font-extrabold font-mono-num text-slate-900">
-            {formatNumber(stats.totalPayablesIRR)} ریال
+          <div className="text-xl font-bold text-white font-mono-num">
+            {formatNumber(totalRialBanksIRR)}{' '}
+            <span className="text-xs text-slate-400 font-normal">ریال</span>
           </div>
-          <button
-            type="button"
-            onClick={() => onNavigate('statements')}
-            className="text-xs font-semibold text-blue-700 hover:underline flex items-center gap-1 cursor-pointer"
-          >
-            مشاهده لیست بدهکاران و بستانکاران
-            <ArrowLeft className="w-3 h-3" />
-          </button>
+          <p className="text-[11px] text-teal-400 mt-2">جمع کل پول نقد و حساب‌های بانکی ریالی</p>
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-lg p-4 space-y-2">
-          <div className="flex items-center justify-between text-xs text-slate-500">
-            <span>وضعیت بکاپ اتوماتیک (بله و تلگرام)</span>
-            <DatabaseBackup className="w-4 h-4 text-emerald-600" />
+        <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-5">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-slate-400">ارزش صندوق‌ها و حساب‌های ارزی</span>
+            <Coins className="w-5 h-5 text-amber-400" />
           </div>
-          <div className="text-sm font-bold font-mono-num text-emerald-800">
-            فعال — {state.botLogs.length} ارسال موفق ثبت‌شده
+          <div className="text-xl font-bold text-amber-300 font-mono-num">
+            {formatNumber(totalForeignVaultsIRR)}{' '}
+            <span className="text-xs text-slate-400 font-normal">ریال</span>
           </div>
-          <button
-            type="button"
-            onClick={onQuickBackup}
-            className="text-xs font-semibold text-emerald-700 hover:underline flex items-center gap-1 cursor-pointer"
-          >
-            تهیه بکاپ فوری روی ویندوز و بات (F9)
-            <ArrowLeft className="w-3 h-3" />
-          </button>
+          <p className="text-[11px] text-slate-400 mt-2">
+            معادل ریالی دلار، درهم، یورو و یوان موجود
+          </p>
+        </div>
+
+        <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-5">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-slate-400">کل طلب ما از اشخاص (بدهکاران)</span>
+            <ArrowDownLeft className="w-5 h-5 text-emerald-400" />
+          </div>
+          <div className="text-xl font-bold text-emerald-400 font-mono-num">
+            {formatNumber(totalReceivablesIRR)}{' '}
+            <span className="text-xs text-slate-400 font-normal">ریال</span>
+          </div>
+          <p className="text-[11px] text-slate-400 mt-2">پولی که مشتریان و اشخاص باید به ما بدهند</p>
+        </div>
+
+        <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-5">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-slate-400">کل بدهی ما به اشخاص (طلبکاران)</span>
+            <ArrowUpRight className="w-5 h-5 text-rose-400" />
+          </div>
+          <div className="text-xl font-bold text-rose-400 font-mono-num">
+            {formatNumber(totalPayablesIRR)}{' '}
+            <span className="text-xs text-slate-400 font-normal">ریال</span>
+          </div>
+          <p className="text-[11px] text-slate-400 mt-2">
+            پولی که ما باید به اشخاص و همکاران بپردازیم
+          </p>
         </div>
       </div>
 
-      {/* Currency Vault Positions (Buying & Selling Summary with Decimals) */}
-      <div className="bg-white border border-slate-200 rounded-lg p-5 space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-              <ArrowLeftRight className="w-4 h-4 text-emerald-700" />
-              موجودی خزانه ارزی، میانگین نرخ خرید و فروش و سود معاملات (با اعشار دقیق ارزی)
-            </h3>
-            <p className="text-xs text-slate-500 mt-0.5">
-              خلاصه عملکرد خرید و فروش ارزها (اعداد سه رقم سه رقم جدا شده و مقادیر ارزی با ۲ رقم اعشار نمایش داده می‌شوند).
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => onNavigate('fx_desk')}
-            className="px-3 py-1.5 text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white rounded cursor-pointer"
-          >
-            ورود به میز خرید و فروش ارز ←
-          </button>
-        </div>
-
-        <div className="overflow-x-auto border border-slate-200 rounded-lg">
-          <table className="w-full text-right border-collapse text-xs">
-            <thead>
-              <tr className="bg-slate-100 border-b border-slate-200 font-bold text-slate-700">
-                <th className="py-2.5 px-3">ارز</th>
-                <th className="py-2.5 px-3 text-left">کل خریداری‌شده (با اعشار)</th>
-                <th className="py-2.5 px-3 text-left">میانگین نرخ خرید (ریال)</th>
-                <th className="py-2.5 px-3 text-left">کل فروخته‌شده (با اعشار)</th>
-                <th className="py-2.5 px-3 text-left">میانگین نرخ فروش (ریال)</th>
-                <th className="py-2.5 px-3 text-left bg-blue-50">موجودی خالص خزانه ارزی</th>
-                <th className="py-2.5 px-3 text-left bg-emerald-50">سود قطعی خرید و فروش (ریال)</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200">
-              {stats.vaultPositions.map((pos) => (
-                <tr key={pos.currency} className="hover:bg-slate-50">
-                  <td className="py-2.5 px-3 font-bold text-slate-900">
-                    <span className="font-mono-num text-blue-800 ml-1.5">{pos.currency}</span>
-                    <span>— {pos.currencyName}</span>
-                  </td>
-                  <td className="py-2.5 px-3 font-mono-num text-left font-semibold text-emerald-800">
-                    {formatCurrencyAmount(pos.totalBoughtForeign, pos.currency)} {pos.currency}
-                  </td>
-                  <td className="py-2.5 px-3 font-mono-num text-left text-slate-700">
-                    {formatNumber(pos.weightedAvgBuyRate)} ریال
-                  </td>
-                  <td className="py-2.5 px-3 font-mono-num text-left font-semibold text-amber-800">
-                    {formatCurrencyAmount(pos.totalSoldForeign, pos.currency)} {pos.currency}
-                  </td>
-                  <td className="py-2.5 px-3 font-mono-num text-left text-slate-700">
-                    {formatNumber(pos.weightedAvgSellRate)} ریال
-                  </td>
-                  <td className="py-2.5 px-3 font-mono-num text-left font-extrabold bg-blue-50/50 text-blue-950">
-                    {formatCurrencyAmount(pos.netVaultBalanceForeign, pos.currency)} {pos.currency}
-                  </td>
-                  <td className="py-2.5 px-3 font-mono-num text-left font-extrabold bg-emerald-50/50 text-emerald-900">
-                    +{formatNumber(pos.realizedProfitIRR)} ریال
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Live Exchange Rates & Multi-Currency Treasury Banks */}
+      {/* دو ستون اصلی: ۱. موجودی تک‌تک بانک‌ها و صندوق‌ها | ۲. مانده حساب اشخاص */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <div className="lg:col-span-7 bg-white border border-slate-200 rounded-lg p-5 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-              <Landmark className="w-4 h-4 text-blue-700" />
-              موجودی لحظه‌ای بانک‌های ریالی و حساب‌های ارزی (USD / AED / CNY / IRR)
+        {/* لیست بانک‌ها و صندوق‌ها */}
+        <div className="lg:col-span-7 bg-slate-900/60 border border-slate-800 rounded-xl p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              <Wallet className="w-4 h-4 text-teal-400" />
+              موجودی لحظه‌ای بانک‌ها و صندوق‌های من
             </h3>
-            <button
-              type="button"
-              onClick={() => onNavigate('reports')}
-              className="text-xs font-semibold text-blue-700 hover:underline cursor-pointer"
-            >
-              گزارش کاردکس بانک‌ها با PDF ←
-            </button>
+            {onNavigate && (
+              <button
+                type="button"
+                onClick={() => onNavigate('banks')}
+                className="text-xs text-teal-400 hover:text-teal-300 cursor-pointer"
+              >
+                مدیریت بانک‌ها و صندوق‌ها ←
+              </button>
+            )}
           </div>
 
-          <div className="overflow-x-auto border border-slate-200 rounded-lg">
-            <table className="w-full text-right border-collapse text-xs">
-              <thead>
-                <tr className="bg-slate-100 border-b border-slate-200 font-bold text-slate-700">
-                  <th className="py-2 px-3">نام بانک / خزانه ارزی</th>
-                  <th className="py-2 px-3">ارز</th>
-                  <th className="py-2 px-3 text-left">مانده طبق دفاتر</th>
-                  <th className="py-2 px-3 text-left">معادل به ریال ایران</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200">
-                {stats.bankSummaries.map(({ bank, rec }) => (
-                  <tr key={bank.id} className="hover:bg-slate-50">
-                    <td className="py-2.5 px-3 font-bold text-slate-900">{bank.bankName}</td>
-                    <td className="py-2.5 px-3 font-mono-num font-bold text-blue-700">
-                      {bank.currency}
-                    </td>
-                    <td className="py-2.5 px-3 font-mono-num text-left font-bold text-emerald-800">
-                      {formatCurrencyAmount(rec.ledgerBalanceForeign, bank.currency)}{' '}
-                      {bank.currency}
-                    </td>
-                    <td className="py-2.5 px-3 font-mono-num text-left font-semibold text-slate-900">
-                      {formatNumber(rec.ledgerBalanceIRR)} ریال
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Live Currency Table */}
-        <div className="lg:col-span-5 bg-white border border-slate-200 rounded-lg p-5 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-slate-900">
-              تابلو نرخ تبدیل ارزها به ریال (در خرید/فروش و ثبت سند)
-            </h3>
-            <button
-              type="button"
-              onClick={() => onNavigate('banks')}
-              className="text-xs font-semibold text-blue-700 hover:underline cursor-pointer"
-            >
-              ویرایش نرخ‌ها ←
-            </button>
-          </div>
-          <div className="divide-y divide-slate-200 border border-slate-200 rounded-lg">
-            {state.currencies.map((curr) => (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {bankSummaries.map((b) => (
               <div
-                key={curr.code}
-                className="px-3.5 py-2.5 flex items-center justify-between text-xs"
+                key={b.id}
+                className="bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 flex items-center justify-between"
               >
                 <div>
-                  <span className="font-mono-num font-bold text-blue-800 ml-2">
-                    {curr.code}
-                  </span>
-                  <span className="font-medium text-slate-800">{curr.name}</span>
+                  <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                    <span>{b.kind === 'cash_box' ? '📦' : '🏦'}</span>
+                    <span>{b.bankName}</span>
+                  </div>
+                  <span className="text-[11px] text-slate-400">{b.branchName}</span>
                 </div>
-                <div className="font-mono-num font-bold text-slate-900">
-                  {curr.isBase
-                    ? 'ارز پایه (۱ ریال — بدون اعشار)'
-                    : `${formatNumber(curr.defaultRateToIRR)} ریال (دارای ۲ رقم اعشار .00)`}
+
+                <div className="text-left font-mono-num">
+                  <div className="text-xs font-bold text-emerald-400">
+                    {formatNumber(b.currency === 'IRR' ? b.liveIRR : b.liveForeign)}{' '}
+                    {b.currency === 'IRR' ? 'ریال' : b.currency}
+                  </div>
+                  {b.currency !== 'IRR' && (
+                    <div className="text-[10px] text-amber-300">
+                      معادل {formatNumber(b.liveIRR)} ریال
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
           </div>
         </div>
-      </div>
 
-      {/* Quick Person Dual-Statement Preview */}
-      <div className="bg-white border border-slate-200 rounded-lg p-5 space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-            <FileSpreadsheet className="w-4 h-4 text-blue-700" />
-            خلاصه وضعیت طرف حساب‌ها (دارای گزارش استاندارد بدهکار/بستانکار/مانده از بالا به پایین + PDF)
-          </h3>
-          <button
-            type="button"
-            onClick={() => onNavigate('reports')}
-            className="text-xs font-semibold text-blue-700 hover:underline cursor-pointer"
-          >
-            چاپ و خروجی PDF کاردکس اشخاص ←
-          </button>
-        </div>
-        <div className="overflow-x-auto border border-slate-200 rounded-lg">
-          <table className="w-full text-right border-collapse text-xs">
-            <thead>
-              <tr className="bg-slate-100 border-b border-slate-200 font-bold text-slate-700">
-                <th className="py-2 px-3">کد شخص</th>
-                <th className="py-2 px-3">نام شخص / شرکت</th>
-                <th className="py-2 px-3">ارز تخصصی</th>
-                <th className="py-2 px-3 text-left">مانده صورتحساب ارزی (با اعشار)</th>
-                <th className="py-2 px-3 text-left">مانده صورتحساب ریالی (۳ رقم ۳ رقم)</th>
-                <th className="py-2 px-3 text-center">تشخیص</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200">
-              {state.contacts.map((c) => {
-                const st = buildPersonStatement(state.vouchers, c.id, 'ALL');
-                return (
-                  <tr key={c.id} className="hover:bg-slate-50">
-                    <td className="py-2 px-3 font-mono-num text-slate-500">{c.code}</td>
-                    <td className="py-2 px-3 font-bold text-slate-900">{c.name}</td>
-                    <td className="py-2 px-3 font-mono-num font-bold text-blue-700">
-                      {c.defaultCurrency}
-                    </td>
-                    <td className="py-2 px-3 font-mono-num text-left font-bold text-emerald-800">
-                      {Object.entries(st.currencyBreakdown).map(([curr, b]) => (
-                        <span key={curr} className="ml-3">
-                          {formatCurrencyAmount(b.balanceForeign, curr)} {curr}
-                        </span>
-                      ))}
-                    </td>
-                    <td className="py-2 px-3 font-mono-num text-left font-bold text-slate-900">
-                      {formatNumber(st.finalBalanceIRR)} ریال
-                    </td>
-                    <td className="py-2 px-3 text-center font-bold">
-                      {st.finalStatusIRR}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        {/* لیست وضعیت حساب اشخاص */}
+        <div className="lg:col-span-5 bg-slate-900/60 border border-slate-800 rounded-xl p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              <Users className="w-4 h-4 text-teal-400" />
+              خلاصه حساب اشخاص (طلب و بدهی)
+            </h3>
+            {onNavigate && (
+              <button
+                type="button"
+                onClick={() => onNavigate('persons')}
+                className="text-xs text-teal-400 hover:text-teal-300 cursor-pointer"
+              >
+                صورتحساب کامل اشخاص ←
+              </button>
+            )}
+          </div>
+
+          <div className="space-y-2.5">
+            {personSummaries.map(({ contact, balanceIRR, status }) => (
+              <div
+                key={contact.id}
+                className="bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 flex items-center justify-between"
+              >
+                <div>
+                  <div className="text-xs font-bold text-white">{contact.name}</div>
+                  <div className="text-[11px] text-slate-400">{contact.phone || 'بدون شماره'}</div>
+                </div>
+
+                <div className="text-left font-mono-num">
+                  <div
+                    className={`text-xs font-bold ${
+                      status === 'بدهکار'
+                        ? 'text-emerald-400'
+                        : status === 'بستانکار'
+                        ? 'text-rose-400'
+                        : 'text-slate-400'
+                    }`}
+                  >
+                    {status === 'تسویه' ? 'تسویه کامل' : `${formatNumber(balanceIRR)} ریال`}
+                  </div>
+                  <div className="text-[10px] text-slate-400">
+                    {status === 'بدهکار'
+                      ? 'بدهکار به ما (طلب ما)'
+                      : status === 'بستانکار'
+                      ? 'طلبکار از ما (بدهی ما)'
+                      : 'بی‌حساب'}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>

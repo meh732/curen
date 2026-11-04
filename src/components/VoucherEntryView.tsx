@@ -1,741 +1,1169 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
-  AccountingState,
-  CurrencyCode,
+  Account,
+  Contact,
+  BankAccount,
+  Currency,
   JournalVoucher,
   VoucherLine,
+  CurrencyCode,
+  PaymentSplitLine,
 } from '../types/accounting';
 import {
-  calculateVoucherBalance,
-  convertForeignToIRR,
-  formatCurrencyAmount,
+  buildPersonStatement,
   formatNumber,
+  parseFormattedNumber,
 } from '../utils/accountingEngine';
-import { FormattedNumberInput } from './FormattedNumberInput';
+import { MultiPaymentSplitsEditor } from './MultiPaymentSplitsEditor';
 import {
-  Plus,
-  Trash2,
+  ArrowDownLeft,
+  ArrowUpRight,
+  ArrowLeftRight,
+  Receipt,
+  TrendingUp,
   CheckCircle2,
-  AlertTriangle,
-  FileText,
-  Scale,
-  Calculator,
+  Trash2,
+  Landmark,
+  User,
+  Coins,
+  Plus,
+  BookOpen,
+  Sparkles,
+  UserPlus,
 } from 'lucide-react';
 
 interface VoucherEntryViewProps {
-  state: AccountingState;
-  onSaveVoucher: (voucher: JournalVoucher) => void;
-  onDeleteVoucher: (voucherId: string) => void;
+  accounts: Account[];
+  contacts: Contact[];
+  banks: BankAccount[];
+  currencies: Currency[];
+  vouchers: JournalVoucher[];
+  onAddVoucher: (voucher: JournalVoucher) => void;
+  onDeleteVoucher?: (id: string) => void;
+  onAddContact?: (contact: Contact) => void;
 }
 
-export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
-  state,
-  onSaveVoucher,
-  onDeleteVoucher,
-}) => {
-  const nextNumber = useMemo(() => {
-    const max = state.vouchers.reduce((m, v) => Math.max(m, v.voucherNumber), 1000);
-    return max + 1;
-  }, [state.vouchers]);
+type AutoFinanceType =
+  | 'receive_from_person'
+  | 'pay_to_person'
+  | 'bank_transfer'
+  | 'expense'
+  | 'income';
 
+export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
+  accounts,
+  contacts,
+  banks,
+  currencies,
+  vouchers,
+  onAddVoucher,
+  onDeleteVoucher,
+  onAddContact,
+}) => {
+  const [entryTab, setEntryTab] = useState<'auto' | 'manual'>('auto');
+  const [autoType, setAutoType] = useState<AutoFinanceType>('receive_from_person');
   const [date, setDate] = useState('1404/08/12');
   const [description, setDescription] = useState('');
-  const [referenceNumber, setReferenceNumber] = useState('');
-  const [status, setStatus] = useState<'temporary' | 'permanent'>('permanent');
-  const [selectedVoucherFilter, setSelectedVoucherFilter] = useState<string>('ALL');
-  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-  const createEmptyLine = (defaultCurr: CurrencyCode = 'USD'): VoucherLine => {
-    const currObj = state.currencies.find((c) => c.code === defaultCurr) || state.currencies[0];
-    const firstMoein = state.accounts.find((a) => a.level === 'moein') || state.accounts[0];
-    return {
-      id: `line-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      accountCode: firstMoein.code,
-      accountName: firstMoein.name,
-      description: '',
-      currency: currObj.code,
-      exchangeRate: currObj.defaultRateToIRR,
-      debitForeign: 0,
-      creditForeign: 0,
-      debitIRR: 0,
-      creditIRR: 0,
-      trackingNumber: '',
-    };
-  };
+  // فیلدهای مشترک حالت اتوماتیک
+  const [selectedContactId, setSelectedContactId] = useState<string>(contacts[0]?.id || '');
 
-  const [lines, setLines] = useState<VoucherLine[]>(() => [
-    {
-      id: 'init-1',
-      accountCode: '1104',
-      accountName: 'حساب‌های دریافتنی تجاری (مشتریان / بدهکاران)',
-      contactId: 'cnt-1',
-      contactName: 'شرکت مهندسی صنایع فولاد کاوه (مشتری داخلی و ارزی)',
-      description: 'ثبت بدهکاری ارزی با تبدیل خودکار به ریال',
-      currency: 'USD',
-      exchangeRate: 685000,
-      debitForeign: 1000,
-      creditForeign: 0,
-      debitIRR: 685000000,
-      creditIRR: 0,
-      trackingNumber: 'DOC-201',
-    },
-    {
-      id: 'init-2',
-      accountCode: '4102',
-      accountName: 'درآمد فروش صادراتی و ارزی',
-      description: 'ثبت بستانکاری درآمد ارزی و معادل ریالی',
-      currency: 'USD',
-      exchangeRate: 685000,
-      debitForeign: 0,
-      creditForeign: 1000,
-      debitIRR: 0,
-      creditIRR: 685000000,
-      trackingNumber: 'DOC-201',
-    },
+  // برای دریافت از شخص / پرداخت به شخص (تک‌ردیفی سریع یا چند بانکی ترکیبی)
+  const [splits, setSplits] = useState<PaymentSplitLine[]>(() => {
+    const firstBank = banks[0];
+    return firstBank
+      ? [
+          {
+            id: 'spl-init-1',
+            bankId: firstBank.id,
+            bankName: firstBank.bankName,
+            currency: firstBank.currency,
+            amountForeign: 0,
+            exchangeRate: 1,
+            amountIRR: 0,
+            trackingNumber: '',
+          },
+        ]
+      : [];
+  });
+
+  // برای انتقال بین دو بانک/صندوق، یا ثبت هزینه و درآمد
+  const [sourceBankId, setSourceBankId] = useState<string>(banks[0]?.id || '');
+  const [destBankId, setDestBankId] = useState<string>(banks[1]?.id || banks[0]?.id || '');
+  const [txCurrency, setTxCurrency] = useState<CurrencyCode>('IRR');
+  const [txAmountForeign, setTxAmountForeign] = useState<number>(0);
+  const [txExchangeRate, setTxExchangeRate] = useState<number>(1);
+  const [expenseAccountCode, setExpenseAccountCode] = useState<string>('5201');
+  const [incomeAccountCode, setIncomeAccountCode] = useState<string>('4101');
+
+  // تعریف سریع شخص
+  const [showQuickContact, setShowQuickContact] = useState(false);
+  const [newContactName, setNewContactName] = useState('');
+  const [newContactPhone, setNewContactPhone] = useState('');
+
+  // پیام موفقیت
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  // تب سند دستی (پیشرفته)
+  const [manualLines, setManualLines] = useState<Partial<VoucherLine>[]>([
+    { id: 'ml-1', accountCode: '1102', currency: 'IRR', exchangeRate: 1, debitIRR: 0, creditIRR: 0 },
+    { id: 'ml-2', accountCode: '1104', currency: 'IRR', exchangeRate: 1, debitIRR: 0, creditIRR: 0 },
   ]);
 
-  const moeinAccounts = useMemo(
-    () => state.accounts.filter((a) => a.level === 'moein'),
-    [state.accounts]
-  );
+  const selectedContact = contacts.find((c) => c.id === selectedContactId);
 
-  const balanceSummary = useMemo(() => calculateVoucherBalance(lines), [lines]);
+  // محاسبه مانده لحظه‌ای شخص انتخاب‌شده
+  const selectedContactStatement = useMemo(() => {
+    if (!selectedContactId) return null;
+    return buildPersonStatement(vouchers, selectedContactId);
+  }, [selectedContactId, vouchers]);
 
-  const handleUpdateLine = (index: number, patch: Partial<VoucherLine>) => {
-    setLines((prev) =>
-      prev.map((line, idx) => {
-        if (idx !== index) return line;
-        const updated = { ...line, ...patch };
-
-        // If accountCode changed, sync accountName
-        if (patch.accountCode !== undefined) {
-          const acc = moeinAccounts.find((a) => a.code === patch.accountCode);
-          if (acc) updated.accountName = acc.name;
-        }
-
-        // If contactId changed, sync contactName
-        if (patch.contactId !== undefined) {
-          const cnt = state.contacts.find((c) => c.id === patch.contactId);
-          updated.contactName = cnt ? cnt.name : undefined;
-        }
-
-        // If bankId changed, sync bankName and currency if desired
-        if (patch.bankId !== undefined) {
-          const bnk = state.banks.find((b) => b.id === patch.bankId);
-          updated.bankName = bnk ? bnk.bankName : undefined;
-        }
-
-        // If currency changed, load default exchange rate for that currency
-        if (patch.currency !== undefined) {
-          const currObj = state.currencies.find((c) => c.code === patch.currency);
-          const newRate = currObj ? currObj.defaultRateToIRR : 1;
-          updated.exchangeRate = newRate;
-          if (patch.currency === 'IRR') {
-            updated.debitForeign = updated.debitIRR;
-            updated.creditForeign = updated.creditIRR;
-          } else {
-            updated.debitIRR = convertForeignToIRR(updated.debitForeign, newRate, updated.currency);
-            updated.creditIRR = convertForeignToIRR(updated.creditForeign, newRate, updated.currency);
-          }
-        }
-
-        // If exchangeRate, debitForeign, or creditForeign changed, recalculate IRR automatically
-        if (
-          patch.exchangeRate !== undefined ||
-          patch.debitForeign !== undefined ||
-          patch.creditForeign !== undefined
-        ) {
-          if (updated.currency === 'IRR') {
-            updated.exchangeRate = 1;
-            if (patch.debitForeign !== undefined) updated.debitIRR = Math.round(updated.debitForeign);
-            if (patch.creditForeign !== undefined) updated.creditIRR = Math.round(updated.creditForeign);
-          } else {
-            updated.debitIRR = convertForeignToIRR(
-              updated.debitForeign,
-              updated.exchangeRate,
-              updated.currency
-            );
-            updated.creditIRR = convertForeignToIRR(
-              updated.creditForeign,
-              updated.exchangeRate,
-              updated.currency
-            );
-          }
-        }
-
-        // If user edited IRR directly on an IRR line
-        if (patch.debitIRR !== undefined && updated.currency === 'IRR') {
-          updated.debitForeign = patch.debitIRR;
-        }
-        if (patch.creditIRR !== undefined && updated.currency === 'IRR') {
-          updated.creditForeign = patch.creditIRR;
-        }
-
-        return updated;
-      })
-    );
+  const getRateForCurrency = (code: CurrencyCode): number => {
+    if (code === 'IRR') return 1;
+    return currencies.find((c) => c.code === code)?.defaultRateToIRR || 1;
   };
 
-  const handleAutoBalanceDifference = () => {
-    if (balanceSummary.differenceIRR === 0) return;
-    const diffIRR = balanceSummary.differenceIRR;
-    const gainLossAcc =
-      moeinAccounts.find((a) => a.code === '4201') || moeinAccounts[0];
+  const getAccountHelperForBank = (bank?: BankAccount) => {
+    if (!bank) return { code: '1102', name: 'موجودی بانک‌های ریالی' };
+    if (bank.currency !== 'IRR') {
+      return { code: '1103', name: 'موجودی بانک‌ها و خزانه‌های ارزی' };
+    }
+    if (bank.kind === 'cash_box') {
+      return { code: '1101', name: 'موجودی نقد و صندوق‌ها (ریالی و ارزی)' };
+    }
+    return { code: '1102', name: 'موجودی بانک‌های ریالی' };
+  };
 
-    const balancingLine: VoucherLine = {
-      id: `line-bal-${Date.now()}`,
-      accountCode: gainLossAcc.code,
-      accountName: gainLossAcc.name,
-      description: 'تراز خودکار مابه‌التفاوت / تسعیر نرخ ارز به ریال',
-      currency: 'IRR',
-      exchangeRate: 1,
-      debitForeign: diffIRR < 0 ? Math.abs(diffIRR) : 0,
-      creditForeign: diffIRR > 0 ? diffIRR : 0,
-      debitIRR: diffIRR < 0 ? Math.abs(diffIRR) : 0,
-      creditIRR: diffIRR > 0 ? diffIRR : 0,
+  const handleQuickCreateContact = () => {
+    if (!newContactName.trim() || !onAddContact) return;
+    const newC: Contact = {
+      id: `cnt-${Date.now()}`,
+      code: `P-${1006 + contacts.length}`,
+      name: newContactName.trim(),
+      type: 'both',
+      phone: newContactPhone.trim(),
+      defaultCurrency: 'IRR',
+      creditLimitIRR: 0,
     };
-    setLines((prev) => [...prev, balancingLine]);
+    onAddContact(newC);
+    setSelectedContactId(newC.id);
+    setNewContactName('');
+    setNewContactPhone('');
+    setShowQuickContact(false);
   };
 
-  const handleSubmitVoucher = (e: React.FormEvent) => {
+  const handleSourceBankChange = (bId: string) => {
+    setSourceBankId(bId);
+    const b = banks.find((x) => x.id === bId);
+    if (b) {
+      setTxCurrency(b.currency);
+      setTxExchangeRate(getRateForCurrency(b.currency));
+    }
+  };
+
+  const txComputedIRR =
+    txCurrency === 'IRR'
+      ? Math.round(txAmountForeign)
+      : Math.round(txAmountForeign * txExchangeRate);
+
+  const handleAutoSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!description.trim()) {
-      setFeedback({
-        type: 'error',
-        message: 'لطفاً شرح کلی سند حسابداری را وارد نمایید.',
+    const voucherNumber = 1004 + vouchers.length;
+    const lines: VoucherLine[] = [];
+    let autoTitle = '';
+
+    if (autoType === 'receive_from_person' || autoType === 'pay_to_person') {
+      const validSplits = splits.filter((s) => s.bankId && s.amountIRR > 0);
+      if (!selectedContact || validSplits.length === 0) return;
+
+      const isReceipt = autoType === 'receive_from_person';
+      const totalIRR = validSplits.reduce((s, x) => s + x.amountIRR, 0);
+
+      const personAccCode = selectedContact.type === 'supplier' ? '2101' : '1104';
+      const personAccName =
+        personAccCode === '2101'
+          ? 'حساب اشخاص و فروشندگان (بستانکاران / بدهی ما)'
+          : 'حساب اشخاص و مشتریان (بدهکاران / طلب ما)';
+
+      validSplits.forEach((sp, idx) => {
+        const bank = banks.find((b) => b.id === sp.bankId);
+        const bankAcc = getAccountHelperForBank(bank);
+        const lineDesc =
+          description.trim() ||
+          (isReceipt
+            ? `دریافت از ${selectedContact.name} و واریز به ${bank?.bankName || 'بانک/صندوق'}`
+            : `پرداخت به ${selectedContact.name} از ${bank?.bankName || 'بانک/صندوق'}`);
+
+        // ردیف بانک / صندوق
+        lines.push({
+          id: `ln-auto-b-${Date.now()}-${idx}`,
+          accountCode: bankAcc.code,
+          accountName: bankAcc.name,
+          bankId: sp.bankId,
+          bankName: bank?.bankName,
+          description: `${lineDesc}${sp.trackingNumber ? ` (پیگیری: ${sp.trackingNumber})` : ''}`,
+          currency: sp.currency,
+          exchangeRate: sp.exchangeRate,
+          debitForeign: isReceipt ? sp.amountForeign : 0,
+          creditForeign: isReceipt ? 0 : sp.amountForeign,
+          debitIRR: isReceipt ? sp.amountIRR : 0,
+          creditIRR: isReceipt ? 0 : sp.amountIRR,
+          trackingNumber: sp.trackingNumber || `AUTO-${voucherNumber}-${idx + 1}`,
+          reconciled: true,
+        });
+
+        // ردیف طرف حساب (شخص)
+        lines.push({
+          id: `ln-auto-p-${Date.now()}-${idx}`,
+          accountCode: personAccCode,
+          accountName: personAccName,
+          contactId: selectedContact.id,
+          contactName: selectedContact.name,
+          description: `${lineDesc} (${
+            sp.currency !== 'IRR'
+              ? `${formatNumber(sp.amountForeign)} ${sp.currency} به ارزش هر واحد ${formatNumber(
+                  sp.exchangeRate
+                )} ریال`
+              : `${formatNumber(sp.amountIRR)} ریال`
+          })`,
+          currency: sp.currency,
+          exchangeRate: sp.exchangeRate,
+          debitForeign: isReceipt ? 0 : sp.amountForeign,
+          creditForeign: isReceipt ? sp.amountForeign : 0,
+          debitIRR: isReceipt ? 0 : sp.amountIRR,
+          creditIRR: isReceipt ? sp.amountIRR : 0,
+          trackingNumber: sp.trackingNumber || `AUTO-${voucherNumber}-${idx + 1}`,
+        });
       });
-      return;
-    }
-    if (!balanceSummary.isBalancedIRR) {
-      setFeedback({
-        type: 'error',
-        message: `سند تراز نیست! اختلاف بدهکار و بستانکار ریالی (${formatNumber(
-          Math.abs(balanceSummary.differenceIRR)
-        )} ریال) باید صفر شود.`,
+
+      autoTitle =
+        description.trim() ||
+        (isReceipt
+          ? `سند اتوماتیک دریافت از ${selectedContact.name} (${formatNumber(totalIRR)} ریال)`
+          : `سند اتوماتیک پرداخت به ${selectedContact.name} (${formatNumber(totalIRR)} ریال)`);
+    } else if (autoType === 'bank_transfer') {
+      if (txComputedIRR <= 0 || !sourceBankId || !destBankId) return;
+      const srcBank = banks.find((b) => b.id === sourceBankId);
+      const dstBank = banks.find((b) => b.id === destBankId);
+      const srcAcc = getAccountHelperForBank(srcBank);
+      const dstAcc = getAccountHelperForBank(dstBank);
+
+      autoTitle =
+        description.trim() ||
+        `انتقال وجه از ${srcBank?.bankName || 'مبدأ'} به ${dstBank?.bankName || 'مقصد'}`;
+
+      // بدهکار شدن بانک مقصد (ورود وجه)
+      lines.push({
+        id: `ln-tr-in-${Date.now()}`,
+        accountCode: dstAcc.code,
+        accountName: dstAcc.name,
+        bankId: destBankId,
+        bankName: dstBank?.bankName,
+        description: `ورود وجه انتقالی از ${srcBank?.bankName} - ${autoTitle}`,
+        currency: txCurrency,
+        exchangeRate: txExchangeRate,
+        debitForeign: txAmountForeign,
+        creditForeign: 0,
+        debitIRR: txComputedIRR,
+        creditIRR: 0,
+        reconciled: true,
       });
-      return;
+
+      // بستانکار شدن بانک مبدأ (خروج وجه)
+      lines.push({
+        id: `ln-tr-out-${Date.now()}`,
+        accountCode: srcAcc.code,
+        accountName: srcAcc.name,
+        bankId: sourceBankId,
+        bankName: srcBank?.bankName,
+        description: `خروج وجه انتقالی به ${dstBank?.bankName} - ${autoTitle}`,
+        currency: txCurrency,
+        exchangeRate: txExchangeRate,
+        debitForeign: 0,
+        creditForeign: txAmountForeign,
+        debitIRR: 0,
+        creditIRR: txComputedIRR,
+        reconciled: true,
+      });
+    } else if (autoType === 'expense') {
+      if (txComputedIRR <= 0 || !sourceBankId) return;
+      const srcBank = banks.find((b) => b.id === sourceBankId);
+      const srcAcc = getAccountHelperForBank(srcBank);
+      const expNode = accounts.find((a) => a.code === expenseAccountCode);
+
+      autoTitle =
+        description.trim() ||
+        `پرداخت هزینه (${expNode?.name || 'هزینه'}) از ${srcBank?.bankName || 'بانک/صندوق'}`;
+
+      lines.push({
+        id: `ln-exp-d-${Date.now()}`,
+        accountCode: expNode?.code || '5201',
+        accountName: expNode?.name || 'هزینه‌های شخصی، حقوق و دستمزد',
+        description: autoTitle,
+        currency: txCurrency,
+        exchangeRate: txExchangeRate,
+        debitForeign: txAmountForeign,
+        creditForeign: 0,
+        debitIRR: txComputedIRR,
+        creditIRR: 0,
+      });
+
+      lines.push({
+        id: `ln-exp-c-${Date.now()}`,
+        accountCode: srcAcc.code,
+        accountName: srcAcc.name,
+        bankId: sourceBankId,
+        bankName: srcBank?.bankName,
+        description: autoTitle,
+        currency: txCurrency,
+        exchangeRate: txExchangeRate,
+        debitForeign: 0,
+        creditForeign: txAmountForeign,
+        debitIRR: 0,
+        creditIRR: txComputedIRR,
+        reconciled: true,
+      });
+    } else if (autoType === 'income') {
+      if (txComputedIRR <= 0 || !sourceBankId) return;
+      const dstBank = banks.find((b) => b.id === sourceBankId);
+      const dstAcc = getAccountHelperForBank(dstBank);
+      const incNode = accounts.find((a) => a.code === incomeAccountCode);
+
+      autoTitle =
+        description.trim() ||
+        `واریز به ${dstBank?.bankName || 'بانک/صندوق'} بابت ${
+          incNode?.name || 'درآمد / شارژ حساب'
+        }`;
+
+      lines.push({
+        id: `ln-inc-d-${Date.now()}`,
+        accountCode: dstAcc.code,
+        accountName: dstAcc.name,
+        bankId: sourceBankId,
+        bankName: dstBank?.bankName,
+        description: autoTitle,
+        currency: txCurrency,
+        exchangeRate: txExchangeRate,
+        debitForeign: txAmountForeign,
+        creditForeign: 0,
+        debitIRR: txComputedIRR,
+        creditIRR: 0,
+        reconciled: true,
+      });
+
+      lines.push({
+        id: `ln-inc-c-${Date.now()}`,
+        accountCode: incNode?.code || '4101',
+        accountName: incNode?.name || 'درآمد فروش ریالی',
+        description: autoTitle,
+        currency: txCurrency,
+        exchangeRate: txExchangeRate,
+        debitForeign: 0,
+        creditForeign: txAmountForeign,
+        debitIRR: 0,
+        creditIRR: txComputedIRR,
+      });
     }
+
+    if (lines.length === 0) return;
 
     const newVoucher: JournalVoucher = {
-      id: `vch-${Date.now()}`,
-      voucherNumber: nextNumber,
+      id: `vch-auto-${Date.now()}`,
+      voucherNumber,
       date,
-      description: description.trim(),
-      referenceNumber: referenceNumber.trim() || `REF-${nextNumber}`,
-      status,
+      description: autoTitle,
+      status: 'permanent',
       createdAt: date,
+      autoType,
       lines,
     };
 
-    onSaveVoucher(newVoucher);
+    onAddVoucher(newVoucher);
     setDescription('');
-    setReferenceNumber('');
-    setFeedback({
-      type: 'success',
-      message: `سند حسابداری شماره ${nextNumber} با موفقیت به صورت دوارزی و ریالی ثبت شد و بکاپ خودکار بروزرسانی گردید.`,
-    });
+    setTxAmountForeign(0);
+    if (splits.length > 0) {
+      setSplits([
+        {
+          ...splits[0],
+          id: `spl-${Date.now()}`,
+          amountForeign: 0,
+          amountIRR: 0,
+          trackingNumber: '',
+        },
+      ]);
+    }
+    setSuccessMsg(
+      `سند اتوماتیک شماره ${voucherNumber} با موفقیت ثبت شد و موجودی بانک/صندوق و حساب شخص به‌روز گردید.`
+    );
+    setTimeout(() => setSuccessMsg(null), 5000);
   };
 
-  const filteredVouchers = useMemo(() => {
-    if (selectedVoucherFilter === 'ALL') return state.vouchers;
-    return state.vouchers.filter((v) =>
-      v.lines.some((l) => l.currency === selectedVoucherFilter)
-    );
-  }, [state.vouchers, selectedVoucherFilter]);
+  // ثبت سند دستی
+  const totalManualDebit = manualLines.reduce((s, l) => s + (l.debitIRR || 0), 0);
+  const totalManualCredit = manualLines.reduce((s, l) => s + (l.creditIRR || 0), 0);
+  const isManualBalanced = totalManualDebit > 0 && totalManualDebit === totalManualCredit;
+
+  const handleManualSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isManualBalanced) return;
+
+    const voucherLines: VoucherLine[] = manualLines.map((ml, i) => {
+      const acc = accounts.find((a) => a.code === ml.accountCode);
+      const bnk = ml.bankId ? banks.find((b) => b.id === ml.bankId) : undefined;
+      const cnt = ml.contactId ? contacts.find((c) => c.id === ml.contactId) : undefined;
+      return {
+        id: `ml-${Date.now()}-${i}`,
+        accountCode: ml.accountCode || '1102',
+        accountName: acc?.name || 'حساب',
+        contactId: ml.contactId || undefined,
+        contactName: cnt?.name,
+        bankId: ml.bankId || undefined,
+        bankName: bnk?.bankName,
+        description: ml.description || description || 'ثبت سند',
+        currency: (ml.currency as CurrencyCode) || 'IRR',
+        exchangeRate: ml.exchangeRate || 1,
+        debitForeign: ml.debitIRR || 0,
+        creditForeign: ml.creditIRR || 0,
+        debitIRR: ml.debitIRR || 0,
+        creditIRR: ml.creditIRR || 0,
+      };
+    });
+
+    onAddVoucher({
+      id: `vch-man-${Date.now()}`,
+      voucherNumber: 1004 + vouchers.length,
+      date,
+      description: description || 'سند حسابداری',
+      status: 'permanent',
+      createdAt: date,
+      autoType: 'manual',
+      lines: voucherLines,
+    });
+    setDescription('');
+  };
+
+  const moeinAccounts = accounts.filter((a) => a.level === 'moein');
 
   return (
     <div className="space-y-6">
-      {/* Header & Quick Currency Rates Strip */}
-      <div className="bg-white border border-slate-200 rounded-lg p-4 flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-bold text-slate-900">
-            ثبت سند حسابداری استاندارد (دوارزی و تبدیل خودکار به ریال)
-          </h2>
-          <p className="text-xs text-slate-500 mt-0.5">
-            هر آرتیکل سند می‌تواند به ریال، دلار، یورو، یوان یا درهم ثبت شود و سیستم همزمان معادل ریالی را با نرخ تبدیل دلخواه محاسبه و تراز می‌کند.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-3 text-xs text-slate-700">
-          <span className="font-semibold text-slate-900">نرخ‌های مرجع روز:</span>
-          {state.currencies
-            .filter((c) => !c.isBase)
-            .map((c, idx) => (
-              <React.Fragment key={c.code}>
-                {idx > 0 && <span className="text-slate-300">·</span>}
-                <span className="font-mono-num">
-                  {c.code}: <strong className="text-blue-700">{formatNumber(c.defaultRateToIRR)}</strong> ریال
-                </span>
-              </React.Fragment>
-            ))}
-        </div>
-      </div>
+      {/* نوار انتخاب حالت اتوماتیک (شخصی و راحت) یا سند دستی */}
+      <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-6">
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-6 pb-4 border-b border-slate-800">
+          <div>
+            <h2 className="text-lg font-bold text-white flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-teal-400" />
+              امور مالی و ثبت اتوماتیک دریافت، پرداخت، انتقال و هزینه
+            </h2>
+            <p className="text-xs text-slate-400 mt-1">
+              بدون نیاز به دانش حسابداری، فقط نوع عملیات را انتخاب کنید تا سند بانک، صندوق و حساب شخص به صورت ۱۰۰٪ خودکار صادر شود.
+            </p>
+          </div>
 
-      {feedback && (
-        <div
-          className={`p-3.5 rounded-lg border flex items-center justify-between text-xs font-medium ${
-            feedback.type === 'success'
-              ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
-              : 'bg-red-50 border-red-200 text-red-900'
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            {feedback.type === 'success' ? (
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-            ) : (
-              <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
-            )}
-            <span>{feedback.message}</span>
-          </div>
-          <button
-            type="button"
-            onClick={() => setFeedback(null)}
-            className="text-xs underline hover:opacity-80"
-          >
-            بستن پیام
-          </button>
-        </div>
-      )}
-
-      {/* Voucher Entry Form */}
-      <form onSubmit={handleSubmitVoucher} className="bg-white border border-slate-200 rounded-lg p-5 space-y-5">
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
-              شماره سند اتوماتیک
-            </label>
-            <input
-              type="text"
-              readOnly
-              value={nextNumber}
-              aria-label="شماره سند اتوماتیک"
-              className="w-full px-3 py-2 text-xs font-mono-num font-bold bg-slate-100 border border-slate-300 rounded text-slate-800"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
-              تاریخ سند (شمسی)
-            </label>
-            <input
-              type="text"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              aria-label="تاریخ سند"
-              className="w-full px-3 py-2 text-xs font-mono-num bg-white border border-slate-300 rounded focus:border-blue-600 focus:outline-none"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
-              شماره عطف / پیگیری
-            </label>
-            <input
-              type="text"
-              value={referenceNumber}
-              onChange={(e) => setReferenceNumber(e.target.value)}
-              placeholder="مثلاً: INV-105 یا SW-902"
-              aria-label="شماره عطف"
-              className="w-full px-3 py-2 text-xs font-mono-num bg-white border border-slate-300 rounded focus:border-blue-600 focus:outline-none"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
-              نوع سند حسابداری
-            </label>
-            <select
-              value={status}
-              onChange={(e) => setStatus(e.target.value as 'temporary' | 'permanent')}
-              aria-label="نوع سند حسابداری"
-              className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded focus:border-blue-600 focus:outline-none"
+          <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800">
+            <button
+              type="button"
+              onClick={() => setEntryTab('auto')}
+              className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
+                entryTab === 'auto'
+                  ? 'bg-teal-500 text-slate-950 shadow'
+                  : 'text-slate-400 hover:text-white'
+              }`}
             >
-              <option value="permanent">سند قطعی / دائم</option>
-              <option value="temporary">سند موقت (قابل ویرایش)</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
-              شرح کلی سند حسابداری *
-            </label>
-            <input
-              type="text"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="شرح کامل رویداد مالی ارزی یا ریالی..."
-              aria-label="شرح کلی سند حسابداری"
-              className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded focus:border-blue-600 focus:outline-none"
-            />
+              <Sparkles className="w-3.5 h-3.5" />
+              ثبت اتوماتیک و آسان (پیشنهادی)
+            </button>
+            <button
+              type="button"
+              onClick={() => setEntryTab('manual')}
+              className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
+                entryTab === 'manual'
+                  ? 'bg-slate-800 text-white'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <BookOpen className="w-3.5 h-3.5" />
+              ثبت سند دستی (حرفه‌ای)
+            </button>
           </div>
         </div>
 
-        {/* Voucher Lines Data Grid */}
-        <div className="overflow-x-auto border border-slate-200 rounded-lg">
-          <table className="w-full text-right border-collapse">
-            <thead>
-              <tr className="bg-slate-100 border-b border-slate-200 text-[11px] font-bold text-slate-700">
-                <th className="py-2.5 px-1.5 w-7 text-center">#</th>
-                <th className="py-2.5 px-1.5 w-40">سرفصل حساب معین</th>
-                <th className="py-2.5 px-1.5 w-36">شخص (تفضیلی) / بانک</th>
-                <th className="py-2.5 px-1.5 w-32">شرح آرتیکل</th>
-                <th className="py-2.5 px-1.5 w-24">نوع ارز</th>
-                <th className="py-2.5 px-1.5 w-28">نرخ تبدیل به ریال</th>
-                <th className="py-2.5 px-1.5 w-24">بدهکار ارزی</th>
-                <th className="py-2.5 px-1.5 w-24">بستانکار ارزی</th>
-                <th className="py-2.5 px-1.5 w-32 bg-blue-50/60 text-blue-950">معادل بدهکار (ریال)</th>
-                <th className="py-2.5 px-1.5 w-32 bg-blue-50/60 text-blue-950">معادل بستانکار (ریال)</th>
-                <th className="py-2.5 px-1.5 w-8 text-center">حذف</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200 text-xs">
-              {lines.map((line, index) => {
-                const isIRR = line.currency === 'IRR';
-                return (
-                  <tr key={line.id} className="hover:bg-slate-50/80">
-                    <td className="p-2 text-center font-mono-num text-slate-500">
-                      {index + 1}
-                    </td>
-                    <td className="p-2">
-                      <select
-                        value={line.accountCode}
-                        onChange={(e) =>
-                          handleUpdateLine(index, { accountCode: e.target.value })
-                        }
-                        aria-label={`سرفصل ردیف ${index + 1}`}
-                        className="w-full px-2 py-1.5 text-xs bg-white border border-slate-300 rounded focus:border-blue-600 focus:outline-none"
+        {successMsg && (
+          <div className="mb-5 bg-emerald-500/15 border border-emerald-500/40 rounded-xl p-3.5 flex items-center gap-2.5 text-xs text-emerald-300 font-bold">
+            <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+            <span>{successMsg}</span>
+          </div>
+        )}
+
+        {entryTab === 'auto' ? (
+          <form onSubmit={handleAutoSubmit} className="space-y-6">
+            {/* ۵ کارت انتخاب نوع عملیات اتوماتیک */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+              <button
+                type="button"
+                onClick={() => setAutoType('receive_from_person')}
+                className={`p-3.5 rounded-xl border text-right transition flex flex-col justify-between cursor-pointer ${
+                  autoType === 'receive_from_person'
+                    ? 'bg-emerald-500/15 border-emerald-500 text-white shadow-lg shadow-emerald-500/10'
+                    : 'bg-slate-950/70 border-slate-800 text-slate-400 hover:border-slate-700'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <ArrowDownLeft className="w-5 h-5 text-emerald-400" />
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold">
+                    ورود پول / ارز
+                  </span>
+                </div>
+                <div className="text-xs font-bold text-white">
+                  دریافت از شخص و واریز به بانک/صندوق
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  مشتری یا شخص پول/ارز به بانک یا صندوق شما داده است
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setAutoType('pay_to_person')}
+                className={`p-3.5 rounded-xl border text-right transition flex flex-col justify-between cursor-pointer ${
+                  autoType === 'pay_to_person'
+                    ? 'bg-rose-500/15 border-rose-500 text-white shadow-lg shadow-rose-500/10'
+                    : 'bg-slate-950/70 border-slate-800 text-slate-400 hover:border-slate-700'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <ArrowUpRight className="w-5 h-5 text-rose-400" />
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 font-bold">
+                    خروج پول / ارز
+                  </span>
+                </div>
+                <div className="text-xs font-bold text-white">پرداخت به شخص از بانک/صندوق</div>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  از بانک یا صندوق خودتان به شخص پول یا ارز پرداخت کرده‌اید
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setAutoType('bank_transfer')}
+                className={`p-3.5 rounded-xl border text-right transition flex flex-col justify-between cursor-pointer ${
+                  autoType === 'bank_transfer'
+                    ? 'bg-sky-500/15 border-sky-500 text-white shadow-lg shadow-sky-500/10'
+                    : 'bg-slate-950/70 border-slate-800 text-slate-400 hover:border-slate-700'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <ArrowLeftRight className="w-5 h-5 text-sky-400" />
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 font-bold">
+                    جابجایی داخلی
+                  </span>
+                </div>
+                <div className="text-xs font-bold text-white">انتقال بین بانک‌ها و صندوق‌ها</div>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  کارت به کارت یا جابجایی پول بین بانک‌ها و صندوق‌های خودتان
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setAutoType('expense')}
+                className={`p-3.5 rounded-xl border text-right transition flex flex-col justify-between cursor-pointer ${
+                  autoType === 'expense'
+                    ? 'bg-amber-500/15 border-amber-500 text-white shadow-lg shadow-amber-500/10'
+                    : 'bg-slate-950/70 border-slate-800 text-slate-400 hover:border-slate-700'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <Receipt className="w-5 h-5 text-amber-400" />
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold">
+                    ثبت خرج
+                  </span>
+                </div>
+                <div className="text-xs font-bold text-white">ثبت هزینه شخصی / کاری</div>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  پرداخت اجاره، حقوق، کارمزد یا هزینه‌های شخصی از بانک/صندوق
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setAutoType('income')}
+                className={`p-3.5 rounded-xl border text-right transition flex flex-col justify-between cursor-pointer ${
+                  autoType === 'income'
+                    ? 'bg-teal-500/15 border-teal-500 text-white shadow-lg shadow-teal-500/10'
+                    : 'bg-slate-950/70 border-slate-800 text-slate-400 hover:border-slate-700'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <TrendingUp className="w-5 h-5 text-teal-400" />
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-teal-500/20 text-teal-300 font-bold">
+                    شارژ حساب
+                  </span>
+                </div>
+                <div className="text-xs font-bold text-white">درآمد متفرقه / شارژ بانک</div>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  واریز درآمد متفرقه یا افزایش موجودی بانک و صندوق
+                </p>
+              </button>
+            </div>
+
+            {/* محتوای فرم بر اساس نوع عملیات انتخابی */}
+            {(autoType === 'receive_from_person' || autoType === 'pay_to_person') && (
+              <div className="space-y-5 bg-slate-950/50 border border-slate-800 rounded-xl p-5">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-bold text-slate-300 flex items-center gap-1">
+                        <User className="w-3.5 h-3.5 text-teal-400" />
+                        {autoType === 'receive_from_person'
+                          ? 'دریافت وجه/ارز از کدام شخص؟'
+                          : 'پرداخت وجه/ارز به کدام شخص؟'}
+                      </label>
+                      {onAddContact && (
+                        <button
+                          type="button"
+                          onClick={() => setShowQuickContact(!showQuickContact)}
+                          className="text-[11px] text-teal-400 hover:text-teal-300 flex items-center gap-1 cursor-pointer"
+                        >
+                          <UserPlus className="w-3 h-3" />
+                          + شخص جدید
+                        </button>
+                      )}
+                    </div>
+                    <select
+                      value={selectedContactId}
+                      onChange={(e) => setSelectedContactId(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white focus:border-teal-500 focus:outline-none"
+                    >
+                      {contacts.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name} ({c.phone || 'بدون تلفن'})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">تاریخ عملیات</label>
+                    <input
+                      type="text"
+                      value={date}
+                      onChange={(e) => setDate(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono-num"
+                    />
+                  </div>
+
+                  {/* نمایش مانده لحظه‌ای شخص انتخاب شده */}
+                  {selectedContactStatement && (
+                    <div className="bg-slate-900 border border-slate-800 rounded-lg p-2.5 flex items-center justify-between">
+                      <span className="text-xs text-slate-400">وضعیت فعلی حساب این شخص:</span>
+                      <span
+                        className={`text-xs font-bold font-mono-num ${
+                          selectedContactStatement.finalStatusIRR === 'بدهکار'
+                            ? 'text-emerald-400'
+                            : selectedContactStatement.finalStatusIRR === 'بستانکار'
+                            ? 'text-rose-400'
+                            : 'text-slate-300'
+                        }`}
                       >
-                        {moeinAccounts.map((acc) => (
-                          <option key={acc.code} value={acc.code}>
-                            {acc.code} - {acc.name}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="p-2 space-y-1">
+                        {selectedContactStatement.finalStatusIRR === 'تسویه'
+                          ? 'تسویه (۰ ریال)'
+                          : `${formatNumber(selectedContactStatement.finalBalanceIRR)} ریال (${
+                              selectedContactStatement.finalStatusIRR === 'بدهکار'
+                                ? 'طلب ما از ایشان'
+                                : 'بدهی ما به ایشان'
+                            })`}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {showQuickContact && (
+                  <div className="bg-slate-900 border border-teal-500/40 rounded-xl p-3 flex flex-wrap items-end gap-3">
+                    <div className="flex-1 min-w-[200px]">
+                      <label className="block text-[11px] text-teal-300 mb-1">نام شخص</label>
+                      <input
+                        type="text"
+                        value={newContactName}
+                        onChange={(e) => setNewContactName(e.target.value)}
+                        placeholder="مثلاً: رضا محمدی"
+                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white"
+                      />
+                    </div>
+                    <div className="w-48">
+                      <label className="block text-[11px] text-slate-400 mb-1">شماره تماس</label>
+                      <input
+                        type="text"
+                        value={newContactPhone}
+                        onChange={(e) => setNewContactPhone(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white font-mono-num"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleQuickCreateContact}
+                      className="px-4 py-1.5 rounded-lg bg-teal-500 hover:bg-teal-400 text-slate-950 font-bold text-xs cursor-pointer"
+                    >
+                      ذخیره شخص
+                    </button>
+                  </div>
+                )}
+
+                <MultiPaymentSplitsEditor
+                  title={
+                    autoType === 'receive_from_person'
+                      ? `انتخاب بانک یا صندوق مقصد (واریز دریافتی از ${
+                          selectedContact?.name || 'شخص'
+                        })`
+                      : `انتخاب بانک یا صندوق مبدأ (برداشت جهت پرداخت به ${
+                          selectedContact?.name || 'شخص'
+                        })`
+                  }
+                  subtitle="می‌توانید یک یا چند بانک و صندوق را انتخاب کنید. اگر دریافت یا پرداخت شما ارزی (دلار، درهم، یورو، یوان) است، نوع ارز را انتخاب کرده و ارزش ریالی آن را تعیین کنید."
+                  totalTargetIRR={0}
+                  splits={splits}
+                  onChange={setSplits}
+                  banks={banks}
+                  currencies={currencies}
+                  mode={autoType === 'receive_from_person' ? 'receipt' : 'payment'}
+                  contactName={selectedContact?.name}
+                />
+              </div>
+            )}
+
+            {/* حالت ۳، ۴ و ۵: انتقال بین بانک‌ها، ثبت هزینه، یا ثبت درآمد */}
+            {(autoType === 'bank_transfer' ||
+              autoType === 'expense' ||
+              autoType === 'income') && (
+              <div className="space-y-4 bg-slate-950/50 border border-slate-800 rounded-xl p-5">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">
+                      {autoType === 'bank_transfer'
+                        ? 'از بانک یا صندوق مبدأ (برداشت)'
+                        : autoType === 'expense'
+                        ? 'پرداخت از کدام بانک یا صندوق؟'
+                        : 'واریز به کدام بانک یا صندوق؟'}
+                    </label>
+                    <select
+                      value={sourceBankId}
+                      onChange={(e) => handleSourceBankChange(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+                    >
+                      {banks.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.kind === 'cash_box' ? '📦 ' : '🏦 '}
+                          {b.bankName} ({b.currency})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {autoType === 'bank_transfer' && (
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">
+                        به بانک یا صندوق مقصد (واریز)
+                      </label>
                       <select
-                        value={line.contactId || ''}
-                        onChange={(e) =>
-                          handleUpdateLine(index, {
-                            contactId: e.target.value || undefined,
-                          })
-                        }
-                        aria-label={`طرف حساب ردیف ${index + 1}`}
-                        className="w-full px-2 py-1 text-[11px] bg-white border border-slate-300 rounded"
+                        value={destBankId}
+                        onChange={(e) => setDestBankId(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
                       >
-                        <option value="">-- بدون شخص --</option>
-                        {state.contacts.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.name} ({c.defaultCurrency})
-                          </option>
-                        ))}
-                      </select>
-                      <select
-                        value={line.bankId || ''}
-                        onChange={(e) =>
-                          handleUpdateLine(index, {
-                            bankId: e.target.value || undefined,
-                          })
-                        }
-                        aria-label={`بانک ردیف ${index + 1}`}
-                        className="w-full px-2 py-1 text-[11px] bg-slate-50 border border-slate-200 rounded"
-                      >
-                        <option value="">-- بدون بانک --</option>
-                        {state.banks.map((b) => (
+                        {banks.map((b) => (
                           <option key={b.id} value={b.id}>
+                            {b.kind === 'cash_box' ? '📦 ' : '🏦 '}
                             {b.bankName} ({b.currency})
                           </option>
                         ))}
                       </select>
-                    </td>
-                    <td className="p-2">
-                      <input
-                        type="text"
-                        value={line.description}
-                        onChange={(e) =>
-                          handleUpdateLine(index, { description: e.target.value })
-                        }
-                        placeholder="شرح ردیف..."
-                        aria-label={`شرح ردیف ${index + 1}`}
-                        className="w-full px-2 py-1.5 text-xs bg-white border border-slate-300 rounded"
-                      />
-                    </td>
-                    <td className="p-2">
+                    </div>
+                  )}
+
+                  {autoType === 'expense' && (
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">نوع هزینه</label>
                       <select
-                        value={line.currency}
-                        onChange={(e) =>
-                          handleUpdateLine(index, { currency: e.target.value })
-                        }
-                        aria-label={`ارز ردیف ${index + 1}`}
-                        className="w-full px-2 py-1.5 text-xs font-mono-num font-bold bg-white border border-slate-300 rounded"
+                        value={expenseAccountCode}
+                        onChange={(e) => setExpenseAccountCode(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
                       >
-                        {state.currencies.map((curr) => (
-                          <option key={curr.code} value={curr.code}>
-                            {curr.code} ({curr.symbol})
+                        {moeinAccounts
+                          .filter((a) => a.category === 'expense')
+                          .map((a) => (
+                            <option key={a.code} value={a.code}>
+                              {a.name}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {autoType === 'income' && (
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">منبع واریز / شارژ</label>
+                      <select
+                        value={incomeAccountCode}
+                        onChange={(e) => setIncomeAccountCode(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+                      >
+                        {moeinAccounts
+                          .filter((a) => a.category === 'revenue' || a.category === 'equity')
+                          .map((a) => (
+                            <option key={a.code} value={a.code}>
+                              {a.name}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">تاریخ</label>
+                    <input
+                      type="text"
+                      value={date}
+                      onChange={(e) => setDate(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono-num"
+                    />
+                  </div>
+                </div>
+
+                {/* مبلغ و تعیین ارزش ارز در صورت ارزی بودن */}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end pt-2">
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">نوع پول / ارز</label>
+                    <select
+                      value={txCurrency}
+                      onChange={(e) => {
+                        const c = e.target.value as CurrencyCode;
+                        setTxCurrency(c);
+                        setTxExchangeRate(getRateForCurrency(c));
+                      }}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+                    >
+                      <option value="IRR">ریال ایران (IRR)</option>
+                      {currencies
+                        .filter((c) => c.code !== 'IRR')
+                        .map((c) => (
+                          <option key={c.code} value={c.code}>
+                            {c.name} ({c.code})
                           </option>
                         ))}
-                      </select>
-                    </td>
-                    <td className="p-2">
-                      <FormattedNumberInput
-                        disabled={isIRR}
-                        value={line.exchangeRate}
-                        allowDecimals={false}
-                        onChange={(val) =>
-                          handleUpdateLine(index, {
-                            exchangeRate: val || 0,
-                          })
-                        }
-                        ariaLabel={`نرخ تبدیل ردیف ${index + 1}`}
-                        className={`w-full px-2 py-1.5 text-xs border rounded ${
-                          isIRR
-                            ? 'bg-slate-100 text-slate-400 border-slate-200'
-                            : 'bg-amber-50/50 border-amber-300 text-slate-900 font-semibold'
-                        }`}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">
+                      {txCurrency === 'IRR' ? 'مبلغ (ریال)' : `مبلغ ارزی (${txCurrency})`}
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={txAmountForeign ? formatNumber(txAmountForeign) : ''}
+                      onChange={(e) => setTxAmountForeign(parseFormattedNumber(e.target.value))}
+                      placeholder="مثلاً 10,000,000"
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono-num"
+                    />
+                  </div>
+
+                  {txCurrency !== 'IRR' && (
+                    <div>
+                      <label className="block text-xs text-amber-300 mb-1 flex items-center gap-1">
+                        <Coins className="w-3.5 h-3.5" />
+                        تعیین ارزش هر ۱ {txCurrency} (به ریال)
+                      </label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={txExchangeRate ? formatNumber(txExchangeRate) : ''}
+                        onChange={(e) => setTxExchangeRate(parseFormattedNumber(e.target.value))}
+                        className="w-full bg-amber-950/30 border border-amber-500/40 rounded-lg px-3 py-2 text-sm text-amber-200 font-mono-num"
                       />
-                    </td>
-                    <td className="p-2">
-                      <FormattedNumberInput
-                        value={line.debitForeign}
-                        allowDecimals={!isIRR}
-                        onChange={(val) =>
-                          handleUpdateLine(index, {
-                            debitForeign: val,
-                            creditForeign: 0,
-                          })
-                        }
-                        placeholder={isIRR ? '0' : '0.00'}
-                        ariaLabel={`بدهکار ارزی ردیف ${index + 1}`}
-                        className="w-full px-2 py-1.5 text-xs bg-white border border-slate-300 rounded font-bold"
-                      />
-                    </td>
-                    <td className="p-2">
-                      <FormattedNumberInput
-                        value={line.creditForeign}
-                        allowDecimals={!isIRR}
-                        onChange={(val) =>
-                          handleUpdateLine(index, {
-                            creditForeign: val,
-                            debitForeign: 0,
-                          })
-                        }
-                        placeholder={isIRR ? '0' : '0.00'}
-                        ariaLabel={`بستانکار ارزی ردیف ${index + 1}`}
-                        className="w-full px-2 py-1.5 text-xs bg-white border border-slate-300 rounded font-bold"
-                      />
-                    </td>
-                    <td dir="ltr" className="p-2 bg-blue-50/30 font-mono-num text-left font-bold text-slate-900">
-                      {formatNumber(line.debitIRR)}
-                    </td>
-                    <td dir="ltr" className="p-2 bg-blue-50/30 font-mono-num text-left font-bold text-slate-900">
-                      {formatNumber(line.creditIRR)}
-                    </td>
-                    <td className="p-2 text-center">
-                      <button
-                        type="button"
-                        disabled={lines.length <= 2}
-                        onClick={() =>
-                          setLines((prev) => prev.filter((_, idx) => idx !== index))
-                        }
-                        aria-label={`حذف ردیف ${index + 1}`}
-                        className="p-1.5 text-slate-400 hover:text-red-600 disabled:opacity-30"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-            <tfoot>
-              <tr className="bg-slate-100 border-t-2 border-slate-300 font-bold text-xs">
-                <td colSpan={6} className="py-3 px-3 text-left text-slate-700">
-                  جمع کل سند و کنترل تراز استاندارد (ریالی و ارزی):
-                </td>
-                <td colSpan={2} className="py-3 px-2 text-left font-mono-num text-slate-700">
-                  {Object.entries(balanceSummary.byCurrency).map(([curr, b]) => (
-                    <div key={curr} className="text-[11px]">
-                      {curr}: بدهکار {formatNumber(b.debitForeign, 2)} | بستانکار{' '}
-                      {formatNumber(b.creditForeign, 2)}
                     </div>
-                  ))}
-                </td>
-                <td className="py-3 px-2 text-left font-mono-num text-blue-900 bg-blue-100/60">
-                  {formatNumber(balanceSummary.totalDebitIRR)} ریال
-                </td>
-                <td className="py-3 px-2 text-left font-mono-num text-blue-900 bg-blue-100/60">
-                  {formatNumber(balanceSummary.totalCreditIRR)} ریال
-                </td>
-                <td></td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
+                  )}
 
-        {/* Actions Bar */}
-        <div className="flex flex-wrap items-center justify-between gap-4 pt-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setLines((prev) => [...prev, createEmptyLine('USD')])}
-              className="px-3.5 py-2 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-800 rounded border border-slate-300 flex items-center gap-1.5 whitespace-nowrap shrink-0"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              افزودن آرتیکل ارزی / ریالی
-            </button>
-
-            {balanceSummary.differenceIRR !== 0 && (
-              <button
-                type="button"
-                onClick={handleAutoBalanceDifference}
-                className="px-3.5 py-2 text-xs font-semibold bg-amber-50 hover:bg-amber-100 text-amber-900 rounded border border-amber-300 flex items-center gap-1.5 whitespace-nowrap shrink-0"
-              >
-                <Calculator className="w-3.5 h-3.5" />
-                تراز خودکار اختلاف ریالی ({formatNumber(Math.abs(balanceSummary.differenceIRR))} ریال)
-              </button>
+                  <div className="bg-slate-900 border border-teal-500/30 rounded-lg px-3.5 py-2 flex items-center justify-between">
+                    <span className="text-xs text-slate-400">معادل ریالی سند:</span>
+                    <span className="text-sm font-bold text-teal-400 font-mono-num">
+                      {formatNumber(txComputedIRR)} ریال
+                    </span>
+                  </div>
+                </div>
+              </div>
             )}
-          </div>
 
-          <div className="flex items-center gap-4">
-            <div className="text-xs flex items-center gap-1.5">
-              <Scale className="w-4 h-4 text-slate-500" />
-              <span>وضعیت تراز سند:</span>
-              {balanceSummary.isBalancedIRR ? (
-                <span className="font-bold text-emerald-700">
-                  تراز کامل (اختلاف: ۰ ریال)
-                </span>
-              ) : (
-                <span className="font-bold text-red-600 font-mono-num">
-                  ناتراز (اختلاف: {formatNumber(Math.abs(balanceSummary.differenceIRR))} ریال)
-                </span>
-              )}
+            {/* شرح دلخواه و دکمه ثبت اتوماتیک */}
+            <div className="flex flex-wrap items-center justify-between gap-4 pt-2">
+              <div className="flex-1 min-w-[260px]">
+                <input
+                  type="text"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="توضیحات یا بابت (اختیاری - اگر خالی بگذارید سیستم خودش شرح استاندارد می‌نویسد)..."
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3.5 py-2.5 text-xs text-white focus:border-teal-500 focus:outline-none"
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="px-6 py-2.5 rounded-xl bg-teal-500 hover:bg-teal-400 text-slate-950 font-bold text-sm flex items-center gap-2 transition shadow-lg shadow-teal-500/20 cursor-pointer"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                ثبت اتوماتیک سند مالی و به‌روزرسانی بانک/حساب
+              </button>
+            </div>
+          </form>
+        ) : (
+          /* فرم سند دستی برای کاربران حرفه‌ای */
+          <form onSubmit={handleManualSubmit} className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">تاریخ سند</label>
+                <input
+                  type="text"
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono-num"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-xs text-slate-400 mb-1">شرح کلی سند</label>
+                <input
+                  type="text"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="شرح سند..."
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+                />
+              </div>
             </div>
 
-            <button
-              type="submit"
-              className="px-5 py-2.5 text-xs font-bold bg-blue-700 hover:bg-blue-800 text-white rounded shadow-xs flex items-center gap-2 whitespace-nowrap shrink-0 cursor-pointer"
-            >
-              <CheckCircle2 className="w-4 h-4" />
-              ثبت قطعی سند و تبدیل به ریال (F2)
-            </button>
-          </div>
-        </div>
-      </form>
-
-      {/* Existing Vouchers Archive */}
-      <div className="bg-white border border-slate-200 rounded-lg p-5 space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-              <FileText className="w-4 h-4 text-blue-700" />
-              فهرست اسناد حسابداری ثبت شده (دفتر روزنامه دوارزی و ریالی)
-            </h3>
-          </div>
-          <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg">
-            {(['ALL', 'IRR', 'USD', 'AED', 'CNY', 'EUR'] as const).map((curr) => (
-              <button
-                key={curr}
-                type="button"
-                onClick={() => setSelectedVoucherFilter(curr)}
-                className={`px-3 py-1 text-xs font-medium rounded transition-colors whitespace-nowrap shrink-0 ${
-                  selectedVoucherFilter === curr
-                    ? 'bg-white text-slate-900 shadow-xs font-bold'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                {curr === 'ALL' ? 'همه اسناد' : `اسناد ${curr}`}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="space-y-3">
-          {filteredVouchers.map((voucher) => {
-            const sum = calculateVoucherBalance(voucher.lines);
-            return (
-              <div
-                key={voucher.id}
-                className="border border-slate-200 rounded-lg overflow-hidden"
-              >
-                <div className="bg-slate-50 px-4 py-2.5 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-bold text-slate-900 font-mono-num">
-                      سند شماره #{voucher.voucherNumber}
-                    </span>
-                    <span className="text-slate-300">·</span>
-                    <span className="font-mono-num text-slate-600">تاریخ: {voucher.date}</span>
-                    <span className="text-slate-300">·</span>
-                    <span className="font-semibold text-slate-800">{voucher.description}</span>
-                    {voucher.referenceNumber && (
-                      <>
-                        <span className="text-slate-300">·</span>
-                        <span className="font-mono-num text-slate-500">
-                          عطف: {voucher.referenceNumber}
-                        </span>
-                      </>
-                    )}
+            <div className="space-y-2">
+              {manualLines.map((line, idx) => (
+                <div
+                  key={line.id}
+                  className="grid grid-cols-1 md:grid-cols-12 gap-2 bg-slate-950/60 p-2.5 rounded-lg border border-slate-800 items-center"
+                >
+                  <div className="md:col-span-3">
+                    <select
+                      value={line.accountCode}
+                      onChange={(e) => {
+                        const next = [...manualLines];
+                        next[idx] = { ...next[idx], accountCode: e.target.value };
+                        setManualLines(next);
+                      }}
+                      className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white"
+                    >
+                      {moeinAccounts.map((a) => (
+                        <option key={a.code} value={a.code}>
+                          {a.code} - {a.name}
+                        </option>
+                      ))}
+                    </select>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <span className="font-mono-num font-bold text-blue-800">
-                      جمع تراز ریالی: {formatNumber(sum.totalDebitIRR)} ریال
-                    </span>
+                  <div className="md:col-span-2">
+                    <select
+                      value={line.contactId || ''}
+                      onChange={(e) => {
+                        const next = [...manualLines];
+                        next[idx] = { ...next[idx], contactId: e.target.value || undefined };
+                        setManualLines(next);
+                      }}
+                      className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white"
+                    >
+                      <option value="">-- بدون شخص --</option>
+                      {contacts.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="md:col-span-2">
+                    <select
+                      value={line.bankId || ''}
+                      onChange={(e) => {
+                        const next = [...manualLines];
+                        next[idx] = { ...next[idx], bankId: e.target.value || undefined };
+                        setManualLines(next);
+                      }}
+                      className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white"
+                    >
+                      <option value="">-- بدون بانک/صندوق --</option>
+                      {banks.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.bankName}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="md:col-span-2">
+                    <input
+                      type="text"
+                      placeholder="بدهکار (ریال)"
+                      value={line.debitIRR ? formatNumber(line.debitIRR) : ''}
+                      onChange={(e) => {
+                        const next = [...manualLines];
+                        next[idx] = {
+                          ...next[idx],
+                          debitIRR: parseFormattedNumber(e.target.value),
+                          creditIRR: 0,
+                        };
+                        setManualLines(next);
+                      }}
+                      className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white font-mono-num"
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <input
+                      type="text"
+                      placeholder="بستانکار (ریال)"
+                      value={line.creditIRR ? formatNumber(line.creditIRR) : ''}
+                      onChange={(e) => {
+                        const next = [...manualLines];
+                        next[idx] = {
+                          ...next[idx],
+                          creditIRR: parseFormattedNumber(e.target.value),
+                          debitIRR: 0,
+                        };
+                        setManualLines(next);
+                      }}
+                      className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white font-mono-num"
+                    />
+                  </div>
+                  <div className="md:col-span-1 text-center">
                     <button
                       type="button"
-                      onClick={() => onDeleteVoucher(voucher.id)}
-                      aria-label={`حذف سند ${voucher.voucherNumber}`}
-                      className="text-slate-400 hover:text-red-600 p-1"
+                      onClick={() =>
+                        manualLines.length > 2 &&
+                        setManualLines(manualLines.filter((_, i) => i !== idx))
+                      }
+                      className="text-rose-400 hover:text-rose-300 cursor-pointer"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-right text-xs border-collapse">
-                    <thead>
-                      <tr className="bg-white border-b border-slate-100 text-[11px] text-slate-500">
-                        <th className="py-1.5 px-3">کد و نام حساب معین</th>
-                        <th className="py-1.5 px-3">تفضیلی (شخص / بانک)</th>
-                        <th className="py-1.5 px-3">شرح آرتیکل</th>
-                        <th className="py-1.5 px-3">ارز پایه</th>
-                        <th className="py-1.5 px-3">نرخ تبدیل</th>
-                        <th className="py-1.5 px-3 text-left">بدهکار ارزی</th>
-                        <th className="py-1.5 px-3 text-left">بستانکار ارزی</th>
-                        <th className="py-1.5 px-3 text-left bg-slate-50">بدهکار (ریال)</th>
-                        <th className="py-1.5 px-3 text-left bg-slate-50">بستانکار (ریال)</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {voucher.lines.map((l) => (
-                        <tr key={l.id} className="hover:bg-slate-50/60">
-                          <td className="py-2 px-3 font-medium text-slate-800">
-                            <span className="font-mono-num text-slate-500 ml-1">{l.accountCode}</span>
-                            {l.accountName}
-                          </td>
-                          <td className="py-2 px-3 text-slate-600">
-                            {l.contactName || l.bankName || '—'}
-                          </td>
-                          <td className="py-2 px-3 text-slate-600">{l.description}</td>
-                          <td className="py-2 px-3 font-mono-num font-semibold text-blue-700">
-                            {l.currency}
-                          </td>
-                          <td className="py-2 px-3 font-mono-num text-slate-600">
-                            {formatNumber(l.exchangeRate)}
-                          </td>
-                          <td dir="ltr" className="py-2 px-3 font-mono-num text-left font-semibold">
-                            {l.debitForeign > 0
-                              ? `${formatCurrencyAmount(l.debitForeign, l.currency)} ${l.currency}`
-                              : '—'}
-                          </td>
-                          <td dir="ltr" className="py-2 px-3 font-mono-num text-left font-semibold">
-                            {l.creditForeign > 0
-                              ? `${formatCurrencyAmount(l.creditForeign, l.currency)} ${l.currency}`
-                              : '—'}
-                          </td>
-                          <td className="py-2 px-3 font-mono-num text-left font-semibold bg-slate-50/70">
-                            {l.debitIRR > 0 ? formatNumber(l.debitIRR) : '0'}
-                          </td>
-                          <td className="py-2 px-3 font-mono-num text-left font-semibold bg-slate-50/70">
-                            {l.creditIRR > 0 ? formatNumber(l.creditIRR) : '0'}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+              ))}
+            </div>
+
+            <div className="flex items-center justify-between pt-2">
+              <button
+                type="button"
+                onClick={() =>
+                  setManualLines([
+                    ...manualLines,
+                    {
+                      id: `ml-${Date.now()}`,
+                      accountCode: '1102',
+                      currency: 'IRR',
+                      exchangeRate: 1,
+                      debitIRR: 0,
+                      creditIRR: 0,
+                    },
+                  ])
+                }
+                className="text-xs bg-slate-800 hover:bg-slate-700 text-teal-400 px-3 py-1.5 rounded-lg flex items-center gap-1 cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                افزودن آرتیکل
+              </button>
+
+              <button
+                type="submit"
+                disabled={!isManualBalanced}
+                className="px-5 py-2 rounded-xl bg-teal-500 disabled:bg-slate-800 disabled:text-slate-500 text-slate-950 font-bold text-xs cursor-pointer"
+              >
+                ثبت سند دستی
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+
+      {/* فهرست اسناد مالی ثبت‌شده (اتوماتیک و دستی) */}
+      <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-6">
+        <h3 className="text-base font-bold text-white mb-4 flex items-center gap-2">
+          <Landmark className="w-5 h-5 text-teal-400" />
+          تاریخچه اسناد مالی و تراکنش‌های ثبت‌شده ({formatNumber(vouchers.length)} سند)
+        </h3>
+
+        <div className="space-y-3">
+          {vouchers.map((v) => {
+            const sumIRR = v.lines.reduce((s, l) => s + l.debitIRR, 0);
+            return (
+              <div
+                key={v.id}
+                className="bg-slate-950/70 border border-slate-800 rounded-xl p-4 space-y-2.5"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/80 pb-2">
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <span className="px-2 py-0.5 rounded bg-teal-500/15 text-teal-300 font-mono-num text-xs font-bold">
+                      سند #{v.voucherNumber}
+                    </span>
+                    <span className="text-xs text-slate-400 font-mono-num">{v.date}</span>
+                    <span className="text-sm font-bold text-white">{v.description}</span>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-bold text-emerald-400 font-mono-num">
+                      جمع سند: {formatNumber(sumIRR)} ریال
+                    </span>
+                    {onDeleteVoucher && v.id !== 'vch-1' && (
+                      <button
+                        type="button"
+                        onClick={() => onDeleteVoucher(v.id)}
+                        className="text-rose-400 hover:text-rose-300 p-1 rounded hover:bg-rose-500/10 cursor-pointer"
+                        title="حذف این سند"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                  {v.lines.map((ln) => {
+                    const bankObj = ln.bankId ? banks.find((b) => b.id === ln.bankId) : undefined;
+                    const contactObj = ln.contactId
+                      ? contacts.find((c) => c.id === ln.contactId)
+                      : undefined;
+                    return (
+                      <div
+                        key={ln.id}
+                        className="bg-slate-900/80 border border-slate-800/80 rounded-lg px-3 py-2 flex items-center justify-between gap-2"
+                      >
+                        <div className="truncate">
+                          <span className="font-bold text-slate-200">{ln.accountName}</span>
+                          {bankObj && (
+                            <span className="text-teal-400 mr-1.5">({bankObj.bankName})</span>
+                          )}
+                          {contactObj && (
+                            <span className="text-amber-300 mr-1.5">({contactObj.name})</span>
+                          )}
+                          <p className="text-[11px] text-slate-400 truncate mt-0.5">
+                            {ln.description}
+                          </p>
+                        </div>
+                        <div className="text-left shrink-0 font-mono-num">
+                          {ln.debitIRR > 0 ? (
+                            <span className="text-emerald-400 font-bold">
+                              بدهکار: {formatNumber(ln.debitIRR)}
+                            </span>
+                          ) : (
+                            <span className="text-rose-400 font-bold">
+                              بستانکار: {formatNumber(ln.creditIRR)}
+                            </span>
+                          )}
+                          {ln.currency !== 'IRR' && (
+                            <div className="text-[10px] text-amber-300">
+                              ({formatNumber(ln.debitForeign || ln.creditForeign)} {ln.currency} ×{' '}
+                              {formatNumber(ln.exchangeRate)})
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             );

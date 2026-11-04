@@ -42,13 +42,30 @@ export interface BankAccount {
   id: string;
   code: string;
   bankName: string;
+  kind?: 'bank' | 'cash_box'; // بانک یا صندوق نقدی/ارزی
   branchName: string;
   accountNumber: string;
   shebaOrIban: string;
   currency: CurrencyCode;
-  moeinCode: string; // Typically '1102' or '1103'
+  moeinCode: string; // '1101' (صندوق), '1102' (بانک ریالی), '1103' (بانک/صندوق ارزی)
   initialBalanceForeign: number;
   initialBalanceIRR: number;
+}
+
+/**
+ * Represents a single payment or receipt split line (ردیف دریافت یا پرداخت ترکیبی از بانک یا صندوق)
+ * Can be in IRR or any Foreign Currency with user-defined exchange rate (ارزش ریالی ارز).
+ */
+export interface PaymentSplitLine {
+  id: string;
+  bankId: string; // ID of the Bank or Cash Box (بانک یا صندوق)
+  bankName: string;
+  currency: CurrencyCode; // ارز پرداختی یا دریافتی
+  amountForeign: number; // مبلغ به ارز انتخابی (یا ریال اگر IRR باشد)
+  exchangeRate: number; // نرخ تبدیل به ریال (برای ریال = 1، برای ارز = نرخ دلخواه کاربر)
+  amountIRR: number; // معادل ریالی دقیق
+  trackingNumber: string; // شماره پیگیری / فیش / حواله
+  description?: string;
 }
 
 export interface ProductItem {
@@ -112,6 +129,7 @@ export interface JournalVoucher {
   lines: VoucherLine[];
   createdAt: string;
   invoiceId?: string;
+  autoType?: 'receive_from_person' | 'pay_to_person' | 'bank_transfer' | 'expense' | 'income' | 'invoice' | 'fx_deal' | 'manual';
 }
 
 export interface BankStatementEntry {
@@ -121,8 +139,8 @@ export interface BankStatementEntry {
   trackingNumber: string;
   description: string;
   currency: CurrencyCode;
-  depositForeign: number; // واریز به بانک (بستانکار در صورتحساب بانک)
-  withdrawalForeign: number; // برداشت از بانک (بدهکار در صورتحساب بانک)
+  depositForeign: number; // واریز به بانک
+  withdrawalForeign: number; // برداشت از بانک
   depositIRR: number;
   withdrawalIRR: number;
   matchedVoucherLineId?: string;
@@ -147,7 +165,7 @@ export interface InvoiceItem {
 export interface SalesInvoice {
   id: string;
   invoiceNumber: string;
-  type: 'sales' | 'purchase';
+  type: 'sales' | 'purchase'; // فاکتور فروش یا فاکتور خرید
   date: string;
   dueDate: string;
   contactId: string;
@@ -166,6 +184,9 @@ export interface SalesInvoice {
   totalTaxIRR: number;
   grandTotalForeign: number;
   grandTotalIRR: number;
+  payments?: PaymentSplitLine[]; // لیست دریافت‌ها یا پرداخت‌های ترکیبی چند بانکی / چند صندوقی در همان فاکتور
+  paidAmountIRR?: number; // جمع کل تسویه شده به ریال
+  remainingAmountIRR?: number; // مانده تسویه نشده در حساب شخص
   status: 'issued' | 'paid' | 'partial';
   linkedVoucherId?: string;
   notes?: string;
@@ -207,9 +228,12 @@ export interface FXDeal {
   exchangeRate: number; // نرخ معامله به ریال
   totalIRR: number; // مبلغ کل ریالی معامله
   commissionIRR: number; // کارمزد انتقال / صرافی به ریال
-  settlementMethod: 'credit_account' | 'bank_transfer' | 'cash_box';
-  targetForeignBankId?: string; // خزانه ارزی مقصد/مبدأ
-  targetRialBankId?: string; // بانک ریالی مقصد/مبدأ
+  settlementMethod: 'credit_account' | 'bank_transfer' | 'cash_box' | 'multi_split';
+  targetForeignBankId?: string; // خزانه یا صندوق ارزی مقصد/مبدأ برای خود ارز معامله‌شده
+  targetRialBankId?: string;
+  payments?: PaymentSplitLine[]; // ردیف‌های دریافت / پرداخت ترکیبی از چند بانک و چند صندوق
+  paidAmountIRR?: number; // مبلغ تسویه‌شده همزمان با معامله
+  remainingAmountIRR?: number; // مانده در حساب شخص
   trackingNumber: string; // شماره حواله / سوئیفت / پیگیری
   linkedVoucherId?: string;
   notes?: string;

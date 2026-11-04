@@ -1,867 +1,971 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { INITIAL_ACCOUNTING_STATE } from './data/initialAccountingData';
 import {
-  Account,
   AccountingState,
+  Currency,
+  Account,
+  Contact,
   BankAccount,
+  ProductItem,
+  JournalVoucher,
+  VoucherLine,
+  FXDeal,
+  SalesInvoice,
+  InventoryMovement,
   BankStatementEntry,
   BotConfig,
   BotDeliveryLog,
-  Contact,
-  CurrencyCode,
-  FXDeal,
-  InventoryMovement,
-  JournalVoucher,
-  SalesInvoice,
 } from './types/accounting';
-import { INITIAL_ACCOUNTING_STATE } from './data/initialAccountingData';
 import { DashboardOverview } from './components/DashboardOverview';
 import { FXTradingDeskView } from './components/FXTradingDeskView';
-import { StandardAccountingReportsView } from './components/StandardAccountingReportsView';
 import { VoucherEntryView } from './components/VoucherEntryView';
 import { PersonStatementsView } from './components/PersonStatementsView';
+import { BackupAndWarehouseView } from './components/BackupAndWarehouseView';
 import { InvoicesAndBotView } from './components/InvoicesAndBotView';
 import { BanksAndReconciliationView } from './components/BanksAndReconciliationView';
-import { BackupAndWarehouseView } from './components/BackupAndWarehouseView';
+import { StandardAccountingReportsView } from './components/StandardAccountingReportsView';
 import { OfflineActivationModal } from './components/OfflineActivationModal';
 import {
-  LicenseStatus,
   loadLicenseStatus,
-  lockApplicationLicense,
   fetchServerLicenseStatus,
+  LicenseStatus,
 } from './utils/offlineLicenseEngine';
 import {
-  dispatchToMessengerBot,
-  triggerBackupFileDownload,
-} from './utils/botAndBackupService';
-import {
   LayoutDashboard,
-  ArrowLeftRight,
-  Printer,
-  FilePlus2,
+  Coins,
+  Sparkles,
   Users,
-  FileSpreadsheet,
+  Package,
+  ShoppingBag,
   Landmark,
-  DatabaseBackup,
-  CheckCircle2,
-  Lock,
+  FileSpreadsheet,
+  RotateCcw,
+  ShieldCheck,
 } from 'lucide-react';
 
-const STORAGE_KEY = 'TARAZBAN_WINDOWS_ACCOUNTING_STATE_V6';
-
-type ActiveModule =
+type NavTab =
   | 'dashboard'
-  | 'fx_desk'
-  | 'reports'
-  | 'vouchers'
-  | 'statements'
   | 'invoices'
+  | 'vouchers'
+  | 'fx_desk'
+  | 'persons'
   | 'banks'
-  | 'backup';
+  | 'inventory'
+  | 'reports';
 
-export default function App() {
-  const [state, setState] = useState<AccountingState>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (
-          parsed &&
-          Array.isArray(parsed.vouchers) &&
-          Array.isArray(parsed.currencies) &&
-          Array.isArray(parsed.fxDeals)
-        ) {
-          return parsed;
-        }
-      }
-    } catch {
-      // Fallback to initial seed data
-    }
-    return INITIAL_ACCOUNTING_STATE;
-  });
+const STORAGE_KEY = 'TARAZBAN_PERSONAL_ACCOUNTING_STATE_V8';
 
-  const [activeModule, setActiveModule] = useState<ActiveModule>('dashboard');
-  const [globalBanner, setGlobalBanner] = useState<string | null>(null);
+export function App() {
   const [licenseStatus, setLicenseStatus] = useState<LicenseStatus>(() =>
     loadLicenseStatus()
   );
-  const [isVerifyingServerLicense, setIsVerifyingServerLicense] = useState<boolean>(
-    () => !loadLicenseStatus().isActivated
-  );
 
-  // Automatically check if running on a Linux Server with active server license
+  // بررسی خودکار فایل لایسنس سروری (در صورت استقرار روی هاست/سرور)
   useEffect(() => {
-    let isMounted = true;
+    if (licenseStatus.isActivated) return;
     fetchServerLicenseStatus()
-      .then((serverLic) => {
-        if (isMounted && serverLic && serverLic.isActivated) {
-          setLicenseStatus(serverLic);
+      .then((serverStatus) => {
+        if (serverStatus && serverStatus.isActivated) {
+          setLicenseStatus(serverStatus);
         }
       })
-      .finally(() => {
-        if (isMounted) {
-          setIsVerifyingServerLicense(false);
-        }
-      });
+      .catch(() => {});
+  }, [licenseStatus.isActivated]);
 
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+  const [activeTab, setActiveTab] = useState<NavTab>('dashboard');
 
-  // Persist to localStorage automatically
+  const loadInitialState = (): AccountingState | null => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (e) {
+      console.error('Failed to load state from localStorage:', e);
+    }
+    return null;
+  };
+
+  const savedState = loadInitialState();
+
+  const [currencies, setCurrencies] = useState<Currency[]>(
+    savedState?.currencies || INITIAL_ACCOUNTING_STATE.currencies
+  );
+  const [accounts, setAccounts] = useState<Account[]>(
+    savedState?.accounts || INITIAL_ACCOUNTING_STATE.accounts
+  );
+  const [contacts, setContacts] = useState<Contact[]>(
+    savedState?.contacts || INITIAL_ACCOUNTING_STATE.contacts
+  );
+  const [banks, setBanks] = useState<BankAccount[]>(
+    savedState?.banks || INITIAL_ACCOUNTING_STATE.banks
+  );
+  const [products, setProducts] = useState<ProductItem[]>(
+    savedState?.products || INITIAL_ACCOUNTING_STATE.products
+  );
+  const [vouchers, setVouchers] = useState<JournalVoucher[]>(
+    savedState?.vouchers || INITIAL_ACCOUNTING_STATE.vouchers
+  );
+  const [fxDeals, setFxDeals] = useState<FXDeal[]>(
+    savedState?.fxDeals || INITIAL_ACCOUNTING_STATE.fxDeals
+  );
+  const [invoices, setInvoices] = useState<SalesInvoice[]>(
+    savedState?.invoices || INITIAL_ACCOUNTING_STATE.invoices
+  );
+  const [movements, setMovements] = useState<InventoryMovement[]>(
+    savedState?.inventoryMovements || INITIAL_ACCOUNTING_STATE.inventoryMovements
+  );
+  const [bankStatements, setBankStatements] = useState<BankStatementEntry[]>(
+    savedState?.bankStatementEntries || INITIAL_ACCOUNTING_STATE.bankStatementEntries
+  );
+  const [botConfig, setBotConfig] = useState<BotConfig>(
+    savedState?.botConfig || INITIAL_ACCOUNTING_STATE.botConfig
+  );
+  const [botLogs, setBotLogs] = useState<BotDeliveryLog[]>(
+    savedState?.botLogs || INITIAL_ACCOUNTING_STATE.botLogs
+  );
+
+  const fullAccountingState: AccountingState = useMemo(
+    () => ({
+      companyName: INITIAL_ACCOUNTING_STATE.companyName,
+      fiscalYear: INITIAL_ACCOUNTING_STATE.fiscalYear,
+      currencies,
+      accounts,
+      contacts,
+      banks,
+      products,
+      inventoryMovements: movements,
+      vouchers,
+      bankStatementEntries: bankStatements,
+      invoices,
+      fxDeals,
+      botConfig,
+      botLogs,
+    }),
+    [
+      currencies,
+      accounts,
+      contacts,
+      banks,
+      products,
+      movements,
+      vouchers,
+      bankStatements,
+      invoices,
+      fxDeals,
+      botConfig,
+      botLogs,
+    ]
+  );
+
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch {
-      // Ignore storage quota errors
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(fullAccountingState));
+    } catch (e) {
+      console.error('Failed to save state:', e);
     }
-  }, [state]);
+  }, [fullAccountingState]);
 
-  // Windows Desktop Function Key Shortcuts (F1, F2, F3, F4, F6, F8, F9) — only active when license is unlocked
-  useEffect(() => {
-    if (!licenseStatus.isActivated) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'F1') {
-        e.preventDefault();
-        setActiveModule('fx_desk');
-      } else if (e.key === 'F2') {
-        e.preventDefault();
-        setActiveModule('vouchers');
-      } else if (e.key === 'F3') {
-        e.preventDefault();
-        setActiveModule('reports');
-      } else if (e.key === 'F4') {
-        e.preventDefault();
-        setActiveModule('statements');
-      } else if (e.key === 'F6') {
-        e.preventDefault();
-        setActiveModule('invoices');
-      } else if (e.key === 'F8') {
-        e.preventDefault();
-        setActiveModule('banks');
-      } else if (e.key === 'F9') {
-        e.preventDefault();
-        handleInstantFullBackupAndBot();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  });
-
-  const handleRecordBotLog = (log: BotDeliveryLog) => {
-    setState((prev) => ({
-      ...prev,
-      botLogs: [log, ...prev.botLogs],
-    }));
+  // تابع کمکی برای تشخیص سرفصل متناظر با بانک یا صندوق
+  const getAccountForBank = (bank?: BankAccount) => {
+    if (!bank) return { code: '1102', name: 'موجودی بانک‌های ریالی' };
+    if (bank.currency !== 'IRR') {
+      return {
+        code: '1103',
+        name: 'موجودی بانک‌ها و خزانه‌های ارزی',
+      };
+    }
+    if (bank.kind === 'cash_box') {
+      return { code: '1101', name: 'موجودی نقد و صندوق‌ها (ریالی و ارزی)' };
+    }
+    return { code: '1102', name: 'موجودی بانک‌های ریالی' };
   };
 
-  const handleInstantFullBackupAndBot = async () => {
-    triggerBackupFileDownload(state, 'TarazBan_Windows_AutoBackup');
-    const nowTime = `1404/08/12 - ${new Date().toTimeString().slice(0, 8)}`;
-
-    const logBale = await dispatchToMessengerBot({
-      platform: 'bale',
-      botToken: state.botConfig.baleBotToken,
-      chatId: state.botConfig.baleDefaultChatId,
-      recipientName: 'کانال بکاپ خودکار بله (Bale)',
-      messageType: 'backup',
-      text: `📦 بکاپ کامل خودکار سیستم خرید و فروش ارز و حسابداری ویندوز ترازبان (${state.fxDeals.length} معامله ارز، ${state.vouchers.length} سند، ${state.contacts.length} شخص)`,
-      summary: `ارسال بکاپ کامل کل اطلاعات سیستم به بازوی بله و تلگرام (${nowTime})`,
-    });
-
-    setState((prev) => ({
-      ...prev,
-      botConfig: {
-        ...prev.botConfig,
-        lastBackupTime: nowTime,
-      },
-      botLogs: [logBale, ...prev.botLogs],
-    }));
-
-    setGlobalBanner(
-      `بکاپ کامل از تمام بخش‌ها (معاملات خرید و فروش ارز، اسناد، اشخاص، بانک‌ها، فاکتورها و انبار) روی سیستم ویندوز ذخیره و به ربات بله و تلگرام ارسال شد.`
-    );
-  };
-
+  // ثبت معامله خرید و فروش ارز + ثبت خودکار اسناد دریافت/پرداخت چندبانکی و چندصندوقی
   const handleExecuteFXDeal = (deal: FXDeal) => {
-    setState((prev) => {
-      const nextVoucherNumber =
-        prev.vouchers.reduce((m, v) => Math.max(m, v.voucherNumber), 1000) + 1;
+    setFxDeals([deal, ...fxDeals]);
 
-      const fxBank = prev.banks.find((b) => b.id === deal.targetForeignBankId);
-      const isBuy = deal.type === 'buy';
+    const isBuy = deal.type === 'buy';
+    const vaultBank =
+      banks.find((b) => b.id === deal.targetForeignBankId) ||
+      banks.find((b) => b.currency === deal.currency);
+    const vaultAcc = getAccountForBank(vaultBank);
 
-      const autoVoucher: JournalVoucher = {
-        id: `vch-fx-${Date.now()}`,
-        voucherNumber: nextVoucherNumber,
+    const personAccCode = isBuy ? '2101' : '1104';
+    const personAccName = isBuy
+      ? 'حساب اشخاص و فروشندگان (بستانکاران / بدهی ما)'
+      : 'حساب اشخاص و مشتریان (بدهکاران / طلب ما)';
+
+    const vchId = deal.linkedVoucherId || `vch-fx-${Date.now()}`;
+    const vaultLineId = `ln-fx-vault-${Date.now()}-1`;
+
+    const lines: VoucherLine[] = [
+      // ۱. ردیف ورود یا خروج ارز به صندوق/حساب ارزی ما
+      {
+        id: vaultLineId,
+        accountCode: vaultAcc.code,
+        accountName: vaultAcc.name,
+        bankId: vaultBank?.id,
+        bankName: vaultBank?.bankName,
+        description: `${isBuy ? 'خرید ارز و ورود به' : 'فروش ارز و خروج از'} ${
+          vaultBank?.bankName || 'خزانه ارزی'
+        } (${deal.foreignAmount} ${deal.currency} به نرخ ${deal.exchangeRate})`,
+        currency: deal.currency,
+        exchangeRate: deal.exchangeRate,
+        debitForeign: isBuy ? deal.foreignAmount : 0,
+        creditForeign: isBuy ? 0 : deal.foreignAmount,
+        debitIRR: isBuy ? deal.totalIRR : 0,
+        creditIRR: isBuy ? 0 : deal.totalIRR,
+        trackingNumber: deal.dealNumber,
+        reconciled: true,
+      },
+      // ۲. ردیف ثبت اصل معامله در حساب شخص
+      {
+        id: `ln-fx-person-${Date.now()}-2`,
+        accountCode: personAccCode,
+        accountName: personAccName,
+        contactId: deal.contactId,
+        contactName: deal.contactName,
+        description: `${isBuy ? 'خرید' : 'فروش'} ${deal.foreignAmount} ${
+          deal.currency
+        } به نرخ ${deal.exchangeRate} ریال (${deal.dealNumber})`,
+        currency: deal.currency,
+        exchangeRate: deal.exchangeRate,
+        debitForeign: isBuy ? 0 : deal.foreignAmount,
+        creditForeign: isBuy ? deal.foreignAmount : 0,
+        debitIRR: isBuy ? 0 : deal.totalIRR,
+        creditIRR: isBuy ? deal.totalIRR : 0,
+        trackingNumber: deal.dealNumber,
+      },
+    ];
+
+    const newBankStatements: BankStatementEntry[] = [];
+    if (vaultBank) {
+      newBankStatements.push({
+        id: `bs-fx-v-${Date.now()}`,
+        bankId: vaultBank.id,
         date: deal.date,
-        description: `${
-          isBuy ? 'خرید ارز' : 'فروش ارز'
-        } (${deal.dealNumber}): ${deal.foreignAmount.toFixed(2)} ${deal.currency} به نرخ ${
-          deal.exchangeRate
-        } ریال — طرف حساب: ${deal.contactName}`,
-        referenceNumber: deal.dealNumber,
-        status: 'permanent',
-        createdAt: deal.date,
-        lines: isBuy
-          ? [
-              {
-                id: `vl-fx-d-${Date.now()}`,
-                accountCode: fxBank?.moeinCode || '1103',
-                accountName: 'موجودی بانک‌ها و صرافی‌های ارزی',
-                bankId: deal.targetForeignBankId,
-                bankName: fxBank?.bankName || 'خزانه ارزی',
-                description: `ورود ارز بابت خرید ${deal.dealNumber} (${deal.contactName})`,
-                currency: deal.currency,
-                exchangeRate: deal.exchangeRate,
-                debitForeign: deal.foreignAmount,
-                creditForeign: 0,
-                debitIRR: deal.totalIRR,
-                creditIRR: 0,
-                trackingNumber: deal.trackingNumber,
-              },
-              {
-                id: `vl-fx-c-${Date.now()}`,
-                accountCode: '2101',
-                accountName: 'حساب‌های پرداختنی تجاری (تأمین‌کنندگان / بستانکاران)',
-                contactId: deal.contactId,
-                contactName: deal.contactName,
-                description: `بستانکاری طرف حساب بابت خرید ارز ${deal.dealNumber}`,
-                currency: deal.currency,
-                exchangeRate: deal.exchangeRate,
-                debitForeign: 0,
-                creditForeign: deal.foreignAmount,
-                debitIRR: 0,
-                creditIRR: deal.totalIRR,
-                trackingNumber: deal.trackingNumber,
-              },
-            ]
-          : [
-              {
-                id: `vl-fx-d-${Date.now()}`,
-                accountCode: '1104',
-                accountName: 'حساب‌های دریافتنی تجاری (مشتریان / بدهکاران)',
-                contactId: deal.contactId,
-                contactName: deal.contactName,
-                description: `بدهکاری مشتری بابت فروش ارز ${deal.dealNumber}`,
-                currency: deal.currency,
-                exchangeRate: deal.exchangeRate,
-                debitForeign: deal.foreignAmount,
-                creditForeign: 0,
-                debitIRR: deal.totalIRR,
-                creditIRR: 0,
-                trackingNumber: deal.trackingNumber,
-              },
-              {
-                id: `vl-fx-c-${Date.now()}`,
-                accountCode: fxBank?.moeinCode || '1103',
-                accountName: 'موجودی بانک‌ها و صرافی‌های ارزی',
-                bankId: deal.targetForeignBankId,
-                bankName: fxBank?.bankName || 'خزانه ارزی',
-                description: `خروج ارز از خزانه بابت فروش ${deal.dealNumber} (${deal.contactName})`,
-                currency: deal.currency,
-                exchangeRate: deal.exchangeRate,
-                debitForeign: 0,
-                creditForeign: deal.foreignAmount,
-                debitIRR: 0,
-                creditIRR: deal.totalIRR,
-                trackingNumber: deal.trackingNumber,
-              },
-            ],
-      };
+        trackingNumber: deal.dealNumber,
+        description: `${isBuy ? 'ورود ارز خریداری‌شده' : 'خروج ارز فروخته‌شده'} (${
+          deal.contactName
+        })`,
+        currency: deal.currency,
+        depositForeign: isBuy ? deal.foreignAmount : 0,
+        withdrawalForeign: isBuy ? 0 : deal.foreignAmount,
+        depositIRR: isBuy ? deal.totalIRR : 0,
+        withdrawalIRR: isBuy ? 0 : deal.totalIRR,
+        matchedVoucherLineId: vaultLineId,
+      });
+    }
 
-      return {
-        ...prev,
-        fxDeals: [deal, ...(prev.fxDeals || [])],
-        vouchers: [autoVoucher, ...prev.vouchers],
-      };
-    });
+    // ۳. ثبت خودکار ردیف‌های دریافت یا پرداخت چند بانکی / چند صندوقی در همان سند
+    if (deal.payments && deal.payments.length > 0) {
+      deal.payments.forEach((sp, idx) => {
+        if (!sp.bankId || sp.amountIRR <= 0) return;
+        const payBank = banks.find((b) => b.id === sp.bankId);
+        const payBankAcc = getAccountForBank(payBank);
+        const isReceipt = !isBuy; // در فروش ارز، پول دریافت می‌کنیم؛ در خرید ارز، پول پرداخت می‌کنیم
+
+        const splitDesc = `${
+          isReceipt ? 'واریز به' : 'برداشت از'
+        } ${payBank?.bankName || 'بانک/صندوق'} بابت تسویه ${deal.dealNumber} (${
+          deal.contactName
+        })`;
+        const payBankLineId = `ln-fx-pay-b-${Date.now()}-${idx}`;
+        const trk = sp.trackingNumber || `${deal.dealNumber}-${idx + 1}`;
+
+        // آرتیکل بانک / صندوق
+        lines.push({
+          id: payBankLineId,
+          accountCode: payBankAcc.code,
+          accountName: payBankAcc.name,
+          bankId: sp.bankId,
+          bankName: payBank?.bankName,
+          description: splitDesc,
+          currency: sp.currency,
+          exchangeRate: sp.exchangeRate,
+          debitForeign: isReceipt ? sp.amountForeign : 0,
+          creditForeign: isReceipt ? 0 : sp.amountForeign,
+          debitIRR: isReceipt ? sp.amountIRR : 0,
+          creditIRR: isReceipt ? 0 : sp.amountIRR,
+          trackingNumber: trk,
+          reconciled: true,
+        });
+
+        // آرتیکل تسویه حساب شخص
+        lines.push({
+          id: `ln-fx-pay-p-${Date.now()}-${idx}`,
+          accountCode: personAccCode,
+          accountName: personAccName,
+          contactId: deal.contactId,
+          contactName: deal.contactName,
+          description: `${
+            isReceipt ? 'دریافت از شخص و واریز به' : 'پرداخت به شخص از'
+          } ${payBank?.bankName || 'بانک/صندوق'} بابت ${deal.dealNumber}`,
+          currency: sp.currency,
+          exchangeRate: sp.exchangeRate,
+          debitForeign: isReceipt ? 0 : sp.amountForeign,
+          creditForeign: isReceipt ? sp.amountForeign : 0,
+          debitIRR: isReceipt ? 0 : sp.amountIRR,
+          creditIRR: isReceipt ? sp.amountIRR : 0,
+          trackingNumber: trk,
+        });
+
+        newBankStatements.push({
+          id: `bs-fx-p-${Date.now()}-${idx}`,
+          bankId: sp.bankId,
+          date: deal.date,
+          trackingNumber: trk,
+          description: splitDesc,
+          currency: sp.currency,
+          depositForeign: isReceipt ? sp.amountForeign : 0,
+          withdrawalForeign: isReceipt ? 0 : sp.amountForeign,
+          depositIRR: isReceipt ? sp.amountIRR : 0,
+          withdrawalIRR: isReceipt ? 0 : sp.amountIRR,
+          matchedVoucherLineId: payBankLineId,
+        });
+      });
+    }
+
+    const autoVoucher: JournalVoucher = {
+      id: vchId,
+      voucherNumber: 1004 + vouchers.length,
+      date: deal.date,
+      description: `سند اتوماتیک ${isBuy ? 'خرید' : 'فروش'} ارز ${deal.dealNumber} (${
+        deal.contactName
+      })`,
+      referenceNumber: deal.dealNumber,
+      autoType: 'fx_deal',
+      status: 'permanent',
+      createdAt: deal.date,
+      lines,
+    };
+
+    setVouchers([autoVoucher, ...vouchers]);
+    if (newBankStatements.length > 0) {
+      setBankStatements([...newBankStatements, ...bankStatements]);
+    }
   };
 
-  const handleSaveVoucher = async (voucher: JournalVoucher) => {
-    const nowTime = `1404/08/12 - ${new Date().toTimeString().slice(0, 8)}`;
-    setState((prev) => {
-      const nextVouchers = [voucher, ...prev.vouchers];
-      const autoLog: BotDeliveryLog | null = prev.botConfig.autoBackupOnVoucherSave
-        ? {
-            id: `log-auto-${Date.now()}`,
-            timestamp: nowTime,
-            platform: 'bale',
-            recipientChatId: prev.botConfig.baleDefaultChatId,
-            recipientName: 'بکاپ خودکار بله و تلگرام',
-            messageType: 'backup',
-            status: 'simulated_local',
-            summary: `بکاپ خودکار لحظه‌ای پس از ثبت سند حسابداری شماره #${voucher.voucherNumber}`,
-          }
-        : null;
-
-      return {
-        ...prev,
-        vouchers: nextVouchers,
-        botConfig: {
-          ...prev.botConfig,
-          lastBackupTime: nowTime,
-        },
-        botLogs: autoLog ? [autoLog, ...prev.botLogs] : prev.botLogs,
-      };
-    });
-  };
-
-  const handleDeleteVoucher = (voucherId: string) => {
-    setState((prev) => ({
-      ...prev,
-      vouchers: prev.vouchers.filter((v) => v.id !== voucherId),
-    }));
-  };
-
-  const handleAddContact = (contact: Contact) => {
-    setState((prev) => ({
-      ...prev,
-      contacts: [...prev.contacts, contact],
-    }));
-  };
-
+  // صدور فاکتور خرید یا فروش + ثبت خودکار اسناد بانک‌ها و صندوق‌های ترکیبی و حساب شخص
   const handleIssueInvoice = (invoice: SalesInvoice) => {
-    setState((prev) => {
-      const nextVoucherNumber =
-        prev.vouchers.reduce((m, v) => Math.max(m, v.voucherNumber), 1000) + 1;
+    setInvoices([invoice, ...invoices]);
 
-      const salesMoeinCode = invoice.currency === 'IRR' ? '4101' : '4102';
-      const salesMoeinName =
-        invoice.currency === 'IRR'
-          ? 'درآمد فروش داخلی (ریالی)'
-          : 'درآمد فروش صادراتی و ارزی';
+    const isSales = invoice.type !== 'purchase';
 
-      const autoVoucher: JournalVoucher = {
-        id: `vch-inv-${Date.now()}`,
-        voucherNumber: nextVoucherNumber,
+    // ۱. به‌روزرسانی موجودی انبار برای کالاهای انتخاب‌شده از انبار
+    const newMovements: InventoryMovement[] = [];
+    const updatedProducts = products.map((p) => {
+      const soldItem = invoice.items.find((i) => i.productId === p.id);
+      if (!soldItem) return p;
+
+      const delta = isSales ? -soldItem.quantity : soldItem.quantity;
+      newMovements.push({
+        id: `mov-inv-${Date.now()}-${p.id}`,
         date: invoice.date,
-        description: `سند خودکار فاکتور فروش شماره ${invoice.invoiceNumber} — ${invoice.contactName}`,
-        referenceNumber: invoice.invoiceNumber,
-        invoiceId: invoice.id,
-        status: 'permanent',
-        createdAt: invoice.date,
-        lines: [
-          {
-            id: `vl-inv-d-${Date.now()}`,
-            accountCode: '1104',
-            accountName: 'حساب‌های دریافتنی تجاری (مشتریان / بدهکاران)',
-            contactId: invoice.contactId,
-            contactName: invoice.contactName,
-            description: `بدهکاری مشتری بابت فاکتور ${invoice.invoiceNumber}`,
-            currency: invoice.currency,
-            exchangeRate: invoice.exchangeRate,
-            debitForeign: invoice.grandTotalForeign,
-            creditForeign: 0,
-            debitIRR: invoice.grandTotalIRR,
-            creditIRR: 0,
-            trackingNumber: invoice.invoiceNumber,
-          },
-          {
-            id: `vl-inv-c-${Date.now()}`,
-            accountCode: salesMoeinCode,
-            accountName: salesMoeinName,
-            description: `درآمد فروش طبق فاکتور ${invoice.invoiceNumber}`,
-            currency: invoice.currency,
-            exchangeRate: invoice.exchangeRate,
-            debitForeign: 0,
-            creditForeign: invoice.grandTotalForeign,
-            debitIRR: 0,
-            creditIRR: invoice.grandTotalIRR,
-            trackingNumber: invoice.invoiceNumber,
-          },
-        ],
+        productId: p.id,
+        productSku: p.sku,
+        productName: p.name,
+        type: isSales ? 'outbound' : 'inbound',
+        quantity: soldItem.quantity,
+        unitPriceForeign: soldItem.unitPriceIRR,
+        currency: 'IRR',
+        exchangeRate: 1,
+        unitPriceIRR: soldItem.unitPriceIRR,
+        referenceDoc: invoice.invoiceNumber,
+        warehouseName: invoice.warehouseName || 'انبار مرکزی',
+        notes: `فاکتور ${isSales ? 'فروش' : 'خرید'} ${invoice.invoiceNumber}`,
+      });
+      return {
+        ...p,
+        stockQty: Math.max(0, p.stockQty + delta),
       };
+    });
 
-      const updatedProducts = prev.products.map((prod) => {
-        const soldItem = invoice.items.find((i) => i.productId === prod.id);
-        if (!soldItem) return prod;
-        return {
-          ...prod,
-          stockQty: Math.max(0, prod.stockQty - soldItem.quantity),
-        };
+    setProducts(updatedProducts);
+    if (newMovements.length > 0) {
+      setMovements([...newMovements, ...movements]);
+    }
+
+    // ۲. ساخت آرتیکل‌های سند حسابداری اتوماتیک فاکتور
+    const personAccCode = isSales ? '1104' : '2101';
+    const personAccName = isSales
+      ? 'حساب اشخاص و مشتریان (بدهکاران / طلب ما)'
+      : 'حساب اشخاص و فروشندگان (بستانکاران / بدهی ما)';
+
+    const lines: VoucherLine[] = [];
+
+    if (isSales) {
+      // بدهکار کردن مشتری بابت کل فاکتور فروش
+      lines.push({
+        id: `ln-inv-cust-${Date.now()}-1`,
+        accountCode: '1104',
+        accountName: 'حساب اشخاص و مشتریان (بدهکاران / طلب ما)',
+        contactId: invoice.contactId,
+        contactName: invoice.contactName,
+        description: `فاکتور فروش شماره ${invoice.invoiceNumber} - ${invoice.contactName}`,
+        currency: 'IRR',
+        exchangeRate: 1,
+        debitForeign: invoice.grandTotalIRR,
+        creditForeign: 0,
+        debitIRR: invoice.grandTotalIRR,
+        creditIRR: 0,
+        trackingNumber: invoice.invoiceNumber,
       });
 
-      const newMovements: InventoryMovement[] = invoice.items.map((item) => ({
-        id: `mov-inv-${Date.now()}-${item.id}`,
-        date: invoice.date,
-        productId: item.productId,
-        productSku: item.productSku,
-        productName: item.productName,
-        type: 'outbound',
-        quantity: item.quantity,
-        unitPriceForeign: item.unitPriceForeign,
-        currency: invoice.currency,
-        exchangeRate: invoice.exchangeRate,
-        unitPriceIRR: item.unitPriceIRR,
-        referenceDoc: invoice.invoiceNumber,
-        projectCode: invoice.projectCode || 'PRJ-SALES',
-        warehouseName: invoice.warehouseName,
-        notes: `خروج خودکار بابت فاکتور فروش ${invoice.invoiceNumber} (${invoice.contactName})`,
-      }));
+      // بستانکار کردن درآمد فروش
+      const netSalesIRR = invoice.subtotalIRR - invoice.totalDiscountIRR;
+      lines.push({
+        id: `ln-inv-rev-${Date.now()}-2`,
+        accountCode: '4101',
+        accountName: 'درآمد فروش ریالی',
+        description: `فروش طبق فاکتور ${invoice.invoiceNumber}`,
+        currency: 'IRR',
+        exchangeRate: 1,
+        debitForeign: 0,
+        creditForeign: netSalesIRR,
+        debitIRR: 0,
+        creditIRR: netSalesIRR,
+        trackingNumber: invoice.invoiceNumber,
+      });
 
-      return {
-        ...prev,
-        invoices: [invoice, ...prev.invoices],
-        vouchers: [autoVoucher, ...prev.vouchers],
-        products: updatedProducts,
-        inventoryMovements: [...newMovements, ...prev.inventoryMovements],
-      };
+      if (invoice.totalTaxIRR > 0) {
+        lines.push({
+          id: `ln-inv-tax-${Date.now()}-3`,
+          accountCode: '2102',
+          accountName: 'اسناد و چک‌های پرداختنی',
+          description: `مالیات فاکتور ${invoice.invoiceNumber}`,
+          currency: 'IRR',
+          exchangeRate: 1,
+          debitForeign: 0,
+          creditForeign: invoice.totalTaxIRR,
+          debitIRR: 0,
+          creditIRR: invoice.totalTaxIRR,
+        });
+      }
+    } else {
+      // فاکتور خرید: بدهکار کردن موجودی کالا/خرید (1106) و بستانکار کردن فروشنده (2101)
+      lines.push({
+        id: `ln-inv-pur-${Date.now()}-1`,
+        accountCode: '1106',
+        accountName: 'موجودی کالا و خرید انبار',
+        description: `خرید کالا/خدمات طبق فاکتور ${invoice.invoiceNumber} از ${invoice.contactName}`,
+        currency: 'IRR',
+        exchangeRate: 1,
+        debitForeign: invoice.grandTotalIRR,
+        creditForeign: 0,
+        debitIRR: invoice.grandTotalIRR,
+        creditIRR: 0,
+        trackingNumber: invoice.invoiceNumber,
+      });
+
+      lines.push({
+        id: `ln-inv-sup-${Date.now()}-2`,
+        accountCode: '2101',
+        accountName: 'حساب اشخاص و فروشندگان (بستانکاران / بدهی ما)',
+        contactId: invoice.contactId,
+        contactName: invoice.contactName,
+        description: `فاکتور خرید شماره ${invoice.invoiceNumber} - ${invoice.contactName}`,
+        currency: 'IRR',
+        exchangeRate: 1,
+        debitForeign: 0,
+        creditForeign: invoice.grandTotalIRR,
+        debitIRR: 0,
+        creditIRR: invoice.grandTotalIRR,
+        trackingNumber: invoice.invoiceNumber,
+      });
+    }
+
+    // ۳. ثبت خودکار تمامی ردیف‌های دریافت یا پرداخت ترکیبی (چند بانکی / چند صندوقی / ارزی)
+    const newBankStatements: BankStatementEntry[] = [];
+    if (invoice.payments && invoice.payments.length > 0) {
+      invoice.payments.forEach((sp, idx) => {
+        if (!sp.bankId || sp.amountIRR <= 0) return;
+        const payBank = banks.find((b) => b.id === sp.bankId);
+        const payBankAcc = getAccountForBank(payBank);
+
+        const splitDesc = `${
+          isSales ? 'دریافت وجه فاکتور فروش و واریز به' : 'پرداخت وجه فاکتور خرید از'
+        } ${payBank?.bankName || 'بانک/صندوق'} بابت ${invoice.invoiceNumber} (${
+          invoice.contactName
+        })`;
+        const payBankLineId = `ln-inv-pay-b-${Date.now()}-${idx}`;
+        const trk = sp.trackingNumber || `${invoice.invoiceNumber}-${idx + 1}`;
+
+        // ردیف بانک یا صندوق
+        lines.push({
+          id: payBankLineId,
+          accountCode: payBankAcc.code,
+          accountName: payBankAcc.name,
+          bankId: sp.bankId,
+          bankName: payBank?.bankName,
+          description: splitDesc,
+          currency: sp.currency,
+          exchangeRate: sp.exchangeRate,
+          debitForeign: isSales ? sp.amountForeign : 0,
+          creditForeign: isSales ? 0 : sp.amountForeign,
+          debitIRR: isSales ? sp.amountIRR : 0,
+          creditIRR: isSales ? 0 : sp.amountIRR,
+          trackingNumber: trk,
+          reconciled: true,
+        });
+
+        // ردیف کسر از حساب شخص (تسویه)
+        lines.push({
+          id: `ln-inv-pay-p-${Date.now()}-${idx}`,
+          accountCode: personAccCode,
+          accountName: personAccName,
+          contactId: invoice.contactId,
+          contactName: invoice.contactName,
+          description: `${
+            isSales ? 'تسویه/دریافت از مشتری به' : 'تسویه/پرداخت به فروشنده از'
+          } ${payBank?.bankName || 'بانک/صندوق'} (${
+            sp.currency !== 'IRR'
+              ? `${sp.amountForeign} ${sp.currency} به نرخ ${sp.exchangeRate}`
+              : `${sp.amountIRR} ریال`
+          })`,
+          currency: sp.currency,
+          exchangeRate: sp.exchangeRate,
+          debitForeign: isSales ? 0 : sp.amountForeign,
+          creditForeign: isSales ? sp.amountForeign : 0,
+          debitIRR: isSales ? 0 : sp.amountIRR,
+          creditIRR: isSales ? sp.amountIRR : 0,
+          trackingNumber: trk,
+        });
+
+        newBankStatements.push({
+          id: `bs-inv-${Date.now()}-${idx}`,
+          bankId: sp.bankId,
+          date: invoice.date,
+          trackingNumber: trk,
+          description: splitDesc,
+          currency: sp.currency,
+          depositForeign: isSales ? sp.amountForeign : 0,
+          withdrawalForeign: isSales ? 0 : sp.amountForeign,
+          depositIRR: isSales ? sp.amountIRR : 0,
+          withdrawalIRR: isSales ? 0 : sp.amountIRR,
+          matchedVoucherLineId: payBankLineId,
+        });
+      });
+    }
+
+    const vchId = invoice.linkedVoucherId || `vch-inv-${Date.now()}`;
+    const autoVoucher: JournalVoucher = {
+      id: vchId,
+      voucherNumber: 1004 + vouchers.length,
+      date: invoice.date,
+      description: `سند اتوماتیک فاکتور ${isSales ? 'فروش' : 'خرید'} ${
+        invoice.invoiceNumber
+      } (${invoice.contactName})`,
+      referenceNumber: invoice.invoiceNumber,
+      invoiceId: invoice.id,
+      autoType: 'invoice',
+      status: 'permanent',
+      createdAt: invoice.date,
+      lines,
+    };
+
+    setVouchers([autoVoucher, ...vouchers]);
+    if (newBankStatements.length > 0) {
+      setBankStatements([...newBankStatements, ...bankStatements]);
+    }
+  };
+
+  // ثبت سند مالی (اتوماتیک یا دستی) + همگام‌سازی خودکار صورتحساب بانک
+  const handleAddVoucher = (v: JournalVoucher) => {
+    setVouchers([v, ...vouchers]);
+
+    const newStatements: BankStatementEntry[] = [];
+    v.lines.forEach((ln, idx) => {
+      if (ln.bankId && (ln.debitIRR > 0 || ln.creditIRR > 0)) {
+        newStatements.push({
+          id: `bs-vch-${Date.now()}-${idx}`,
+          bankId: ln.bankId,
+          date: v.date,
+          trackingNumber: ln.trackingNumber || `VCH-${v.voucherNumber}-${idx + 1}`,
+          description: ln.description || v.description,
+          currency: ln.currency,
+          depositForeign: ln.debitForeign || ln.debitIRR,
+          withdrawalForeign: ln.creditForeign || ln.creditIRR,
+          depositIRR: ln.debitIRR,
+          withdrawalIRR: ln.creditIRR,
+          matchedVoucherLineId: ln.id,
+        });
+      }
     });
+
+    if (newStatements.length > 0) {
+      setBankStatements([...newStatements, ...bankStatements]);
+    }
   };
 
-  const handleAddBank = (bank: BankAccount) => {
-    setState((prev) => ({
-      ...prev,
-      banks: [...prev.banks, bank],
-    }));
-  };
+  // تعریف بانک یا صندوق جدید + صدور خودکار سند موجودی اولیه
+  const handleAddBank = (newBank: BankAccount) => {
+    const initForeign = newBank.initialBalanceForeign || 0;
+    const initIRR = newBank.initialBalanceIRR || 0;
 
-  const handleAddBankStatementEntry = (entry: BankStatementEntry) => {
-    setState((prev) => ({
-      ...prev,
-      bankStatementEntries: [...prev.bankStatementEntries, entry],
-    }));
-  };
+    // ذخیره بانک با موجودی اولیه صفر در فیلد پایه و ثبت موجودی اولیه در سند افتتاحیه تا تراز آزمایشی و بانک ۱۰۰٪ منطبق باشند
+    const cleanBank: BankAccount = {
+      ...newBank,
+      initialBalanceForeign: 0,
+      initialBalanceIRR: 0,
+    };
+    setBanks([...banks, cleanBank]);
 
-  const handleRecordBankDiscrepancyVoucher = (
-    entry: BankStatementEntry,
-    bank: BankAccount
-  ) => {
-    setState((prev) => {
-      const nextNum =
-        prev.vouchers.reduce((m, v) => Math.max(m, v.voucherNumber), 1000) + 1;
+    if (initIRR > 0) {
+      const bankAcc = getAccountForBank(cleanBank);
       const rate =
-        prev.currencies.find((c) => c.code === entry.currency)?.defaultRateToIRR || 1;
-      const isDeposit = entry.depositForeign > 0;
-      const amountF = isDeposit ? entry.depositForeign : entry.withdrawalForeign;
-      const amountR = isDeposit ? entry.depositIRR : entry.withdrawalIRR;
+        cleanBank.currency === 'IRR'
+          ? 1
+          : currencies.find((c) => c.code === cleanBank.currency)?.defaultRateToIRR || 1;
+      const vchId = `vch-init-bnk-${Date.now()}`;
+      const lineId = `ln-ib-1-${Date.now()}`;
 
-      const bankLineId = `vl-rec-b-${Date.now()}`;
-      const newVoucher: JournalVoucher = {
-        id: `vch-rec-${Date.now()}`,
-        voucherNumber: nextNum,
-        date: entry.date,
-        description: `سند تعدیل مغایرت بانکی (${bank.bankName}): ${entry.description}`,
-        referenceNumber: entry.trackingNumber,
+      const initVoucher: JournalVoucher = {
+        id: vchId,
+        voucherNumber: 1004 + vouchers.length,
+        date: '1404/08/12',
+        description: `سند موجودی اولیه ${cleanBank.bankName}`,
         status: 'permanent',
-        createdAt: entry.date,
+        createdAt: '1404/08/12',
+        autoType: 'income',
         lines: [
           {
-            id: bankLineId,
-            accountCode: bank.moeinCode,
-            accountName:
-              bank.currency === 'IRR'
-                ? 'موجودی بانک‌های ریالی'
-                : 'موجودی بانک‌ها و صرافی‌های ارزی',
-            bankId: bank.id,
-            bankName: bank.bankName,
-            description: entry.description,
-            currency: entry.currency,
+            id: lineId,
+            accountCode: bankAcc.code,
+            accountName: bankAcc.name,
+            bankId: cleanBank.id,
+            bankName: cleanBank.bankName,
+            description: `موجودی اولیه ${cleanBank.bankName}`,
+            currency: cleanBank.currency,
             exchangeRate: rate,
-            debitForeign: isDeposit ? amountF : 0,
-            creditForeign: isDeposit ? 0 : amountF,
-            debitIRR: isDeposit ? amountR : 0,
-            creditIRR: isDeposit ? 0 : amountR,
-            trackingNumber: entry.trackingNumber,
+            debitForeign: initForeign,
+            creditForeign: 0,
+            debitIRR: initIRR,
+            creditIRR: 0,
+            trackingNumber: `INIT-${cleanBank.code}`,
             reconciled: true,
           },
           {
-            id: `vl-rec-exp-${Date.now()}`,
-            accountCode: '5202',
-            accountName: 'هزینه کارمزد بانکی و حوالجات ارزی',
-            description: `ثبت مغایرت صورتحساب بانک (${entry.description})`,
-            currency: entry.currency,
-            exchangeRate: rate,
-            debitForeign: isDeposit ? 0 : amountF,
-            creditForeign: isDeposit ? amountF : 0,
-            debitIRR: isDeposit ? 0 : amountR,
-            creditIRR: isDeposit ? amountR : 0,
-            trackingNumber: entry.trackingNumber,
+            id: `ln-ib-2-${Date.now()}`,
+            accountCode: '3101',
+            accountName: 'سرمایه و موجودی اول دوره',
+            description: `موجودی اولیه ${cleanBank.bankName}`,
+            currency: 'IRR',
+            exchangeRate: 1,
+            debitForeign: 0,
+            creditForeign: initIRR,
+            debitIRR: 0,
+            creditIRR: initIRR,
           },
         ],
       };
 
-      const updatedStatements = prev.bankStatementEntries.map((st) =>
-        st.id === entry.id ? { ...st, matchedVoucherLineId: bankLineId } : st
-      );
-
-      return {
-        ...prev,
-        vouchers: [newVoucher, ...prev.vouchers],
-        bankStatementEntries: updatedStatements,
-      };
-    });
-  };
-
-  const handleAddAccount = (account: Account) => {
-    setState((prev) => ({
-      ...prev,
-      accounts: [...prev.accounts, account].sort((a, b) =>
-        a.code.localeCompare(b.code)
-      ),
-    }));
-  };
-
-  const handleUpdateCurrencyRate = (code: CurrencyCode, newRate: number) => {
-    setState((prev) => ({
-      ...prev,
-      currencies: prev.currencies.map((c) =>
-        c.code === code ? { ...c, defaultRateToIRR: newRate } : c
-      ),
-    }));
-  };
-
-  const handleUpdateBotConfig = (patch: Partial<BotConfig>) => {
-    setState((prev) => ({
-      ...prev,
-      botConfig: { ...prev.botConfig, ...patch },
-    }));
-  };
-
-  const handleRecordInventoryMovement = (movement: InventoryMovement) => {
-    setState((prev) => {
-      const updatedProducts = prev.products.map((p) => {
-        if (p.id !== movement.productId) return p;
-        const delta =
-          movement.type === 'inbound' ? movement.quantity : -movement.quantity;
-        return {
-          ...p,
-          stockQty: Math.max(0, p.stockQty + delta),
-        };
-      });
-      return {
-        ...prev,
-        products: updatedProducts,
-        inventoryMovements: [movement, ...prev.inventoryMovements],
-      };
-    });
-  };
-
-  // HARD BLOCK: The application MUST NOT work or render any feature until activated (via Linux Server License or Windows hardware key)
-  if (!licenseStatus.isActivated) {
-    if (isVerifyingServerLicense) {
-      return (
-        <div className="min-h-screen w-full bg-slate-900 flex flex-col items-center justify-center p-4 text-white">
-          <div className="flex items-center gap-3 text-slate-300 text-sm">
-            <div className="w-5 h-5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
-            <span>در حال بررسی مجوز فعال‌سازی سرور...</span>
-          </div>
-        </div>
-      );
+      setVouchers([initVoucher, ...vouchers]);
+      setBankStatements([
+        {
+          id: `bs-ib-${Date.now()}`,
+          bankId: cleanBank.id,
+          date: initVoucher.date,
+          trackingNumber: `INIT-${cleanBank.code}`,
+          description: `موجودی اولیه ${cleanBank.bankName}`,
+          currency: cleanBank.currency,
+          depositForeign: initForeign,
+          withdrawalForeign: 0,
+          depositIRR: initIRR,
+          withdrawalIRR: 0,
+          matchedVoucherLineId: lineId,
+        },
+        ...bankStatements,
+      ]);
     }
+  };
 
+  const handleRegisterMovement = (mov: InventoryMovement) => {
+    setMovements([mov, ...movements]);
+    setProducts(
+      products.map((p) => {
+        if (p.id === mov.productId) {
+          const delta = mov.type === 'inbound' ? mov.quantity : -mov.quantity;
+          return { ...p, stockQty: Math.max(0, p.stockQty + delta) };
+        }
+        return p;
+      })
+    );
+  };
+
+  const handleRestoreFullBackup = (restored: AccountingState) => {
+    setCurrencies(restored.currencies || INITIAL_ACCOUNTING_STATE.currencies);
+    setAccounts(restored.accounts || INITIAL_ACCOUNTING_STATE.accounts);
+    setContacts(restored.contacts || INITIAL_ACCOUNTING_STATE.contacts);
+    setBanks(restored.banks || INITIAL_ACCOUNTING_STATE.banks);
+    setProducts(restored.products || INITIAL_ACCOUNTING_STATE.products);
+    setVouchers(restored.vouchers || INITIAL_ACCOUNTING_STATE.vouchers);
+    setFxDeals(restored.fxDeals || INITIAL_ACCOUNTING_STATE.fxDeals);
+    setInvoices(restored.invoices || INITIAL_ACCOUNTING_STATE.invoices);
+    setMovements(restored.inventoryMovements || INITIAL_ACCOUNTING_STATE.inventoryMovements);
+    setBankStatements(
+      restored.bankStatementEntries || INITIAL_ACCOUNTING_STATE.bankStatementEntries
+    );
+  };
+
+  const handleResetDemoData = () => {
+    localStorage.removeItem(STORAGE_KEY);
+    handleRestoreFullBackup(INITIAL_ACCOUNTING_STATE);
+  };
+
+  const navItems: { id: NavTab; label: string; icon: React.ReactNode; badge?: string }[] = [
+    {
+      id: 'dashboard',
+      label: 'خلاصه وضعیت من',
+      icon: <LayoutDashboard className="w-4 h-4" />,
+    },
+    {
+      id: 'invoices',
+      label: 'فاکتور خرید و فروش',
+      icon: <ShoppingBag className="w-4 h-4" />,
+      badge: 'چندبانکی',
+    },
+    {
+      id: 'vouchers',
+      label: 'امور مالی اتوماتیک',
+      icon: <Sparkles className="w-4 h-4" />,
+      badge: 'آسان',
+    },
+    {
+      id: 'fx_desk',
+      label: 'خرید و فروش ارز',
+      icon: <Coins className="w-4 h-4" />,
+    },
+    {
+      id: 'persons',
+      label: 'حساب اشخاص (طلب/بدهی)',
+      icon: <Users className="w-4 h-4" />,
+    },
+    {
+      id: 'banks',
+      label: 'بانک‌ها و صندوق‌ها',
+      icon: <Landmark className="w-4 h-4" />,
+    },
+    {
+      id: 'inventory',
+      label: 'انبار، کالا و پشتیبان',
+      icon: <Package className="w-4 h-4" />,
+    },
+    {
+      id: 'reports',
+      label: 'گزارش‌ها و PDF',
+      icon: <FileSpreadsheet className="w-4 h-4" />,
+    },
+  ];
+
+  if (!licenseStatus.isActivated) {
     return (
       <OfflineActivationModal
         license={licenseStatus}
-        onActivated={(newLic) => {
-          setLicenseStatus(newLic);
-          setGlobalBanner(
-            newLic.isServerLicensed
-              ? `لایسنس سرور لینوکس فعال گردید. اکنون تمام کاربران شبکه و کلاینت‌های متصل به IP بدون نیاز به فعال‌سازی مجدد می‌توانند از سیستم استفاده کنند.`
-              : `نرم‌افزار با موفقیت بر روی سخت‌افزار این سیستم (${newLic.machineId}) فعال گردید.`
-          );
-        }}
+        onActivated={(newStatus) => setLicenseStatus(newStatus)}
       />
     );
   }
 
   return (
-    <div className="min-h-screen w-full overflow-x-hidden flex flex-col bg-slate-100 text-slate-900">
-      {/* Top Bar Contract: strictly 3 zones separated by gap-8 */}
-      <header className="no-print bg-slate-900 text-white border-b border-slate-800 px-4 md:px-6 py-3 flex items-center justify-between gap-4 md:gap-8">
-        {/* Zone 1: Single text element wordmark */}
-        <a
-          href="#dashboard"
-          onClick={(e) => {
-            e.preventDefault();
-            setActiveModule('dashboard');
-          }}
-          className="text-sm md:text-base font-extrabold tracking-tight text-white whitespace-nowrap truncate max-w-[200px] sm:max-w-none shrink-0"
-        >
-          ترازبان ویندوز — خرید و فروش ارز و حسابداری دوارزی
-        </a>
+    <div className="min-h-screen bg-[#0B0F17] text-slate-100 flex flex-col">
+      {/* Top Header */}
+      <header className="sticky top-0 z-30 bg-[#0B0F17]/95 backdrop-blur-md border-b border-slate-800/80 px-6 py-3.5">
+        <div className="max-w-[1600px] mx-auto flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-teal-500 to-emerald-600 flex items-center justify-center shadow-lg shadow-teal-500/20">
+              <Coins className="w-6 h-6 text-slate-950" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2.5">
+                <h1 className="text-base font-bold text-white tracking-tight">
+                  ترازبان — حسابداری شخصی، ارزی و چندبانکی آسان
+                </h1>
+                <span className="px-2 py-0.5 text-[11px] font-semibold bg-teal-500/15 text-teal-400 border border-teal-500/30 rounded-md">
+                  سند اتوماتیک بانک و صندوق
+                </span>
+                <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 rounded-md">
+                  <ShieldCheck className="w-3 h-3" />
+                  لایسنس فعال ({licenseStatus.machineId})
+                </span>
+              </div>
+              <p className="text-xs text-slate-400">
+                طراحی‌شده برای استفاده شخصی بدون نیاز به دانش حسابداری • تسویه ترکیبی چند بانکی و چند صندوقی (ریالی و ارزی)
+              </p>
+            </div>
+          </div>
 
-        {/* Zone 2: 5 concise single-line text navigation links */}
-        <nav className="hidden lg:flex items-center gap-6 text-xs font-medium text-slate-300">
-          <button
-            type="button"
-            onClick={() => setActiveModule('dashboard')}
-            className={`hover:text-white transition-colors whitespace-nowrap shrink-0 py-1 cursor-pointer ${
-              activeModule === 'dashboard'
-                ? 'text-white font-bold underline underline-offset-8'
-                : ''
-            }`}
-          >
-            میز کار ساده
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveModule('fx_desk')}
-            className={`hover:text-white transition-colors whitespace-nowrap shrink-0 py-1 cursor-pointer ${
-              activeModule === 'fx_desk'
-                ? 'text-white font-bold underline underline-offset-8'
-                : ''
-            }`}
-          >
-            خرید و فروش ارز (F1)
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveModule('reports')}
-            className={`hover:text-white transition-colors whitespace-nowrap shrink-0 py-1 cursor-pointer ${
-              activeModule === 'reports'
-                ? 'text-white font-bold underline underline-offset-8'
-                : ''
-            }`}
-          >
-            گزارشات و PDF (F3)
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveModule('vouchers')}
-            className={`hover:text-white transition-colors whitespace-nowrap shrink-0 py-1 cursor-pointer ${
-              activeModule === 'vouchers'
-                ? 'text-white font-bold underline underline-offset-8'
-                : ''
-            }`}
-          >
-            ثبت سند دوارزی (F2)
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveModule('banks')}
-            className={`hover:text-white transition-colors whitespace-nowrap shrink-0 py-1 cursor-pointer ${
-              activeModule === 'banks'
-                ? 'text-white font-bold underline underline-offset-8'
-                : ''
-            }`}
-          >
-            بانک و سرفصل‌ها (F8)
-          </button>
-        </nav>
+          <div className="flex items-center gap-3">
+            <div className="hidden xl:flex items-center gap-4 bg-slate-900/90 border border-slate-800 rounded-xl px-3.5 py-1.5 text-xs">
+              {currencies
+                .filter((c) => !c.isBase)
+                .map((c) => (
+                  <div key={c.code} className="flex items-center gap-1.5">
+                    <span className="text-slate-400 font-semibold">{c.code}:</span>
+                    <span className="font-mono-num text-white font-bold">
+                      {c.defaultRateToIRR.toLocaleString('en-US')}
+                    </span>
+                    <span className="text-[10px] text-slate-500">ریال</span>
+                  </div>
+                ))}
+            </div>
 
-        {/* Zone 3: 1 primary action */}
-        <div className="flex items-center shrink-0">
-          <button
-            type="button"
-            onClick={handleInstantFullBackupAndBot}
-            className="px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-500 rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-          >
-            بکاپ کامل به بله و تلگرام (F9)
-          </button>
+            <button
+              onClick={handleResetDemoData}
+              title="بازگردانی داده‌های پیش‌فرض"
+              className="px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs text-slate-300 flex items-center gap-1.5 transition cursor-pointer"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-slate-400" />
+              <span className="hidden sm:inline">بازنشانی نمونه</span>
+            </button>
+          </div>
         </div>
       </header>
 
-      {/* Main Workspace Container (Sidebar + Active Viewport) */}
-      <div className="flex-1 flex flex-col md:flex-row">
-        {/* Windows Enterprise Sidebar Navigation */}
-        <aside className="no-print w-full md:w-64 bg-white border-b md:border-b-0 md:border-l border-slate-200 p-3 flex md:flex-col gap-1.5 overflow-x-auto shrink-0">
-          <button
-            type="button"
-            onClick={() => setActiveModule('dashboard')}
-            className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-              activeModule === 'dashboard'
-                ? 'bg-blue-50 text-blue-800 font-bold'
-                : 'text-slate-700 hover:bg-slate-100'
-            }`}
-          >
-            <LayoutDashboard className="w-4 h-4 shrink-0" />
-            <span>۱. میز کار ساده (شروع سریع)</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveModule('fx_desk')}
-            className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-              activeModule === 'fx_desk'
-                ? 'bg-emerald-50 text-emerald-900 font-bold'
-                : 'text-slate-700 hover:bg-slate-100'
-            }`}
-          >
-            <ArrowLeftRight className="w-4 h-4 shrink-0 text-emerald-700" />
-            <span>۲. خرید و فروش سریع ارز (F1)</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveModule('reports')}
-            className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-              activeModule === 'reports'
-                ? 'bg-blue-50 text-blue-800 font-bold'
-                : 'text-slate-700 hover:bg-slate-100'
-            }`}
-          >
-            <Printer className="w-4 h-4 shrink-0 text-blue-700" />
-            <span>۳. گزارش بانک/اشخاص/هزینه + PDF</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveModule('vouchers')}
-            className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-              activeModule === 'vouchers'
-                ? 'bg-blue-50 text-blue-800 font-bold'
-                : 'text-slate-700 hover:bg-slate-100'
-            }`}
-          >
-            <FilePlus2 className="w-4 h-4 shrink-0" />
-            <span>۴. ثبت سند و تبدیل ارز (F2)</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveModule('statements')}
-            className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-              activeModule === 'statements'
-                ? 'bg-blue-50 text-blue-800 font-bold'
-                : 'text-slate-700 hover:bg-slate-100'
-            }`}
-          >
-            <Users className="w-4 h-4 shrink-0" />
-            <span>۵. صورتحساب ریالی/ارزی اشخاص</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveModule('banks')}
-            className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-              activeModule === 'banks'
-                ? 'bg-blue-50 text-blue-800 font-bold'
-                : 'text-slate-700 hover:bg-slate-100'
-            }`}
-          >
-            <Landmark className="w-4 h-4 shrink-0" />
-            <span>۶. بانک‌ها، مغایرت و سرفصل</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveModule('invoices')}
-            className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-              activeModule === 'invoices'
-                ? 'bg-blue-50 text-blue-800 font-bold'
-                : 'text-slate-700 hover:bg-slate-100'
-            }`}
-          >
-            <FileSpreadsheet className="w-4 h-4 shrink-0" />
-            <span>۷. صدور فاکتور و ارسال با بات</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveModule('backup')}
-            className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-              activeModule === 'backup'
-                ? 'bg-blue-50 text-blue-800 font-bold'
-                : 'text-slate-700 hover:bg-slate-100'
-            }`}
-          >
-            <DatabaseBackup className="w-4 h-4 shrink-0" />
-            <span>۸. بکاپ، انبار و نسخه ویندوز</span>
-          </button>
-
-          <div className="hidden md:block mt-auto pt-4 border-t border-slate-200 px-2 space-y-1.5 text-[11px] text-slate-500">
-            <div className="font-bold text-slate-700">{state.companyName}</div>
-            <div>{state.fiscalYear} · نسخه ویندوز دسکتاپ (.EXE)</div>
-            <div className="font-mono-num text-emerald-800 font-semibold">
-              سخت‌افزار فعال: {licenseStatus.machineId}
-            </div>
-            <button
-              type="button"
-              onClick={() => setLicenseStatus(lockApplicationLicense())}
-              className="mt-1 flex items-center gap-1 text-[11px] text-rose-700 hover:underline cursor-pointer"
-            >
-              <Lock className="w-3 h-3" />
-              <span>قفل مجدد برنامه</span>
-            </button>
-          </div>
+      {/* Main Layout */}
+      <div className="max-w-[1600px] w-full mx-auto flex-1 flex flex-col lg:flex-row gap-6 p-6">
+        {/* Sidebar Navigation */}
+        <aside className="lg:w-64 shrink-0">
+          <nav className="bg-slate-900/60 border border-slate-800 rounded-xl p-2.5 space-y-1 sticky top-24">
+            {navItems.map((item) => {
+              const active = activeTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => setActiveTab(item.id)}
+                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-medium transition cursor-pointer ${
+                    active
+                      ? 'bg-teal-500 text-slate-950 font-bold shadow-md shadow-teal-500/20'
+                      : 'text-slate-300 hover:bg-slate-800/70 hover:text-white'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    {item.icon}
+                    <span>{item.label}</span>
+                  </div>
+                  {item.badge && (
+                    <span
+                      className={`px-1.5 py-0.5 text-[10px] rounded font-semibold ${
+                        active
+                          ? 'bg-slate-950/20 text-slate-950'
+                          : 'bg-teal-500/15 text-teal-400'
+                      }`}
+                    >
+                      {item.badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </nav>
         </aside>
 
-        {/* Main Active Content Area */}
-        <main className="flex-1 min-w-0 overflow-x-hidden p-4 md:p-6 max-w-[1440px] w-full mx-auto space-y-4">
-          {globalBanner && (
-            <div className="p-3.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-950 text-xs flex items-center justify-between">
-              <div className="flex items-center gap-2 font-medium">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>{globalBanner}</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setGlobalBanner(null)}
-                className="text-xs underline"
-              >
-                بستن
-              </button>
-            </div>
-          )}
-
-          {activeModule === 'dashboard' && (
+        {/* Active Module Content */}
+        <main className="flex-1 min-w-0">
+          {activeTab === 'dashboard' && (
             <DashboardOverview
-              state={state}
-              onNavigate={(tab) => setActiveModule(tab)}
-              onQuickBackup={handleInstantFullBackupAndBot}
+              currencies={currencies}
+              accounts={accounts}
+              vouchers={vouchers}
+              fxDeals={fxDeals}
+              invoices={invoices}
+              banks={banks}
+              contacts={contacts}
+              onNavigate={(tab) => setActiveTab(tab as NavTab)}
+              onUpdateCurrencies={setCurrencies}
             />
           )}
 
-          {activeModule === 'fx_desk' && (
-            <FXTradingDeskView
-              state={state}
-              onExecuteFXDeal={handleExecuteFXDeal}
-              onRecordBotLog={handleRecordBotLog}
-              onUpdateCurrencyRate={handleUpdateCurrencyRate}
-            />
-          )}
-
-          {activeModule === 'reports' && (
-            <StandardAccountingReportsView
-              state={state}
-              onRecordBotLog={handleRecordBotLog}
-            />
-          )}
-
-          {activeModule === 'vouchers' && (
-            <VoucherEntryView
-              state={state}
-              onSaveVoucher={handleSaveVoucher}
-              onDeleteVoucher={handleDeleteVoucher}
-            />
-          )}
-
-          {activeModule === 'statements' && (
-            <PersonStatementsView
-              state={state}
-              onAddContact={handleAddContact}
-              onRecordBotLog={handleRecordBotLog}
-            />
-          )}
-
-          {activeModule === 'invoices' && (
+          {activeTab === 'invoices' && (
             <InvoicesAndBotView
-              state={state}
+              invoices={invoices}
+              contacts={contacts}
+              products={products}
+              banks={banks}
+              currencies={currencies}
               onIssueInvoice={handleIssueInvoice}
-              onRecordBotLog={handleRecordBotLog}
+              onAddContact={(newContact) => setContacts([...contacts, newContact])}
+              onDeleteInvoice={(invId) => {
+                const target = invoices.find((i) => i.id === invId);
+                setInvoices(invoices.filter((i) => i.id !== invId));
+                if (target?.linkedVoucherId) {
+                  setVouchers(vouchers.filter((v) => v.id !== target.linkedVoucherId));
+                }
+              }}
             />
           )}
 
-          {activeModule === 'banks' && (
+          {activeTab === 'vouchers' && (
+            <VoucherEntryView
+              accounts={accounts}
+              contacts={contacts}
+              banks={banks}
+              currencies={currencies}
+              vouchers={vouchers}
+              onAddVoucher={handleAddVoucher}
+              onAddContact={(newContact) => setContacts([...contacts, newContact])}
+              onDeleteVoucher={(id) => {
+                setVouchers(vouchers.filter((v) => v.id !== id));
+              }}
+            />
+          )}
+
+          {activeTab === 'fx_desk' && (
+            <FXTradingDeskView
+              fxDeals={fxDeals}
+              currencies={currencies}
+              contacts={contacts}
+              banks={banks}
+              onExecuteDeal={handleExecuteFXDeal}
+              onAddContact={(newContact) => setContacts([...contacts, newContact])}
+              onDeleteDeal={(dealId) => {
+                const target = fxDeals.find((d) => d.id === dealId);
+                setFxDeals(fxDeals.filter((d) => d.id !== dealId));
+                if (target?.linkedVoucherId) {
+                  setVouchers(vouchers.filter((v) => v.id !== target.linkedVoucherId));
+                }
+              }}
+            />
+          )}
+
+          {activeTab === 'persons' && (
+            <PersonStatementsView
+              state={fullAccountingState}
+              onAddContact={(newContact) => setContacts([...contacts, newContact])}
+              onRecordBotLog={(log) => setBotLogs([log, ...botLogs])}
+            />
+          )}
+
+          {activeTab === 'banks' && (
             <BanksAndReconciliationView
-              state={state}
+              banks={banks}
+              bankStatements={bankStatements}
+              vouchers={vouchers}
+              currencies={currencies}
+              onAddBankStatement={(entry) =>
+                setBankStatements([entry, ...bankStatements])
+              }
               onAddBank={handleAddBank}
-              onAddBankStatementEntry={handleAddBankStatementEntry}
-              onRecordBankDiscrepancyVoucher={handleRecordBankDiscrepancyVoucher}
-              onAddAccount={handleAddAccount}
-              onUpdateCurrencyRate={handleUpdateCurrencyRate}
+              onDeleteBank={(id) => setBanks(banks.filter((b) => b.id !== id))}
+              onUpdateCurrencies={setCurrencies}
             />
           )}
 
-          {activeModule === 'backup' && (
+          {activeTab === 'inventory' && (
             <BackupAndWarehouseView
-              state={state}
-              onUpdateBotConfig={handleUpdateBotConfig}
-              onRecordBotLog={handleRecordBotLog}
-              onRestoreFullBackup={(restored) => setState(restored)}
-              onRecordInventoryMovement={handleRecordInventoryMovement}
+              state={fullAccountingState}
+              onUpdateBotConfig={(patch) => setBotConfig({ ...botConfig, ...patch })}
+              onRecordBotLog={(log) => setBotLogs([log, ...botLogs])}
+              onRestoreFullBackup={handleRestoreFullBackup}
+              onRecordInventoryMovement={handleRegisterMovement}
+            />
+          )}
+
+          {activeTab === 'reports' && (
+            <StandardAccountingReportsView
+              state={fullAccountingState}
+              onRecordBotLog={(log) => setBotLogs([log, ...botLogs])}
             />
           )}
         </main>
@@ -869,3 +973,4 @@ export default function App() {
     </div>
   );
 }
+export default App;

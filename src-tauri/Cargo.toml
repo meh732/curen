@@ -3,17 +3,20 @@ name = "tarazban-accounting"
 version = "1.0.0"
 description = "TarazBan Multi-Currency Accounting System"
 authors = ["TarazBan Team"]
-license = ""
-repository = "https://github.com/meh732/curen"
 edition = "2021"
 
 [build-dependencies]
-tauri-build = { version = "1.5", features = [] }
+tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "1.5", features = ["dialog-all", "fs-all", "clipboard-all", "window-all"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 
-[features]
-custom-protocol = ["tauri/custom-protocol"]
+[profile.release]
+opt-level = "s"
+lto = false
+codegen-units = 1
+panic = "abort"
+strip = true
+debug = false

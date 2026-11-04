@@ -1,64 +1,42 @@
 {
-  "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/tooling/cli/schema.json",
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "TarazBan_Accounting",
+  "version": "1.0.0",
+  "identifier": "com.tarazban.accounting",
   "build": {
-    "beforeBuildCommand": "npm run build",
     "beforeDevCommand": "npm run dev",
-    "devPath": "http://localhost:3000",
-    "distDir": "../dist"
+    "devUrl": "http://localhost:3000",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
   },
-  "package": {
-    "productName": "TarazBan_Accounting",
-    "version": "1.0.0"
-  },
-  "tauri": {
-    "allowlist": {
-      "all": false,
-      "fs": {
-        "all": true,
-        "scope": ["$APPDATA/*", "$DESKTOP/*", "$DOCUMENT/*"]
-      },
-      "dialog": {
-        "all": true
-      },
-      "clipboard": {
-        "all": true
-      },
-      "window": {
-        "all": true
-      }
-    },
-    "bundle": {
-      "active": true,
-      "targets": ["msi", "nsis"],
-      "identifier": "com.tarazban.accounting",
-      "icon": [
-        "icons/icon.ico",
-        "icons/icon.png"
-      ],
-      "resources": [],
-      "shortDescription": "Curen Multi-Currency Exchange & Accounting System",
-      "longDescription": "High-performance native desktop accounting software for Windows with offline hardware security.",
-      "copyright": "TarazBan 2026",
-      "windows": {
-        "certificateThumbprint": null,
-        "digestAlgorithm": "sha256",
-        "timestampUrl": ""
-      }
-    },
-    "security": {
-      "csp": null
-    },
+  "app": {
     "windows": [
       {
-        "fullscreen": false,
-        "height": 850,
-        "resizable": true,
         "title": "ترازبان — سیستم حسابداری و صرافی دوارزی",
         "width": 1360,
+        "height": 850,
         "minWidth": 980,
         "minHeight": 650,
+        "resizable": true,
+        "fullscreen": false,
         "center": true
       }
-    ]
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/icon.ico",
+      "icons/icon.png"
+    ],
+    "shortDescription": "Curen Multi-Currency Exchange & Accounting System",
+    "longDescription": "High-performance native desktop accounting software for Windows with offline hardware security.",
+    "copyright": "TarazBan 2026"
   }
 }

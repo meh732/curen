@@ -1,535 +1,685 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import {
-  AccountingState,
-  BotDeliveryLog,
-  CurrencyCode,
-  InvoiceItem,
   SalesInvoice,
+  InvoiceItem,
+  Contact,
+  ProductItem,
+  BankAccount,
+  Currency,
+  PaymentSplitLine,
 } from '../types/accounting';
+import { formatNumber, parseFormattedNumber } from '../utils/accountingEngine';
+import { MultiPaymentSplitsEditor } from './MultiPaymentSplitsEditor';
 import {
-  convertForeignToIRR,
-  formatCurrencyAmount,
-  formatNumber,
-} from '../utils/accountingEngine';
-import {
-  dispatchToMessengerBot,
-  formatInvoiceBotMessage,
-} from '../utils/botAndBackupService';
-import { FormattedNumberInput } from './FormattedNumberInput';
-import {
-  FileSpreadsheet,
+  ShoppingBag,
+  ShoppingCart,
   Plus,
-  Send,
-  Printer,
-  CheckCircle2,
   Trash2,
+  CheckCircle2,
+  FileText,
+  Landmark,
+  UserPlus,
+  Printer,
+  Package,
 } from 'lucide-react';
 
 interface InvoicesAndBotViewProps {
-  state: AccountingState;
+  invoices: SalesInvoice[];
+  contacts: Contact[];
+  products: ProductItem[];
+  banks: BankAccount[];
+  currencies: Currency[];
   onIssueInvoice: (invoice: SalesInvoice) => void;
-  onRecordBotLog: (log: BotDeliveryLog) => void;
+  onAddContact?: (contact: Contact) => void;
+  onDeleteInvoice?: (id: string) => void;
 }
 
 export const InvoicesAndBotView: React.FC<InvoicesAndBotViewProps> = ({
-  state,
+  invoices,
+  contacts,
+  products,
+  banks,
+  currencies,
   onIssueInvoice,
-  onRecordBotLog,
+  onAddContact,
+  onDeleteInvoice,
 }) => {
-  const [contactId, setContactId] = useState(state.contacts[0]?.id || '');
-  const [currency, setCurrency] = useState<CurrencyCode>('USD');
-  const [exchangeRate, setExchangeRate] = useState<number>(685000);
+  const [invoiceType, setInvoiceType] = useState<'sales' | 'purchase'>('sales');
+  const [invoiceNumber, setInvoiceNumber] = useState(`INV-1404-${102 + invoices.length}`);
   const [date, setDate] = useState('1404/08/12');
-  const [dueDate, setDueDate] = useState('1404/09/12');
-  const [projectCode, setProjectCode] = useState('PRJ-1404-EX');
-  const [notes, setNotes] = useState(
-    'تسویه به ارز فاکتور یا معادل ریالی به نرخ توافقی روز واریز.'
-  );
-  const [selectedProductId, setSelectedProductId] = useState(state.products[0]?.id || '');
-  const [qty, setQty] = useState<number>(2);
-  const [unitPriceForeign, setUnitPriceForeign] = useState<number>(1300);
-  const [items, setItems] = useState<InvoiceItem[]>(() => {
-    const firstProd = state.products[0];
-    if (!firstProd) return [];
-    const totalF = 2 * firstProd.defaultPriceForeign;
-    const totalR = convertForeignToIRR(totalF, 685000, 'USD');
-    return [
-      {
-        id: 'inv-itm-1',
-        productId: firstProd.id,
-        productSku: firstProd.sku,
-        productName: firstProd.name,
-        unit: firstProd.unit,
-        quantity: 2,
-        unitPriceForeign: firstProd.defaultPriceForeign,
-        unitPriceIRR: convertForeignToIRR(firstProd.defaultPriceForeign, 685000, 'USD'),
-        discountForeign: 0,
-        discountIRR: 0,
-        taxPercent: 0,
-        totalForeign: totalF,
-        totalIRR: totalR,
-      },
-    ];
-  });
+  const [contactId, setContactId] = useState(contacts[0]?.id || '');
+  const [notes, setNotes] = useState('');
 
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  // تعریف سریع شخص جدید
+  const [showQuickContact, setShowQuickContact] = useState(false);
+  const [newContactName, setNewContactName] = useState('');
+  const [newContactPhone, setNewContactPhone] = useState('');
 
-  const handleCurrencyChange = (newCurr: CurrencyCode) => {
-    setCurrency(newCurr);
-    const currObj = state.currencies.find((c) => c.code === newCurr);
-    const newRate = currObj ? currObj.defaultRateToIRR : 1;
-    setExchangeRate(newRate);
-
-    // Recalculate existing items with new rate
-    setItems((prev) =>
-      prev.map((it) => {
-        const uIRR = convertForeignToIRR(it.unitPriceForeign, newRate, newCurr);
-        const tIRR = convertForeignToIRR(it.totalForeign, newRate, newCurr);
-        return {
-          ...it,
-          unitPriceIRR: uIRR,
-          totalIRR: tIRR,
-        };
-      })
-    );
-  };
-
-  const handleRateChange = (newRate: number) => {
-    setExchangeRate(newRate);
-    setItems((prev) =>
-      prev.map((it) => ({
-        ...it,
-        unitPriceIRR: convertForeignToIRR(it.unitPriceForeign, newRate, currency),
-        totalIRR: convertForeignToIRR(it.totalForeign, newRate, currency),
-      }))
-    );
-  };
-
-  const handleAddItem = () => {
-    const prod = state.products.find((p) => p.id === selectedProductId);
-    if (!prod || qty <= 0) return;
-
-    const totalForeign = Number((qty * unitPriceForeign).toFixed(2));
-    const unitIRR = convertForeignToIRR(unitPriceForeign, exchangeRate, currency);
-    const totalIRR = convertForeignToIRR(totalForeign, exchangeRate, currency);
-
-    const newItem: InvoiceItem = {
-      id: `itm-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
-      productId: prod.id,
-      productSku: prod.sku,
-      productName: prod.name,
-      unit: prod.unit,
-      quantity: qty,
-      unitPriceForeign,
-      unitPriceIRR: unitIRR,
+  // اقلام فاکتور
+  const [items, setItems] = useState<InvoiceItem[]>([
+    {
+      id: 'item-1',
+      productId: products[0]?.id || '',
+      productSku: products[0]?.sku || 'ITEM-1',
+      productName: products[0]?.name || '',
+      unit: products[0]?.unit || 'عدد',
+      quantity: 1,
+      unitPriceForeign: products[0]?.defaultPriceIRR || 0,
+      unitPriceIRR: products[0]?.defaultPriceIRR || 0,
       discountForeign: 0,
       discountIRR: 0,
       taxPercent: 0,
-      totalForeign,
-      totalIRR,
-    };
+      totalForeign: products[0]?.defaultPriceIRR || 0,
+      totalIRR: products[0]?.defaultPriceIRR || 0,
+    },
+  ]);
 
-    setItems((prev) => [...prev, newItem]);
+  // ردیف‌های دریافت یا پرداخت ترکیبی چند بانکی / چند صندوقی
+  const [payments, setPayments] = useState<PaymentSplitLine[]>([]);
+
+  const selectedContact = contacts.find((c) => c.id === contactId);
+
+  const recalcRow = (row: InvoiceItem): InvoiceItem => {
+    const gross = row.quantity * row.unitPriceIRR;
+    const beforeTax = Math.max(0, gross - (row.discountIRR || 0));
+    const taxAmt = Math.round(beforeTax * ((row.taxPercent || 0) / 100));
+    const finalIRR = beforeTax + taxAmt;
+    return {
+      ...row,
+      unitPriceForeign: row.unitPriceIRR,
+      discountForeign: row.discountIRR,
+      totalForeign: finalIRR,
+      totalIRR: finalIRR,
+    };
   };
 
-  const totals = useMemo(() => {
-    const grandForeign = items.reduce((s, i) => s + i.totalForeign, 0);
-    const grandIRR = items.reduce((s, i) => s + i.totalIRR, 0);
-    return {
-      grandForeign: Number(grandForeign.toFixed(2)),
-      grandIRR: Math.round(grandIRR),
+  const handleInvoiceTypeChange = (newType: 'sales' | 'purchase') => {
+    setInvoiceType(newType);
+  };
+
+  const handleItemChange = (index: number, patch: Partial<InvoiceItem>) => {
+    const next = [...items];
+    let updated = { ...next[index], ...patch };
+
+    if (patch.productId !== undefined) {
+      if (patch.productId === '__custom__') {
+        updated.productId = '__custom__';
+        updated.productSku = 'CUSTOM';
+        updated.productName = '';
+        updated.unit = 'عدد';
+      } else {
+        const prod = products.find((p) => p.id === patch.productId);
+        if (prod) {
+          updated.productSku = prod.sku;
+          updated.productName = prod.name;
+          updated.unit = prod.unit;
+          updated.unitPriceIRR = prod.defaultPriceIRR;
+        }
+      }
+    }
+
+    next[index] = recalcRow(updated);
+    setItems(next);
+  };
+
+  const addItem = () => {
+    const firstProd = products[0];
+    setItems([
+      ...items,
+      recalcRow({
+        id: `item-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
+        productId: firstProd?.id || '__custom__',
+        productSku: firstProd?.sku || 'CUSTOM',
+        productName: firstProd?.name || '',
+        unit: firstProd?.unit || 'عدد',
+        quantity: 1,
+        unitPriceForeign: firstProd?.defaultPriceIRR || 0,
+        unitPriceIRR: firstProd?.defaultPriceIRR || 0,
+        discountForeign: 0,
+        discountIRR: 0,
+        taxPercent: 0,
+        totalForeign: 0,
+        totalIRR: 0,
+      }),
+    ]);
+  };
+
+  const removeItem = (index: number) => {
+    if (items.length <= 1) return;
+    setItems(items.filter((_, idx) => idx !== index));
+  };
+
+  const subtotalIRR = items.reduce((s, i) => s + i.quantity * i.unitPriceIRR, 0);
+  const totalDiscountIRR = items.reduce((s, i) => s + (i.discountIRR || 0), 0);
+  const totalTaxIRR = items.reduce((s, i) => {
+    const beforeTax = Math.max(0, i.quantity * i.unitPriceIRR - (i.discountIRR || 0));
+    return s + Math.round(beforeTax * ((i.taxPercent || 0) / 100));
+  }, 0);
+  const grandTotalIRR = items.reduce((s, i) => s + i.totalIRR, 0);
+
+  const handleQuickCreateContact = () => {
+    if (!newContactName.trim() || !onAddContact) return;
+    const newC: Contact = {
+      id: `cnt-${Date.now()}`,
+      code: `P-${1006 + contacts.length}`,
+      name: newContactName.trim(),
+      type: invoiceType === 'sales' ? 'customer' : 'supplier',
+      phone: newContactPhone.trim(),
+      defaultCurrency: 'IRR',
+      creditLimitIRR: 0,
     };
-  }, [items]);
+    onAddContact(newC);
+    setContactId(newC.id);
+    setNewContactName('');
+    setNewContactPhone('');
+    setShowQuickContact(false);
+  };
 
-  const handleCreateInvoice = (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const contact = state.contacts.find((c) => c.id === contactId);
-    if (!contact || items.length === 0) return;
+    if (!contactId || grandTotalIRR <= 0) return;
 
-    const nextInvNum = `INV-1404-${101 + state.invoices.length}`;
+    const validPayments = payments.filter((p) => p.bankId && p.amountIRR > 0);
+    const paidSum = validPayments.reduce((s, p) => s + p.amountIRR, 0);
+    const remSum = Math.max(0, grandTotalIRR - paidSum);
+
+    let status: SalesInvoice['status'] = 'issued';
+    if (paidSum >= grandTotalIRR) status = 'paid';
+    else if (paidSum > 0) status = 'partial';
+
     const newInvoice: SalesInvoice = {
       id: `inv-${Date.now()}`,
-      invoiceNumber: nextInvNum,
-      type: 'sales',
+      invoiceNumber: invoiceNumber.trim() || `INV-1404-${102 + invoices.length}`,
+      type: invoiceType,
       date,
-      dueDate,
-      contactId: contact.id,
-      contactName: contact.name,
-      currency,
-      exchangeRate,
+      dueDate: date,
+      contactId,
+      contactName: selectedContact?.name || 'مشتری / طرف حساب',
+      currency: 'IRR',
+      exchangeRate: 1,
       convertToIRRInPrint: true,
-      warehouseName: 'انبار مرکزی تهران',
-      projectCode,
+      warehouseName: 'انبار مرکزی',
+      projectCode: 'GENERAL',
       items,
-      subtotalForeign: totals.grandForeign,
-      subtotalIRR: totals.grandIRR,
-      totalDiscountForeign: 0,
-      totalDiscountIRR: 0,
-      totalTaxForeign: 0,
-      totalTaxIRR: 0,
-      grandTotalForeign: totals.grandForeign,
-      grandTotalIRR: totals.grandIRR,
-      status: 'issued',
-      notes,
+      subtotalForeign: subtotalIRR,
+      subtotalIRR,
+      totalDiscountForeign: totalDiscountIRR,
+      totalDiscountIRR,
+      totalTaxForeign: totalTaxIRR,
+      totalTaxIRR,
+      grandTotalForeign: grandTotalIRR,
+      grandTotalIRR,
+      payments: validPayments,
+      paidAmountIRR: paidSum,
+      remainingAmountIRR: remSum,
+      status,
+      linkedVoucherId: `vch-inv-${Date.now()}`,
+      notes:
+        notes.trim() ||
+        `${invoiceType === 'sales' ? 'فاکتور فروش' : 'فاکتور خرید'} - ${
+          selectedContact?.name || ''
+        }`,
     };
 
     onIssueInvoice(newInvoice);
-    setStatusMessage(
-      `فاکتور فروش شماره ${nextInvNum} به مبلغ ${formatNumber(
-        totals.grandForeign,
-        2
-      )} ${currency} (معادل ${formatNumber(
-        totals.grandIRR
-      )} ریال) صادر شد، موجودی انبار کسر گردید و سند حسابداری دوارزی آن به صورت خودکار ثبت شد.`
-    );
+    setInvoiceNumber(`INV-1404-${103 + invoices.length}`);
+    setPayments([]);
+    setNotes('');
   };
 
-  const handleSendInvoiceToCustomerBot = async (
-    invoice: SalesInvoice,
-    platform: 'bale' | 'telegram'
-  ) => {
-    const contact = state.contacts.find((c) => c.id === invoice.contactId);
-    const chatId =
-      platform === 'bale'
-        ? contact?.baleChatId || state.botConfig.baleDefaultChatId
-        : contact?.telegramChatId || state.botConfig.telegramDefaultChatId;
-    const token =
-      platform === 'bale'
-        ? state.botConfig.baleBotToken
-        : state.botConfig.telegramBotToken;
-
-    const text = formatInvoiceBotMessage(invoice, state.companyName);
-    const log = await dispatchToMessengerBot({
-      platform,
-      botToken: token,
-      chatId,
-      recipientName: invoice.contactName,
-      messageType: 'invoice',
-      text,
-      summary: `ارسال فاکتور فروش ارزی/ریالی شماره ${invoice.invoiceNumber} به مبلغ ${formatNumber(
-        invoice.grandTotalForeign,
-        2
-      )} ${invoice.currency} (${formatNumber(invoice.grandTotalIRR)} ریال) به مشتری`,
-    });
-
-    onRecordBotLog(log);
-    setStatusMessage(
-      `فاکتور شماره ${invoice.invoiceNumber} (همراه با جزئیات ارزی ${invoice.currency} و معادل ریالی) از طریق ربات ${
-        platform === 'bale' ? 'بله (Bale)' : 'تلگرام (Telegram)'
-      } برای مشتری «${invoice.contactName}» (شناسه: ${chatId}) ارسال شد.`
-    );
+  const handlePrintInvoices = () => {
+    window.print();
   };
 
   return (
     <div className="space-y-6">
-      <div className="bg-white border border-slate-200 rounded-lg p-4 flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-bold text-slate-900">
-            صدور فاکتور فروش رسمی (ریالی و ارزی) و ارسال آنی به مشتری از طریق بات بله و تلگرام
-          </h2>
-          <p className="text-xs text-slate-500 mt-0.5">
-            صدور همزمان فاکتور به ریال یا ارز خارجی (دلار، درهم، یوان، یورو) با ثبت خودکار سند حسابداری، حواله خروج انبار و ارسال به تلگرام/بله مشتری.
-          </p>
-        </div>
-      </div>
-
-      {statusMessage && (
-        <div className="p-3.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-950 text-xs flex items-center justify-between">
-          <div className="flex items-center gap-2 font-medium">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>{statusMessage}</span>
-          </div>
-          <button
-            type="button"
-            onClick={() => setStatusMessage(null)}
-            className="text-xs underline"
-          >
-            بستن
-          </button>
-        </div>
-      )}
-
-      {/* Invoice Creation Form */}
-      <form
-        onSubmit={handleCreateInvoice}
-        className="bg-white border border-slate-200 rounded-lg p-5 space-y-5"
-      >
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-          <div className="md:col-span-2">
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
-              انتخاب مشتری (طرف حساب)
-            </label>
-            <select
-              value={contactId}
-              onChange={(e) => setContactId(e.target.value)}
-              aria-label="انتخاب مشتری فاکتور"
-              className="w-full px-3 py-2 text-xs font-semibold bg-white border border-slate-300 rounded"
-            >
-              {state.contacts.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name} (چت بله: {c.baleChatId || 'پیش‌فرض'} | تلگرام: {c.telegramChatId || 'پیش‌فرض'})
-                </option>
-              ))}
-            </select>
-          </div>
-
+      {/* فرم صدور فاکتور خرید و فروش با تسویه ترکیبی */}
+      <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-6">
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-6 pb-4 border-b border-slate-800">
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
-              ارز فاکتور (ریالی / ارزی)
-            </label>
-            <select
-              value={currency}
-              onChange={(e) => handleCurrencyChange(e.target.value)}
-              aria-label="ارز فاکتور"
-              className="w-full px-3 py-2 text-xs font-mono-num font-bold bg-white border border-slate-300 rounded"
-            >
-              {state.currencies.map((c) => (
-                <option key={c.code} value={c.code}>
-                  {c.code} — {c.name}
-                </option>
-              ))}
-            </select>
+            <h2 className="text-lg font-bold text-white flex items-center gap-2">
+              {invoiceType === 'sales' ? (
+                <ShoppingBag className="w-5 h-5 text-teal-400" />
+              ) : (
+                <ShoppingCart className="w-5 h-5 text-amber-400" />
+              )}
+              ثبت سریع فاکتور خرید و فروش (با دریافت و پرداخت ترکیبی چند بانکی و چند صندوقی)
+            </h2>
+            <p className="text-xs text-slate-400 mt-1">
+              کالا یا خدمات را وارد کنید و در همین فاکتور مشخص کنید پول آن از کدام بانک‌ها یا صندوق‌ها (ریالی یا ارزی با تعیین ارزش ارز) دریافت یا پرداخت شده است تا سند بانک و حساب شخص خودکار ثبت شود.
+            </p>
           </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
-              نرخ تبدیل ارز به ریال
-            </label>
-            <FormattedNumberInput
-              disabled={currency === 'IRR'}
-              value={exchangeRate}
-              allowDecimals={false}
-              onChange={(val) => handleRateChange(val || 1)}
-              ariaLabel="نرخ تبدیل ارز فاکتور"
-              className="w-full px-3 py-2 text-xs font-bold bg-amber-50/60 border border-amber-300 rounded"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
-              کد پروژه / مرکز هزینه
-            </label>
-            <input
-              type="text"
-              value={projectCode}
-              onChange={(e) => setProjectCode(e.target.value)}
-              aria-label="کد پروژه"
-              className="w-full px-3 py-2 text-xs font-mono-num bg-white border border-slate-300 rounded"
-            />
-          </div>
-        </div>
-
-        {/* Add Product Item Row */}
-        <div className="bg-slate-50 p-3.5 rounded-lg border border-slate-200 grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
-          <div className="md:col-span-5">
-            <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-              انتخاب کالا / قطعه از انبار (موجودی لحظه‌ای)
-            </label>
-            <select
-              value={selectedProductId}
-              onChange={(e) => {
-                const pid = e.target.value;
-                setSelectedProductId(pid);
-                const prod = state.products.find((p) => p.id === pid);
-                if (prod) {
-                  setUnitPriceForeign(
-                    currency === 'IRR' ? prod.defaultPriceIRR : prod.defaultPriceForeign
-                  );
-                }
-              }}
-              aria-label="انتخاب کالا از انبار"
-              className="w-full px-2.5 py-2 text-xs bg-white border border-slate-300 rounded"
-            >
-              {state.products.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.sku} - {p.name} (موجودی: {p.stockQty} {p.unit})
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="md:col-span-2">
-            <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-              تعداد / مقدار
-            </label>
-            <FormattedNumberInput
-              value={qty}
-              allowDecimals={false}
-              onChange={(val) => setQty(val || 1)}
-              ariaLabel="تعداد کالا"
-              className="w-full px-2.5 py-2 text-xs bg-white border border-slate-300 rounded"
-            />
-          </div>
-          <div className="md:col-span-3">
-            <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-              فی واحد ({currency}) — {currency === 'IRR' ? 'بدون اعشار' : 'با اعشار'}
-            </label>
-            <FormattedNumberInput
-              value={unitPriceForeign}
-              allowDecimals={currency !== 'IRR'}
-              onChange={(val) => setUnitPriceForeign(val)}
-              ariaLabel="فی واحد کالا"
-              className="w-full px-2.5 py-2 text-xs bg-white border border-slate-300 rounded"
-            />
-          </div>
-          <div className="md:col-span-2">
+          {/* سوییچ فروش یا خرید */}
+          <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800">
             <button
               type="button"
-              onClick={handleAddItem}
-              className="w-full py-2 px-3 text-xs font-bold bg-slate-800 hover:bg-slate-900 text-white rounded flex items-center justify-center gap-1.5 cursor-pointer"
+              onClick={() => handleInvoiceTypeChange('sales')}
+              className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
+                invoiceType === 'sales'
+                  ? 'bg-teal-500 text-slate-950 shadow'
+                  : 'text-slate-400 hover:text-white'
+              }`}
             >
-              <Plus className="w-3.5 h-3.5" />
-              افزودن قلم کالا
+              <ShoppingBag className="w-4 h-4" />
+              فاکتور فروش (دریافت وجه / طلب)
+            </button>
+            <button
+              type="button"
+              onClick={() => handleInvoiceTypeChange('purchase')}
+              className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
+                invoiceType === 'purchase'
+                  ? 'bg-amber-500 text-slate-950 shadow'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <ShoppingCart className="w-4 h-4" />
+              فاکتور خرید (پرداخت وجه / بدهی)
             </button>
           </div>
         </div>
 
-        {/* Invoice Items Table */}
-        <div className="overflow-x-auto border border-slate-200 rounded-lg">
-          <table className="w-full text-right border-collapse">
-            <thead>
-              <tr className="bg-slate-100 border-b border-slate-200 text-xs font-bold text-slate-700">
-                <th className="py-2 px-3">کد کالا (SKU)</th>
-                <th className="py-2 px-3">شرح کالا / قطعه</th>
-                <th className="py-2 px-3 text-center">تعداد</th>
-                <th className="py-2 px-3 text-left">فی واحد ({currency})</th>
-                <th className="py-2 px-3 text-left">فی معادل (ریال)</th>
-                <th className="py-2 px-3 text-left bg-emerald-50">جمع کل ({currency})</th>
-                <th className="py-2 px-3 text-left bg-blue-50">جمع کل معادل (ریال)</th>
-                <th className="py-2 px-3 text-center">حذف</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200 text-xs">
-              {items.map((item) => (
-                <tr key={item.id}>
-                  <td className="py-2 px-3 font-mono-num text-slate-600">{item.productSku}</td>
-                  <td className="py-2 px-3 font-medium text-slate-900">{item.productName}</td>
-                  <td className="py-2 px-3 font-mono-num text-center font-bold">
-                    {item.quantity} {item.unit}
-                  </td>
-                  <td className="py-2 px-3 font-mono-num text-left">
-                    {formatNumber(item.unitPriceForeign, currency === 'IRR' ? 0 : 2)}
-                  </td>
-                  <td className="py-2 px-3 font-mono-num text-left">
-                    {formatNumber(item.unitPriceIRR)}
-                  </td>
-                  <td className="py-2 px-3 font-mono-num text-left font-bold bg-emerald-50/40 text-emerald-950">
-                    {formatNumber(item.totalForeign, currency === 'IRR' ? 0 : 2)} {currency}
-                  </td>
-                  <td className="py-2 px-3 font-mono-num text-left font-bold bg-blue-50/40 text-blue-950">
-                    {formatNumber(item.totalIRR)} ریال
-                  </td>
-                  <td className="py-2 px-3 text-center">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setItems((prev) => prev.filter((i) => i.id !== item.id))
-                      }
-                      aria-label={`حذف قلم ${item.productName}`}
-                      className="text-slate-400 hover:text-red-600"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="flex flex-wrap items-center justify-between gap-4 pt-2">
-          <div className="flex items-center gap-6 text-xs">
+        <form onSubmit={handleSubmit} className="space-y-5">
+          {/* مشخصات سربرگ فاکتور */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
-              <span className="text-slate-500 ml-1">مبلغ کل ارزی فاکتور:</span>
-              <strong className="font-mono-num text-sm text-emerald-800">
-                {formatNumber(totals.grandForeign, currency === 'IRR' ? 0 : 2)} {currency}
-              </strong>
+              <label className="block text-xs text-slate-400 mb-1">شماره فاکتور</label>
+              <input
+                type="text"
+                value={invoiceNumber}
+                onChange={(e) => setInvoiceNumber(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono-num focus:border-teal-500 focus:outline-none"
+                required
+              />
             </div>
+
             <div>
-              <span className="text-slate-500 ml-1">مبلغ کل معادل ریالی:</span>
-              <strong className="font-mono-num text-sm text-blue-900">
-                {formatNumber(totals.grandIRR)} ریال
-              </strong>
+              <label className="block text-xs text-slate-400 mb-1">تاریخ فاکتور</label>
+              <input
+                type="text"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono-num focus:border-teal-500 focus:outline-none"
+                required
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs text-slate-400">
+                  {invoiceType === 'sales' ? 'نام مشتری / خریدار' : 'نام فروشنده / تأمین‌کننده'}
+                </label>
+                {onAddContact && (
+                  <button
+                    type="button"
+                    onClick={() => setShowQuickContact(!showQuickContact)}
+                    className="text-[11px] text-teal-400 hover:text-teal-300 flex items-center gap-1 cursor-pointer"
+                  >
+                    <UserPlus className="w-3 h-3" />
+                    + تعریف سریع شخص جدید
+                  </button>
+                )}
+              </div>
+              <select
+                value={contactId}
+                onChange={(e) => setContactId(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:border-teal-500 focus:outline-none"
+              >
+                {contacts.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} ({c.phone || 'بدون تلفن'})
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
+          {/* فرم بازشوی تعریف سریع شخص */}
+          {showQuickContact && (
+            <div className="bg-slate-950 border border-teal-500/40 rounded-xl p-3 flex flex-wrap items-end gap-3">
+              <div className="flex-1 min-w-[200px]">
+                <label className="block text-[11px] text-teal-300 mb-1">نام کامل شخص یا شرکت</label>
+                <input
+                  type="text"
+                  value={newContactName}
+                  onChange={(e) => setNewContactName(e.target.value)}
+                  placeholder="مثلاً: علی رضایی"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white"
+                />
+              </div>
+              <div className="w-48">
+                <label className="block text-[11px] text-slate-400 mb-1">شماره تماس (اختیاری)</label>
+                <input
+                  type="text"
+                  value={newContactPhone}
+                  onChange={(e) => setNewContactPhone(e.target.value)}
+                  placeholder="0912..."
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white font-mono-num"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={handleQuickCreateContact}
+                className="px-4 py-1.5 rounded-lg bg-teal-500 hover:bg-teal-400 text-slate-950 font-bold text-xs transition cursor-pointer"
+              >
+                ذخیره و انتخاب شخص
+              </button>
+            </div>
+          )}
+
+          {/* جدول اقلام کالا یا خدمات */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                <Package className="w-4 h-4 text-teal-400" />
+                اقلام کالا یا خدمات فاکتور
+              </span>
+              <button
+                type="button"
+                onClick={addItem}
+                className="text-xs bg-slate-800 hover:bg-slate-700 text-teal-400 px-3 py-1.5 rounded-lg flex items-center gap-1 transition cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                افزودن ردیف کالا / خدمات
+              </button>
+            </div>
+
+            <div className="overflow-x-auto border border-slate-800 rounded-xl">
+              <table className="w-full text-right text-xs">
+                <thead className="bg-slate-950/90 text-slate-400 border-b border-slate-800">
+                  <tr>
+                    <th className="p-2.5 min-w-[220px]">انتخاب کالا یا شرح خدمات</th>
+                    <th className="p-2.5 w-24">تعداد</th>
+                    <th className="p-2.5 w-40">فی واحد (ریال)</th>
+                    <th className="p-2.5 w-36">تخفیف (ریال)</th>
+                    <th className="p-2.5 w-24">مالیات (%)</th>
+                    <th className="p-2.5 w-40">جمع نهایی ردیف</th>
+                    <th className="p-2.5 w-12 text-center">حذف</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60">
+                  {items.map((item, idx) => (
+                    <tr key={item.id} className="bg-slate-950/40">
+                      <td className="p-2">
+                        <div className="flex flex-col gap-1.5">
+                          <select
+                            value={item.productId}
+                            onChange={(e) =>
+                              handleItemChange(idx, { productId: e.target.value })
+                            }
+                            className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-white"
+                          >
+                            {products.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.name} (موجودی: {p.stockQty} {p.unit})
+                              </option>
+                            ))}
+                            <option value="__custom__">✏️ وارد کردن نام دلخواه کالا / خدمات...</option>
+                          </select>
+                          {item.productId === '__custom__' && (
+                            <input
+                              type="text"
+                              value={item.productName}
+                              onChange={(e) =>
+                                handleItemChange(idx, { productName: e.target.value })
+                              }
+                              placeholder="نام کالا یا شرح خدمات را بنویسید..."
+                              className="w-full bg-slate-950 border border-teal-500/40 rounded px-2 py-1 text-white"
+                              required
+                            />
+                          )}
+                        </div>
+                      </td>
+                      <td className="p-2">
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={item.quantity ? formatNumber(item.quantity) : ''}
+                          onChange={(e) =>
+                            handleItemChange(idx, {
+                              quantity: Math.max(0, parseFormattedNumber(e.target.value)),
+                            })
+                          }
+                          className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-white font-mono-num"
+                        />
+                      </td>
+                      <td className="p-2">
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={item.unitPriceIRR ? formatNumber(item.unitPriceIRR) : ''}
+                          onChange={(e) =>
+                            handleItemChange(idx, {
+                              unitPriceIRR: parseFormattedNumber(e.target.value),
+                            })
+                          }
+                          className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-white font-mono-num"
+                        />
+                      </td>
+                      <td className="p-2">
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={item.discountIRR ? formatNumber(item.discountIRR) : ''}
+                          onChange={(e) =>
+                            handleItemChange(idx, {
+                              discountIRR: parseFormattedNumber(e.target.value),
+                            })
+                          }
+                          placeholder="0"
+                          className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-white font-mono-num"
+                        />
+                      </td>
+                      <td className="p-2">
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={item.taxPercent ? formatNumber(item.taxPercent) : '0'}
+                          onChange={(e) =>
+                            handleItemChange(idx, {
+                              taxPercent: parseFormattedNumber(e.target.value),
+                            })
+                          }
+                          className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-white font-mono-num"
+                        />
+                      </td>
+                      <td className="p-2 font-mono-num font-bold text-teal-400">
+                        {formatNumber(item.totalIRR)} ریال
+                      </td>
+                      <td className="p-2 text-center">
+                        <button
+                          type="button"
+                          onClick={() => removeItem(idx)}
+                          className="text-rose-400 hover:text-rose-300 p-1 cursor-pointer"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* بخش دریافت و پرداخت ترکیبی چند بانکی و چند صندوقی (با قابلیت پرداخت ارزی) */}
+          <MultiPaymentSplitsEditor
+            title={
+              invoiceType === 'sales'
+                ? 'ثبت دریافت وجه این فاکتور فروش (تک‌بانکی یا ترکیبی چند بانکی / چند صندوقی / ارزی)'
+                : 'ثبت پرداخت وجه این فاکتور خرید (تک‌بانکی یا ترکیبی چند بانکی / چند صندوقی / ارزی)'
+            }
+            subtitle={
+              invoiceType === 'sales'
+                ? 'می‌توانید کل یا بخشی از مبلغ فاکتور را به یک یا چند بانک و صندوق واریز کنید. اگر مشتری ارز داده، نوع ارز و ارزش ریالی آن را مشخص کنید تا اتوماتیک سند بخورد.'
+                : 'می‌توانید کل یا بخشی از مبلغ فاکتور خرید را از یک یا چند بانک و صندوق پرداخت کنید. اگر ارز پرداخت کرده‌اید، ارزش ریالی آن را تعیین کنید.'
+            }
+            totalTargetIRR={grandTotalIRR}
+            splits={payments}
+            onChange={setPayments}
+            banks={banks}
+            currencies={currencies}
+            mode={invoiceType === 'sales' ? 'receipt' : 'payment'}
+            contactName={selectedContact?.name}
+          />
+
+          {/* توضیحات و دکمه ثبت نهایی */}
+          <div className="flex flex-wrap items-center justify-between gap-4 pt-3 border-t border-slate-800">
+            <div className="flex-1 min-w-[260px]">
+              <input
+                type="text"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="توضیحات فاکتور (اختیاری)..."
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-teal-500 focus:outline-none"
+              />
+            </div>
+
+            <button
+              type="submit"
+              className={`px-6 py-2.5 rounded-xl font-bold text-sm flex items-center gap-2 transition shadow-lg cursor-pointer ${
+                invoiceType === 'sales'
+                  ? 'bg-teal-500 hover:bg-teal-400 text-slate-950 shadow-teal-500/20'
+                  : 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-amber-500/20'
+              }`}
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              {invoiceType === 'sales'
+                ? 'ثبت نهایی فاکتور فروش + سند اتوماتیک بانک و شخص'
+                : 'ثبت نهایی فاکتور خرید + سند اتوماتیک بانک و شخص'}
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {/* لیست فاکتورهای صادر شده به همراه جزئیات پرداخت‌های ترکیبی */}
+      <div
+        id="invoices-history-print"
+        className="bg-slate-900/60 border border-slate-800 rounded-xl p-6"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
+          <h3 className="text-base font-bold text-white flex items-center gap-2">
+            <FileText className="w-5 h-5 text-teal-400" />
+            فهرست فاکتورهای خرید و فروش ثبت‌شده ({formatNumber(invoices.length)})
+          </h3>
           <button
-            type="submit"
-            className="px-5 py-2.5 text-xs font-bold bg-blue-700 hover:bg-blue-800 text-white rounded flex items-center gap-2 cursor-pointer"
+            type="button"
+            onClick={handlePrintInvoices}
+            className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 flex items-center gap-1.5 transition cursor-pointer"
           >
-            <FileSpreadsheet className="w-4 h-4" />
-            صدور قطعی فاکتور، ثبت سند خودکار و کسر موجودی انبار
+            <Printer className="w-3.5 h-3.5 text-teal-400" />
+            چاپ / PDF لیست فاکتورها
           </button>
         </div>
-      </form>
 
-      {/* Issued Invoices List with Direct Bot Dispatch */}
-      <div className="bg-white border border-slate-200 rounded-lg p-5 space-y-4">
-        <h3 className="text-base font-bold text-slate-900">
-          فاکتورهای فروش صادر شده (آماده ارسال مستقیم به بله و تلگرام مشتری)
-        </h3>
-        <div className="overflow-x-auto border border-slate-200 rounded-lg">
-          <table className="w-full text-right border-collapse">
-            <thead>
-              <tr className="bg-slate-100 border-b border-slate-200 text-xs font-bold text-slate-700">
-                <th className="py-2.5 px-3">شماره فاکتور</th>
-                <th className="py-2.5 px-3">تاریخ</th>
-                <th className="py-2.5 px-3">نام مشتری</th>
-                <th className="py-2.5 px-3">ارز و نرخ تبدیل</th>
-                <th className="py-2.5 px-3 text-left">مبلغ ارزی فاکتور</th>
-                <th className="py-2.5 px-3 text-left">معادل قطعی به ریال</th>
-                <th className="py-2.5 px-3 text-center">ارسال فاکتور به مشتری با بات</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200 text-xs">
-              {state.invoices.map((inv) => (
-                <tr key={inv.id} className="hover:bg-slate-50">
-                  <td className="py-2.5 px-3 font-mono-num font-bold text-blue-700">
-                    {inv.invoiceNumber}
-                  </td>
-                  <td className="py-2.5 px-3 font-mono-num">{inv.date}</td>
-                  <td className="py-2.5 px-3 font-bold text-slate-900">{inv.contactName}</td>
-                  <td className="py-2.5 px-3 font-mono-num text-slate-600">
-                    {inv.currency} (نرخ: {formatNumber(inv.exchangeRate)})
-                  </td>
-                  <td className="py-2.5 px-3 font-mono-num text-left font-bold text-emerald-800">
-                    {formatNumber(inv.grandTotalForeign, inv.currency === 'IRR' ? 0 : 2)}{' '}
-                    {inv.currency}
-                  </td>
-                  <td className="py-2.5 px-3 font-mono-num text-left font-bold text-slate-900">
-                    {formatNumber(inv.grandTotalIRR)} ریال
-                  </td>
-                  <td className="py-2.5 px-3">
-                    <div className="flex items-center justify-center gap-2">
+        <div className="space-y-3">
+          {invoices.map((inv) => {
+            const paid = inv.paidAmountIRR ?? (inv.status === 'paid' ? inv.grandTotalIRR : 0);
+            const rem = inv.remainingAmountIRR ?? Math.max(0, inv.grandTotalIRR - paid);
+
+            return (
+              <div
+                key={inv.id}
+                className="bg-slate-950/70 border border-slate-800 rounded-xl p-4 space-y-3 hover:border-slate-700 transition"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <span className="font-mono-num font-bold text-teal-400 text-sm">
+                      {inv.invoiceNumber}
+                    </span>
+                    <span
+                      className={`px-2.5 py-0.5 rounded-md text-xs font-bold ${
+                        inv.type === 'sales'
+                          ? 'bg-teal-500/15 text-teal-300 border border-teal-500/30'
+                          : 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+                      }`}
+                    >
+                      {inv.type === 'sales' ? 'فروش کالا/خدمات' : 'خرید کالا/خدمات'}
+                    </span>
+                    <span className="text-sm font-bold text-white">{inv.contactName}</span>
+                    <span className="text-xs text-slate-400 font-mono-num">{inv.date}</span>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <span
+                      className={`px-2.5 py-1 rounded-md text-xs font-bold ${
+                        inv.status === 'paid'
+                          ? 'bg-emerald-500/15 text-emerald-400'
+                          : inv.status === 'partial'
+                          ? 'bg-sky-500/15 text-sky-300'
+                          : 'bg-amber-500/15 text-amber-400'
+                      }`}
+                    >
+                      {inv.status === 'paid'
+                        ? 'تسویه کامل'
+                        : inv.status === 'partial'
+                        ? 'تسویه بخشی (ترکیبی)'
+                        : 'نسیه (در حساب شخص)'}
+                    </span>
+                    {onDeleteInvoice && (
                       <button
                         type="button"
-                        onClick={() => handleSendInvoiceToCustomerBot(inv, 'bale')}
-                        className="px-2.5 py-1 text-[11px] font-bold bg-emerald-700 hover:bg-emerald-800 text-white rounded flex items-center gap-1 whitespace-nowrap cursor-pointer"
+                        onClick={() => onDeleteInvoice(inv.id)}
+                        className="text-rose-400 hover:text-rose-300 p-1 rounded hover:bg-rose-500/10 cursor-pointer"
+                        title="حذف فاکتور و سند مربوطه"
                       >
-                        <Send className="w-3 h-3" />
-                        ارسال به بله مشتری
+                        <Trash2 className="w-4 h-4" />
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => handleSendInvoiceToCustomerBot(inv, 'telegram')}
-                        className="px-2.5 py-1 text-[11px] font-bold bg-sky-700 hover:bg-sky-800 text-white rounded flex items-center gap-1 whitespace-nowrap cursor-pointer"
+                    )}
+                  </div>
+                </div>
+
+                {/* خلاصه ارقام فاکتور */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs bg-slate-900/70 p-2.5 rounded-lg border border-slate-800/80">
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">مبلغ کل فاکتور:</span>
+                    <span className="font-bold text-white font-mono-num">
+                      {formatNumber(inv.grandTotalIRR)} ریال
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">
+                      {inv.type === 'sales'
+                        ? 'دریافت‌شده (بانک/صندوق):'
+                        : 'پرداخت‌شده (بانک/صندوق):'}
+                    </span>
+                    <span className="font-bold text-emerald-400 font-mono-num">
+                      {formatNumber(paid)} ریال
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">مانده در حساب شخص:</span>
+                    <span className="font-bold text-amber-400 font-mono-num">
+                      {formatNumber(rem)} ریال
+                    </span>
+                  </div>
+                </div>
+
+                {/* نمایش ریز پرداخت‌های ترکیبی اگر وجود داشته باشد */}
+                {inv.payments && inv.payments.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <span className="text-[11px] text-slate-400 flex items-center gap-1">
+                      <Landmark className="w-3.5 h-3.5 text-teal-400" />
+                      ریز اسناد اتوماتیک بانک و صندوق:
+                    </span>
+                    {inv.payments.map((p) => (
+                      <span
+                        key={p.id}
+                        className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 text-[11px] text-slate-200 font-mono-num"
                       >
-                        <Send className="w-3 h-3" />
-                        ارسال به تلگرام مشتری
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => window.print()}
-                        className="p-1 text-slate-500 hover:text-slate-900"
-                        aria-label={`چاپ فاکتور ${inv.invoiceNumber}`}
-                      >
-                        <Printer className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                        {p.bankName}:{' '}
+                        {p.currency === 'IRR'
+                          ? `${formatNumber(p.amountIRR)} ریال`
+                          : `${formatNumber(p.amountForeign)} ${p.currency} (به ارزش ${formatNumber(
+                              p.exchangeRate
+                            )} = ${formatNumber(p.amountIRR)} ریال)`}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>

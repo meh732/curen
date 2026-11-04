@@ -48,7 +48,10 @@ echo.
 echo [3/4] Installing dependencies and building production frontend...
 call npm install --legacy-peer-deps
 if %ERRORLEVEL% NEQ 0 (
-    echo [WARNING] npm install had warnings, continuing...
+    echo [NOTICE] Retrying with clean npm cache...
+    call npm cache clean --force >nul 2>&1
+    if exist "package-lock.json" del /f /q package-lock.json >nul 2>&1
+    call npm install --legacy-peer-deps
 )
 call npm run build
 if %ERRORLEVEL% NEQ 0 (

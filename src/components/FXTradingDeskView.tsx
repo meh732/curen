@@ -1,550 +1,493 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import {
-  AccountingState,
-  BotDeliveryLog,
-  CurrencyCode,
   FXDeal,
+  Currency,
+  Contact,
+  BankAccount,
+  CurrencyCode,
+  PaymentSplitLine,
 } from '../types/accounting';
-import {
-  calculateCurrencyVaultPositions,
-  convertForeignToIRR,
-  formatCurrencyAmount,
-  formatNumber,
-} from '../utils/accountingEngine';
-import { dispatchToMessengerBot } from '../utils/botAndBackupService';
-import { FormattedNumberInput } from './FormattedNumberInput';
+import { formatNumber, parseFormattedNumber } from '../utils/accountingEngine';
+import { MultiPaymentSplitsEditor } from './MultiPaymentSplitsEditor';
 import {
   ArrowDownLeft,
   ArrowUpRight,
-  CheckCircle2,
-  Send,
-  Printer,
-  TrendingUp,
   Coins,
+  CheckCircle2,
+  Trash2,
+  Landmark,
+  UserPlus,
+  Printer,
 } from 'lucide-react';
 
 interface FXTradingDeskViewProps {
-  state: AccountingState;
-  onExecuteFXDeal: (deal: FXDeal) => void;
-  onRecordBotLog: (log: BotDeliveryLog) => void;
-  onUpdateCurrencyRate: (code: CurrencyCode, newRate: number) => void;
+  fxDeals: FXDeal[];
+  currencies: Currency[];
+  contacts: Contact[];
+  banks: BankAccount[];
+  onExecuteDeal: (deal: FXDeal) => void;
+  onAddContact?: (contact: Contact) => void;
+  onDeleteDeal?: (id: string) => void;
 }
 
 export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
-  state,
-  onExecuteFXDeal,
-  onRecordBotLog,
-  onUpdateCurrencyRate,
+  fxDeals,
+  currencies,
+  contacts,
+  banks,
+  onExecuteDeal,
+  onAddContact,
+  onDeleteDeal,
 }) => {
-  const [dealType, setDealType] = useState<'buy' | 'sell'>('sell');
+  const foreignCurrencies = currencies.filter((c) => c.code !== 'IRR');
+  const [dealType, setDealType] = useState<'buy' | 'sell'>('buy');
   const [currency, setCurrency] = useState<CurrencyCode>('USD');
-  const [foreignAmount, setForeignAmount] = useState<number>(5000);
-  const [exchangeRate, setExchangeRate] = useState<number>(685000);
+  const [foreignAmount, setForeignAmount] = useState<number>(1000);
+
+  const selectedCurrencyConfig = currencies.find((c) => c.code === currency);
+  const [dealRate, setDealRate] = useState<number>(
+    selectedCurrencyConfig?.defaultRateToIRR || 685000
+  );
   const [commissionIRR, setCommissionIRR] = useState<number>(0);
-  const [contactId, setContactId] = useState<string>(state.contacts[0]?.id || '');
-  const [settlementMethod, setSettlementMethod] =
-    useState<FXDeal['settlementMethod']>('credit_account');
-  const [targetForeignBankId, setTargetForeignBankId] = useState<string>(
-    state.banks.find((b) => b.currency !== 'IRR')?.id || state.banks[0]?.id || ''
-  );
-  const [trackingNumber, setTrackingNumber] = useState<string>('SW-1404-990');
-  const [date, setDate] = useState<string>('1404/08/12');
-  const [notes, setNotes] = useState<string>(
-    'تسویه طبق نرخ توافقی میز معاملات ارزی و ثبت همزمان در کاردکس ارزی و ریالی مشتری'
-  );
-  const [filterCurrency, setFilterCurrency] = useState<string>('ALL');
-  const [feedback, setFeedback] = useState<string | null>(null);
+  const [contactId, setContactId] = useState<string>(contacts[0]?.id || '');
 
-  const vaultPositions = useMemo(
-    () => calculateCurrencyVaultPositions(state.currencies, state.fxDeals || []),
-    [state.currencies, state.fxDeals]
+  // صندوق یا حساب ارزی که ارز معامله‌شده به آن وارد یا از آن خارج می‌شود
+  const matchingForeignBanks = banks.filter((b) => b.currency === currency);
+  const [targetVaultBankId, setTargetVaultBankId] = useState<string>(
+    matchingForeignBanks[0]?.id ||
+      banks.find((b) => b.currency !== 'IRR')?.id ||
+      banks[0]?.id ||
+      ''
   );
 
-  const totalRealizedProfitIRR = useMemo(
-    () => vaultPositions.reduce((s, p) => s + p.realizedProfitIRR, 0),
-    [vaultPositions]
-  );
+  // ردیف‌های دریافت یا پرداخت معادل ریالی معامله (چند بانکی / چند صندوقی)
+  const [payments, setPayments] = useState<PaymentSplitLine[]>([]);
 
-  const totalIRR = useMemo(
-    () => convertForeignToIRR(foreignAmount, exchangeRate, currency),
-    [foreignAmount, exchangeRate, currency]
-  );
+  // تعریف سریع شخص
+  const [showQuickContact, setShowQuickContact] = useState(false);
+  const [newContactName, setNewContactName] = useState('');
+  const [newContactPhone, setNewContactPhone] = useState('');
 
-  const handleCurrencySelect = (code: CurrencyCode) => {
+  const handleCurrencyChange = (code: CurrencyCode) => {
     setCurrency(code);
-    const currObj = state.currencies.find((c) => c.code === code);
-    if (currObj) {
-      setExchangeRate(currObj.defaultRateToIRR);
-    }
-    const matchingBank = state.banks.find((b) => b.currency === code);
-    if (matchingBank) {
-      setTargetForeignBankId(matchingBank.id);
-    }
+    const cfg = currencies.find((c) => c.code === code);
+    if (cfg) setDealRate(cfg.defaultRateToIRR);
+    const vaultForCur = banks.find((b) => b.currency === code);
+    if (vaultForCur) setTargetVaultBankId(vaultForCur.id);
   };
 
-  const handleSubmitDeal = (e: React.FormEvent) => {
-    e.preventDefault();
-    const contact = state.contacts.find((c) => c.id === contactId);
-    if (!contact || foreignAmount <= 0 || exchangeRate <= 0) return;
+  const baseTotalIRR = Math.round(foreignAmount * dealRate);
+  const totalIRR =
+    dealType === 'buy'
+      ? baseTotalIRR + commissionIRR
+      : Math.max(0, baseTotalIRR - commissionIRR);
 
-    const nextDealNo = `FX-1404-${1001 + (state.fxDeals?.length || 0)}`;
+  const selectedContact = contacts.find((c) => c.id === contactId);
+
+  const handleQuickCreateContact = () => {
+    if (!newContactName.trim() || !onAddContact) return;
+    const newC: Contact = {
+      id: `cnt-${Date.now()}`,
+      code: `P-${1006 + contacts.length}`,
+      name: newContactName.trim(),
+      type: 'both',
+      phone: newContactPhone.trim(),
+      defaultCurrency: currency,
+      creditLimitIRR: 0,
+    };
+    onAddContact(newC);
+    setContactId(newC.id);
+    setNewContactName('');
+    setNewContactPhone('');
+    setShowQuickContact(false);
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (foreignAmount <= 0 || dealRate <= 0 || !contactId) return;
+
+    const validPayments = payments.filter((p) => p.bankId && p.amountIRR > 0);
+    const paidSum = validPayments.reduce((s, p) => s + p.amountIRR, 0);
+    const remSum = Math.max(0, totalIRR - paidSum);
+
+    let settlementMethod: FXDeal['settlementMethod'] = 'credit_account';
+    if (validPayments.length > 1) settlementMethod = 'multi_split';
+    else if (paidSum >= totalIRR) settlementMethod = 'bank_transfer';
+    else if (paidSum > 0) settlementMethod = 'multi_split';
+
     const newDeal: FXDeal = {
       id: `fx-${Date.now()}`,
-      dealNumber: nextDealNo,
+      dealNumber: `FX-1404-${1002 + fxDeals.length}`,
+      date: '1404/08/12',
       type: dealType,
-      date,
-      contactId: contact.id,
-      contactName: contact.name,
       currency,
       foreignAmount,
-      exchangeRate,
+      exchangeRate: dealRate,
       totalIRR,
       commissionIRR,
+      contactId,
+      contactName: selectedContact?.name || 'طرف حساب',
       settlementMethod,
-      targetForeignBankId,
-      trackingNumber: trackingNumber.trim() || nextDealNo,
-      notes,
+      targetForeignBankId: targetVaultBankId,
+      payments: validPayments,
+      paidAmountIRR: paidSum,
+      remainingAmountIRR: remSum,
+      trackingNumber: `FX-${1002 + fxDeals.length}`,
+      linkedVoucherId: `vch-fx-${Date.now()}`,
     };
 
-    onExecuteFXDeal(newDeal);
-    setFeedback(
-      `معامله ${dealType === 'buy' ? 'خرید ارز' : 'فروش ارز'} شماره ${nextDealNo} (${formatNumber(
-        foreignAmount,
-        2
-      )} ${currency} به نرخ ${formatNumber(exchangeRate)} ریال = ${formatNumber(
-        totalIRR
-      )} ریال) ثبت شد، موجودی خزانه ارزی بروزرسانی گردید و سند دوبل حسابداری آن به صورت خودکار صادر شد.`
-    );
+    onExecuteDeal(newDeal);
+    setPayments([]);
   };
-
-  const handleSendDealReceiptToBot = async (
-    deal: FXDeal,
-    platform: 'bale' | 'telegram'
-  ) => {
-    const contact = state.contacts.find((c) => c.id === deal.contactId);
-    const chatId =
-      platform === 'bale'
-        ? contact?.baleChatId || state.botConfig.baleDefaultChatId
-        : contact?.telegramChatId || state.botConfig.telegramDefaultChatId;
-    const token =
-      platform === 'bale'
-        ? state.botConfig.baleBotToken
-        : state.botConfig.telegramBotToken;
-
-    const text =
-      `💱 *فاکتور / اعلامیه رسمی ${deal.type === 'buy' ? 'خرید ارز' : 'فروش ارز'}*\n` +
-      `🏢 صادرکننده: ${state.companyName}\n` +
-      `🔢 شماره فیش ارزی: ${deal.dealNumber} | 📅 تاریخ: ${deal.date}\n` +
-      `👤 طرف حساب: ${deal.contactName}\n` +
-      `----------------------------------\n` +
-      `🌍 نوع عملیات: *${deal.type === 'buy' ? 'خرید ارز از مشتری' : 'فروش ارز به مشتری'}*\n` +
-      `💵 مقدار ارز: *${formatNumber(deal.foreignAmount, 2)} ${deal.currency}*\n` +
-      `📈 نرخ تبدیل واحد: *${formatNumber(deal.exchangeRate)} ریال*\n` +
-      `🇮🇷 *مبلغ کل معادل به ریال ایران:* ${formatNumber(deal.totalIRR)} ریال\n` +
-      `🔖 شماره پیگیری / حواله: ${deal.trackingNumber}\n` +
-      `----------------------------------\n` +
-      `✅ ثبت شده در صورتحساب ارزی و ریالی شما در سامانه ترازبان`;
-
-    const log = await dispatchToMessengerBot({
-      platform,
-      botToken: token,
-      chatId,
-      recipientName: deal.contactName,
-      messageType: 'invoice',
-      text,
-      summary: `ارسال فیش ${deal.type === 'buy' ? 'خرید' : 'فروش'} ارزی ${
-        deal.dealNumber
-      } (${formatNumber(deal.foreignAmount, 2)} ${deal.currency} = ${formatNumber(
-        deal.totalIRR
-      )} ریال) به ${platform === 'bale' ? 'بله' : 'تلگرام'} مشتری`,
-    });
-
-    onRecordBotLog(log);
-    setFeedback(
-      `فیش رسمی معامله ارزی ${deal.dealNumber} (همراه با مبلغ ارزی و ریالی) از طریق ربات ${
-        platform === 'bale' ? 'بله (Bale)' : 'تلگرام (Telegram)'
-      } برای «${deal.contactName}» ارسال شد.`
-    );
-  };
-
-  const filteredDeals = useMemo(() => {
-    const list = state.fxDeals || [];
-    if (filterCurrency === 'ALL') return list;
-    return list.filter((d) => d.currency === filterCurrency);
-  }, [state.fxDeals, filterCurrency]);
 
   return (
     <div className="space-y-6">
-      {/* Header & Realized FX Profit Strip */}
-      <div className="bg-white border border-slate-200 rounded-lg p-4 flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-bold text-slate-900">
-            میز معاملات خرید و فروش ارز (صرافی و بازرگانی ارزی) — ثبت همزمان ارزی و ریالی
-          </h2>
-          <p className="text-xs text-slate-500 mt-0.5">
-            ثبت آنی خرید و فروش دلار (USD)، یورو (EUR)، یوان چین (CNY) و درهم امارات (AED) با تبدیل خودکار به ریال، محاسبه میانگین نرخ خرید/فروش، سود نوسان نرخ ارز و صدور خودکار سند حسابداری.
-          </p>
-        </div>
-
-        <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2 text-xs flex items-center gap-2">
-          <TrendingUp className="w-4 h-4 text-emerald-700 shrink-0" />
-          <span className="text-emerald-950 font-semibold">
-            سود قطعی تحقق‌یافته معاملات خرید و فروش ارز:
-          </span>
-          <strong className="font-mono-num text-sm text-emerald-800">
-            +{formatNumber(totalRealizedProfitIRR)} ریال
-          </strong>
-        </div>
-      </div>
-
-      {feedback && (
-        <div className="p-3.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-950 text-xs flex items-center justify-between">
-          <div className="flex items-center gap-2 font-medium">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>{feedback}</span>
+      {/* فرم ثبت خرید یا فروش ارز با تسویه چند بانکی و چند صندوقی */}
+      <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-6">
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-6 pb-4 border-b border-slate-800">
+          <div>
+            <h2 className="text-lg font-bold text-white flex items-center gap-2">
+              <Coins className="w-5 h-5 text-teal-400" />
+              ثبت سریع خرید و فروش ارز (با دریافت و پرداخت ترکیبی چند بانکی و چند صندوقی)
+            </h2>
+            <p className="text-xs text-slate-400 mt-1">
+              ارز خریداری‌شده یا فروخته‌شده به صورت خودکار وارد/خارج صندوق ارزی شما می‌شود و تسویه ریالی یا ارزی آن نیز از بانک‌ها و صندوق‌های انتخابی شما کسر یا به آن‌ها واریز می‌گردد.
+            </p>
           </div>
-          <button
-            type="button"
-            onClick={() => setFeedback(null)}
-            className="text-xs underline"
-          >
-            بستن
-          </button>
-        </div>
-      )}
 
-      {/* 4-Card Live Foreign Currency Vault Position (موجودی خزانه ارزی و میانگین نرخ خرید/فروش) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {vaultPositions.map((pos) => (
-          <div
-            key={pos.currency}
-            className="bg-white border border-slate-200 rounded-lg p-4 space-y-2.5"
-          >
-            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-              <div className="flex items-center gap-1.5">
-                <Coins className="w-4 h-4 text-blue-700" />
-                <span className="font-mono-num font-extrabold text-sm text-slate-900">
-                  {pos.currency} ({pos.symbol})
-                </span>
-              </div>
-              <span className="text-[11px] text-slate-500">{pos.currencyName}</span>
-            </div>
-
-            <div className="flex items-baseline justify-between">
-              <span className="text-xs text-slate-500">موجودی خالص خزانه:</span>
-              <span className="font-mono-num text-base font-extrabold text-blue-900">
-                {formatNumber(pos.netVaultBalanceForeign, 2)} {pos.currency}
-              </span>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 text-[11px] bg-slate-50 p-2 rounded border border-slate-200">
-              <div>
-                <div className="text-slate-500">میانگین نرخ خرید:</div>
-                <div className="font-mono-num font-bold text-emerald-800">
-                  {formatNumber(pos.weightedAvgBuyRate)} ریال
-                </div>
-              </div>
-              <div>
-                <div className="text-slate-500">میانگین نرخ فروش:</div>
-                <div className="font-mono-num font-bold text-blue-800">
-                  {formatNumber(pos.weightedAvgSellRate)} ریال
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between text-[11px] pt-1">
-              <span className="text-slate-500">سود معاملات {pos.currency}:</span>
-              <span className="font-mono-num font-bold text-emerald-700">
-                +{formatNumber(pos.realizedProfitIRR)} ریال
-              </span>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Main FX Buy / Sell Deal Execution Form */}
-      <form
-        onSubmit={handleSubmitDeal}
-        className="bg-white border border-slate-200 rounded-lg p-5 space-y-5"
-      >
-        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 pb-4">
-          <div className="flex items-center gap-2">
+          <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800">
             <button
               type="button"
               onClick={() => setDealType('buy')}
-              className={`px-5 py-2.5 rounded-lg text-xs font-extrabold flex items-center gap-2 transition-colors cursor-pointer ${
+              className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
                 dealType === 'buy'
-                  ? 'bg-emerald-700 text-white shadow-xs'
-                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  ? 'bg-emerald-500 text-slate-950 shadow'
+                  : 'text-slate-400 hover:text-white'
               }`}
             >
               <ArrowDownLeft className="w-4 h-4" />
-              ثبت خرید ارز (ورود ارز به خزانه / بستانکاری طرف حساب)
+              خرید ارز (ورود ارز به صندوق/حساب ما)
             </button>
             <button
               type="button"
               onClick={() => setDealType('sell')}
-              className={`px-5 py-2.5 rounded-lg text-xs font-extrabold flex items-center gap-2 transition-colors cursor-pointer ${
+              className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
                 dealType === 'sell'
-                  ? 'bg-blue-700 text-white shadow-xs'
-                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  ? 'bg-amber-500 text-slate-950 shadow'
+                  : 'text-slate-400 hover:text-white'
               }`}
             >
               <ArrowUpRight className="w-4 h-4" />
-              ثبت فروش ارز (خروج ارز از خزانه / بدهکاری طرف حساب)
+              فروش ارز (خروج ارز از صندوق/حساب ما)
             </button>
           </div>
-
-          <div className="text-xs text-slate-600 font-mono-num">
-            تاریخ روز معاملات: <strong>{date}</strong>
-          </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
-          <div className="md:col-span-4">
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
-              طرف حساب معامله (مشتری / کارگزار / صرافی) *
-            </label>
-            <select
-              value={contactId}
-              onChange={(e) => setContactId(e.target.value)}
-              aria-label="طرف حساب معامله ارزی"
-              className="w-full px-3 py-2 text-xs font-semibold bg-white border border-slate-300 rounded"
-            >
-              {state.contacts.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.code} — {c.name} (ارز پیش‌فرض: {c.defaultCurrency})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="md:col-span-2">
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
-              نوع ارز مورد معامله
-            </label>
-            <select
-              value={currency}
-              onChange={(e) => handleCurrencySelect(e.target.value)}
-              aria-label="نوع ارز مورد معامله"
-              className="w-full px-3 py-2 text-xs font-mono-num font-bold bg-white border border-slate-300 rounded"
-            >
-              {state.currencies
-                .filter((c) => !c.isBase)
-                .map((c) => (
-                  <option key={c.code} value={c.code}>
-                    {c.code} ({c.symbol}) — {c.name}
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* طرف حساب */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs text-slate-400">
+                  {dealType === 'buy' ? 'خرید ارز از شخص / صرافی' : 'فروش ارز به شخص / مشتری'}
+                </label>
+                {onAddContact && (
+                  <button
+                    type="button"
+                    onClick={() => setShowQuickContact(!showQuickContact)}
+                    className="text-[11px] text-teal-400 hover:text-teal-300 flex items-center gap-1 cursor-pointer"
+                  >
+                    <UserPlus className="w-3 h-3" />
+                    + شخص جدید
+                  </button>
+                )}
+              </div>
+              <select
+                value={contactId}
+                onChange={(e) => setContactId(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:border-teal-500 focus:outline-none"
+              >
+                {contacts.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
                   </option>
                 ))}
-            </select>
-          </div>
+              </select>
+            </div>
 
-          <div className="md:col-span-2">
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
-              مقدار ارز ({currency} — با اعشار) *
-            </label>
-            <FormattedNumberInput
-              value={foreignAmount}
-              allowDecimals={currency !== 'IRR'}
-              onChange={(val) => setForeignAmount(val)}
-              ariaLabel="مقدار ارز معامله"
-              className="w-full px-3 py-2 text-xs font-bold bg-white border border-slate-300 rounded"
-            />
-          </div>
+            {/* انتخاب نوع ارز */}
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">نوع ارز مورد معامله</label>
+              <select
+                value={currency}
+                onChange={(e) => handleCurrencyChange(e.target.value as CurrencyCode)}
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:border-teal-500 focus:outline-none"
+              >
+                {foreignCurrencies.map((c) => (
+                  <option key={c.code} value={c.code}>
+                    {c.name} ({c.code}) — نرخ تابلو: {formatNumber(c.defaultRateToIRR)}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-          <div className="md:col-span-2">
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
-              نرخ تبدیل واحد (ریال) *
-            </label>
-            <FormattedNumberInput
-              value={exchangeRate}
-              allowDecimals={false}
-              onChange={(val) => setExchangeRate(val || 1)}
-              ariaLabel="نرخ تبدیل معامله به ریال"
-              className="w-full px-3 py-2 text-xs font-bold bg-amber-50 border border-amber-300 rounded"
-            />
-          </div>
-
-          <div className="md:col-span-2">
-            <label className="block text-xs font-semibold text-blue-900 mb-1">
-              معادل قطعی به ریال ایران
-            </label>
-            <div dir="ltr" className="w-full px-3 py-2 text-xs font-mono-num font-extrabold bg-blue-50 border border-blue-200 rounded text-blue-950 text-left">
-              {formatNumber(totalIRR)} ریال
+            {/* صندوق یا حساب ارزی مقصد/مبدأ ارز */}
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">
+                {dealType === 'buy'
+                  ? `صندوق/حساب ارزی دریافت‌کننده ${currency}`
+                  : `صندوق/حساب ارزی پرداخت‌کننده ${currency}`}
+              </label>
+              <select
+                value={targetVaultBankId}
+                onChange={(e) => setTargetVaultBankId(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:border-teal-500 focus:outline-none"
+              >
+                {banks
+                  .filter((b) => b.currency === currency || b.currency !== 'IRR')
+                  .map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.kind === 'cash_box' ? '📦 ' : '🏦 '}
+                      {b.bankName} ({b.currency})
+                    </option>
+                  ))}
+              </select>
             </div>
           </div>
-        </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
-          <div className="md:col-span-4">
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
-              بانک / خزانه ارزی درگیر در معامله
-            </label>
-            <select
-              value={targetForeignBankId}
-              onChange={(e) => setTargetForeignBankId(e.target.value)}
-              aria-label="خزانه ارزی معامله"
-              className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded"
-            >
-              {state.banks.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.bankName} ({b.currency})
-                </option>
-              ))}
-            </select>
+          {showQuickContact && (
+            <div className="bg-slate-950 border border-teal-500/40 rounded-xl p-3 flex flex-wrap items-end gap-3">
+              <div className="flex-1 min-w-[200px]">
+                <label className="block text-[11px] text-teal-300 mb-1">نام شخص یا صرافی</label>
+                <input
+                  type="text"
+                  value={newContactName}
+                  onChange={(e) => setNewContactName(e.target.value)}
+                  placeholder="مثلاً: صرافی پارسیان"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white"
+                />
+              </div>
+              <div className="w-48">
+                <label className="block text-[11px] text-slate-400 mb-1">شماره تماس</label>
+                <input
+                  type="text"
+                  value={newContactPhone}
+                  onChange={(e) => setNewContactPhone(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white font-mono-num"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={handleQuickCreateContact}
+                className="px-4 py-1.5 rounded-lg bg-teal-500 hover:bg-teal-400 text-slate-950 font-bold text-xs cursor-pointer"
+              >
+                افزودن شخص
+              </button>
+            </div>
+          )}
+
+          {/* مقدار ارز، نرخ معامله و جمع ریالی */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-slate-950/70 p-4 rounded-xl border border-slate-800">
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">
+                مقدار ارز ({currency})
+              </label>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={foreignAmount ? formatNumber(foreignAmount) : ''}
+                onChange={(e) => setForeignAmount(parseFormattedNumber(e.target.value))}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono-num focus:border-teal-500 focus:outline-none"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">
+                نرخ توافقی هر ۱ {currency} (به ریال)
+              </label>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={dealRate ? formatNumber(dealRate) : ''}
+                onChange={(e) => setDealRate(parseFormattedNumber(e.target.value))}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono-num focus:border-teal-500 focus:outline-none"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">کارمزد انتقال (ریال - اختیاری)</label>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={commissionIRR ? formatNumber(commissionIRR) : '0'}
+                onChange={(e) => setCommissionIRR(parseFormattedNumber(e.target.value))}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono-num focus:border-teal-500 focus:outline-none"
+              />
+            </div>
+
+            <div className="flex flex-col justify-center bg-slate-900/90 border border-teal-500/30 rounded-lg px-3.5 py-2">
+              <span className="text-[11px] text-slate-400">مبلغ کل ریالی معامله:</span>
+              <span className="text-base font-bold text-teal-400 font-mono-num mt-0.5">
+                {formatNumber(totalIRR)} ریال
+              </span>
+            </div>
           </div>
 
-          <div className="md:col-span-3">
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
-              نحوه تسویه ریالی / ارزی با طرف حساب
-            </label>
-            <select
-              value={settlementMethod}
-              onChange={(e) =>
-                setSettlementMethod(e.target.value as FXDeal['settlementMethod'])
-              }
-              aria-label="نحوه تسویه معامله"
-              className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded"
-            >
-              <option value="credit_account">
-                منظور در حساب جاری شخص (بدهکار / بستانکار در صورتحساب)
-              </option>
-              <option value="bank_transfer">
-                تسویه نقدی / حواله بانکی مستقیم
-              </option>
-            </select>
-          </div>
+          {/* بخش دریافت و پرداخت ترکیبی چند بانکی و چند صندوقی برای تسویه این معامله ارز */}
+          <MultiPaymentSplitsEditor
+            title={
+              dealType === 'sell'
+                ? 'نحوه دریافت وجه ریالی/ارزی این فروش ارز (چند بانکی و چند صندوقی)'
+                : 'نحوه پرداخت وجه ریالی/ارزی این خرید ارز (چند بانکی و چند صندوقی)'
+            }
+            subtitle={
+              dealType === 'sell'
+                ? 'مشخص کنید پول فروش این ارز به کدام بانک‌ها یا صندوق‌های شما واریز شده است. هر مقدار که باقی بماند به حساب بدهکاری شخص منظور می‌شود.'
+                : 'مشخص کنید پول خرید این ارز را از کدام بانک‌ها یا صندوق‌های خود پرداخت کرده‌اید. هر مقدار که باقی بماند به حساب طلب شخص از شما منظور می‌شود.'
+            }
+            totalTargetIRR={totalIRR}
+            splits={payments}
+            onChange={setPayments}
+            banks={banks}
+            currencies={currencies}
+            mode={dealType === 'sell' ? 'receipt' : 'payment'}
+            contactName={selectedContact?.name}
+          />
 
-          <div className="md:col-span-2">
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
-              شماره پیگیری / حواله (Swift)
-            </label>
-            <input
-              type="text"
-              value={trackingNumber}
-              onChange={(e) => setTrackingNumber(e.target.value)}
-              aria-label="شماره حواله ارزی"
-              className="w-full px-3 py-2 text-xs font-mono-num bg-white border border-slate-300 rounded"
-            />
-          </div>
-
-          <div className="md:col-span-3">
+          <div className="flex justify-end pt-2">
             <button
               type="submit"
-              className={`w-full py-2.5 px-4 text-xs font-extrabold text-white rounded shadow-xs flex items-center justify-center gap-2 cursor-pointer ${
+              className={`px-6 py-2.5 rounded-xl font-bold text-sm flex items-center gap-2 transition shadow-lg cursor-pointer ${
                 dealType === 'buy'
-                  ? 'bg-emerald-700 hover:bg-emerald-800'
-                  : 'bg-blue-700 hover:bg-blue-800'
+                  ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-emerald-500/20'
+                  : 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-amber-500/20'
               }`}
             >
               <CheckCircle2 className="w-4 h-4" />
               {dealType === 'buy'
-                ? `ثبت قطعی خرید ${currency} و صدور سند ریالی/ارزی`
-                : `ثبت قطعی فروش ${currency} و صدور فاکتور ارزی/ریالی`}
+                ? `ثبت خرید ${formatNumber(foreignAmount)} ${currency} + سند اتوماتیک بانک و صندوق`
+                : `ثبت فروش ${formatNumber(foreignAmount)} ${currency} + سند اتوماتیک بانک و صندوق`}
             </button>
           </div>
-        </div>
-      </form>
+        </form>
+      </div>
 
-      {/* Executed FX Deals Table with Direct Bot Receipt Dispatch */}
-      <div className="bg-white border border-slate-200 rounded-lg p-5 space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <h3 className="text-base font-bold text-slate-900">
-            دفتر معاملات خرید و فروش ارز ثبت‌شده (همراه با ارسال آنی فیش ارزی/ریالی به بله و تلگرام مشتری)
+      {/* تاریخچه معاملات ارزی ثبت شده */}
+      <div
+        id="fx-deals-print"
+        className="bg-slate-900/60 border border-slate-800 rounded-xl p-6"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
+          <h3 className="text-base font-bold text-white flex items-center gap-2">
+            <Coins className="w-5 h-5 text-teal-400" />
+            فهرست معاملات خرید و فروش ارز ({formatNumber(fxDeals.length)})
           </h3>
-
-          <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg">
-            {(['ALL', 'USD', 'AED', 'CNY', 'EUR'] as const).map((curr) => (
-              <button
-                key={curr}
-                type="button"
-                onClick={() => setFilterCurrency(curr)}
-                className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
-                  filterCurrency === curr
-                    ? 'bg-white text-slate-900 shadow-xs font-bold'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                {curr === 'ALL' ? 'همه ارزها' : curr}
-              </button>
-            ))}
-          </div>
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 flex items-center gap-1.5 transition cursor-pointer"
+          >
+            <Printer className="w-3.5 h-3.5 text-teal-400" />
+            چاپ / PDF لیست معاملات ارز
+          </button>
         </div>
 
-        <div className="overflow-x-auto border border-slate-200 rounded-lg">
-          <table className="w-full text-right border-collapse text-xs">
-            <thead>
-              <tr className="bg-slate-100 border-b border-slate-200 font-bold text-slate-700">
-                <th className="py-2.5 px-3">شماره معامله</th>
-                <th className="py-2.5 px-3">تاریخ</th>
-                <th className="py-2.5 px-3">نوع عملیات</th>
-                <th className="py-2.5 px-3">طرف حساب (مشتری / صرافی)</th>
-                <th className="py-2.5 px-3 text-left">مقدار ارز</th>
-                <th className="py-2.5 px-3 text-left">نرخ تبدیل (ریال)</th>
-                <th className="py-2.5 px-3 text-left bg-blue-50 text-blue-950">
-                  مبلغ کل به ریال ایران
-                </th>
-                <th className="py-2.5 px-3 text-center">ارسال فیش ارزی/ریالی با بات</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200">
-              {filteredDeals.map((deal) => (
-                <tr key={deal.id} className="hover:bg-slate-50">
-                  <td className="py-2.5 px-3 font-mono-num font-bold text-blue-800">
-                    {deal.dealNumber}
-                  </td>
-                  <td className="py-2.5 px-3 font-mono-num">{deal.date}</td>
-                  <td className="py-2.5 px-3 font-bold">
-                    {deal.type === 'buy' ? (
-                      <span className="text-emerald-700">خرید ارز (ورود به خزانه)</span>
-                    ) : (
-                      <span className="text-blue-700">فروش ارز (خروج از خزانه)</span>
+        <div className="space-y-3">
+          {fxDeals.map((d) => {
+            const paid =
+              d.paidAmountIRR ?? (d.settlementMethod !== 'credit_account' ? d.totalIRR : 0);
+            const rem = d.remainingAmountIRR ?? Math.max(0, d.totalIRR - paid);
+
+            return (
+              <div
+                key={d.id}
+                className="bg-slate-950/70 border border-slate-800 rounded-xl p-4 space-y-2.5"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <span className="font-mono-num font-bold text-teal-400 text-sm">
+                      {d.dealNumber}
+                    </span>
+                    <span
+                      className={`px-2.5 py-0.5 rounded-md text-xs font-bold ${
+                        d.type === 'buy'
+                          ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                          : 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+                      }`}
+                    >
+                      {d.type === 'buy' ? 'خرید ارز' : 'فروش ارز'}
+                    </span>
+                    <span className="font-bold text-white text-sm">
+                      {formatNumber(d.foreignAmount)} {d.currency}
+                    </span>
+                    <span className="text-xs text-slate-400">
+                      با نرخ {formatNumber(d.exchangeRate)} ریال
+                    </span>
+                    <span className="text-xs text-teal-300 font-bold">
+                      طرف حساب: {d.contactName}
+                    </span>
+                    <span className="text-xs text-slate-500 font-mono-num">{d.date}</span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-bold text-white font-mono-num">
+                      کل: {formatNumber(d.totalIRR)} ریال
+                    </span>
+                    {onDeleteDeal && (
+                      <button
+                        type="button"
+                        onClick={() => onDeleteDeal(d.id)}
+                        className="text-rose-400 hover:text-rose-300 p-1 rounded hover:bg-rose-500/10 cursor-pointer"
+                        title="حذف معامله و سند مربوطه"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     )}
-                  </td>
-                  <td className="py-2.5 px-3 font-bold text-slate-900">
-                    {deal.contactName}
-                  </td>
-                  <td className="py-2.5 px-3 font-mono-num text-left font-extrabold text-slate-900">
-                    {formatNumber(deal.foreignAmount, 2)} {deal.currency}
-                  </td>
-                  <td className="py-2.5 px-3 font-mono-num text-left text-slate-700">
-                    {formatNumber(deal.exchangeRate)}
-                  </td>
-                  <td className="py-2.5 px-3 font-mono-num text-left font-bold bg-blue-50/40 text-blue-950">
-                    {formatNumber(deal.totalIRR)} ریال
-                  </td>
-                  <td className="py-2.5 px-3">
-                    <div className="flex items-center justify-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleSendDealReceiptToBot(deal, 'bale')}
-                        className="px-2.5 py-1 text-[11px] font-bold bg-emerald-700 hover:bg-emerald-800 text-white rounded flex items-center gap-1 whitespace-nowrap cursor-pointer"
-                      >
-                        <Send className="w-3 h-3" />
-                        ارسال به بله
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleSendDealReceiptToBot(deal, 'telegram')}
-                        className="px-2.5 py-1 text-[11px] font-bold bg-sky-700 hover:bg-sky-800 text-white rounded flex items-center gap-1 whitespace-nowrap cursor-pointer"
-                      >
-                        <Send className="w-3 h-3" />
-                        ارسال به تلگرام
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => window.print()}
-                        className="p-1 text-slate-500 hover:text-slate-900"
-                        aria-label={`چاپ فیش ${deal.dealNumber}`}
-                      >
-                        <Printer className="w-4 h-4" />
-                      </button>
+                  </div>
+                </div>
+
+                {/* نمایش ریز پرداخت یا دریافت ترکیبی */}
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-300 bg-slate-900/70 px-3 py-2 rounded-lg">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Landmark className="w-3.5 h-3.5 text-teal-400" />
+                    <span>
+                      تسویه بانک/صندوق:{' '}
+                      <strong className="text-emerald-400 font-mono-num">
+                        {formatNumber(paid)} ریال
+                      </strong>
+                    </span>
+                    <span className="text-slate-600">|</span>
+                    <span>
+                      مانده در حساب {d.contactName}:{' '}
+                      <strong className="text-amber-400 font-mono-num">
+                        {formatNumber(rem)} ریال
+                      </strong>
+                    </span>
+                  </div>
+
+                  {d.payments && d.payments.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {d.payments.map((p) => (
+                        <span
+                          key={p.id}
+                          className="px-2 py-0.5 rounded bg-slate-950 border border-slate-700 text-[11px] font-mono-num"
+                        >
+                          {p.bankName}:{' '}
+                          {p.currency === 'IRR'
+                            ? `${formatNumber(p.amountIRR)} ریال`
+                            : `${formatNumber(p.amountForeign)} ${p.currency} (نرخ ${formatNumber(
+                                p.exchangeRate
+                              )})`}
+                        </span>
+                      ))}
                     </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
