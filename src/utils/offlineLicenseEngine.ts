@@ -22,7 +22,10 @@ export interface LicenseStatus {
   isActivated: boolean;
   activatedKey?: string;
   activatedAt?: string;
+  isServerLicensed?: boolean;
 }
+
+const SERVER_LICENSE_CACHE_KEY = 'TARAZBAN_SERVER_ACTIVE_CACHE';
 
 /**
  * Normalizes a System/Hardware ID to uppercase alphanumeric characters.
@@ -188,13 +191,35 @@ export function formatActivationKeyInput(raw: string): string {
  * the CURRENT computer's physical hardware fingerprint.
  * If not activated or if hardware changed, returns isActivated: false.
  */
+/**
+ * Reads current offline license activation state.
+ * 1. Checks if the server itself is already activated (Server-Wide Linux License for all IP connections).
+ * 2. If not, checks local Windows hardware-locked license.
+ * 3. If neither is active, returns isActivated: false.
+ */
 export function loadLicenseStatus(): LicenseStatus {
   const { machineId, hardwareSpecs } = getHardwareMachineId();
   try {
+    // 1. Check Server-Wide License Cache (activated on Linux server for all incoming IP connections)
+    const serverCached = localStorage.getItem(SERVER_LICENSE_CACHE_KEY);
+    if (serverCached) {
+      const parsedServer = JSON.parse(serverCached);
+      if (parsedServer && parsedServer.isActivated === true) {
+        return {
+          machineId: parsedServer.machineId || 'TB-SRV-LINUX-ENTERPRISE',
+          hardwareSpecs,
+          isActivated: true,
+          activatedKey: parsedServer.activatedKey || 'SERVER-ACTIVATED',
+          activatedAt: parsedServer.activatedAt || '1404/08/12',
+          isServerLicensed: true,
+        };
+      }
+    }
+
+    // 2. Check local Windows hardware-bound license
     const raw = localStorage.getItem(LICENSE_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      // Must match THIS machine's exact hardware ID AND valid key
       if (
         parsed &&
         parsed.isActivated === true &&
@@ -208,6 +233,7 @@ export function loadLicenseStatus(): LicenseStatus {
           isActivated: true,
           activatedKey: parsed.activatedKey,
           activatedAt: parsed.activatedAt,
+          isServerLicensed: false,
         };
       }
     }
@@ -222,7 +248,47 @@ export function loadLicenseStatus(): LicenseStatus {
 }
 
 /**
- * Saves a verified offline license key bound to the current computer's Hardware ID.
+ * Fetches the Linux server-level license file (/server_license.json).
+ * When Curen is deployed on a Linux server, activating the server once unlocks
+ * all incoming client connections via IP address without requiring client activation.
+ */
+export async function fetchServerLicenseStatus(): Promise<LicenseStatus | null> {
+  if (typeof window === 'undefined') return null;
+  try {
+    const res = await fetch(`/server_license.json?_t=${Date.now()}`, {
+      headers: { 'Cache-Control': 'no-cache' },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.isActivated === true) {
+        const specs = probeComputerHardwareSpecs();
+        const serverStatus: LicenseStatus = {
+          machineId: data.machineId || 'TB-SRV-LINUX-ENTERPRISE',
+          hardwareSpecs: specs,
+          isActivated: true,
+          activatedKey: data.activatedKey || 'SERVER-WIDE-KEY',
+          activatedAt: data.activatedAt || '1404/08/12',
+          isServerLicensed: true,
+        };
+        try {
+          localStorage.setItem(SERVER_LICENSE_CACHE_KEY, JSON.stringify(serverStatus));
+        } catch {
+          // ignore storage quota error
+        }
+        return serverStatus;
+      } else if (data && data.isActivated === false) {
+        // If server was explicitly deactivated
+        localStorage.removeItem(SERVER_LICENSE_CACHE_KEY);
+      }
+    }
+  } catch {
+    // Static file not reachable or offline
+  }
+  return null;
+}
+
+/**
+ * Saves a verified offline license key bound to the current computer or server.
  */
 export function saveActivatedLicense(
   machineId: string,
@@ -233,15 +299,21 @@ export function saveActivatedLicense(
   }
   const { hardwareSpecs } = getHardwareMachineId();
   const formattedKey = formatActivationKeyInput(enteredKey);
+  const isServer = machineId.startsWith('TB-SRV-');
   const status: LicenseStatus = {
     machineId,
     hardwareSpecs,
     isActivated: true,
     activatedKey: formattedKey,
     activatedAt: '1404/08/12',
+    isServerLicensed: isServer,
   };
   try {
-    localStorage.setItem(LICENSE_STORAGE_KEY, JSON.stringify(status));
+    if (isServer) {
+      localStorage.setItem(SERVER_LICENSE_CACHE_KEY, JSON.stringify(status));
+    } else {
+      localStorage.setItem(LICENSE_STORAGE_KEY, JSON.stringify(status));
+    }
   } catch {
     // ignore
   }
@@ -255,6 +327,7 @@ export function lockApplicationLicense(): LicenseStatus {
   const { machineId, hardwareSpecs } = getHardwareMachineId();
   try {
     localStorage.removeItem(LICENSE_STORAGE_KEY);
+    localStorage.removeItem(SERVER_LICENSE_CACHE_KEY);
   } catch {
     // ignore
   }

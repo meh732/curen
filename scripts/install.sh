@@ -94,12 +94,13 @@ show_menu() {
     echo -e "${cyan}--------------------------------------------------------------------${plain}"
     echo -e "${green} 8.${plain} Change Application Port"
     echo -e "${green} 9.${plain} Enable Nightly Auto-Update Cron Job"
-    echo -e "${green}10.${plain} View Access URLs & Server Info"
-    echo -e "${red}11.${plain} Uninstall Curen Completely"
+    echo -e "${green}10.${plain} Manage Server License (Activate Server for All IP Clients)"
+    echo -e "${green}11.${plain} View Access URLs & Server Info"
+    echo -e "${red}12.${plain} Uninstall Curen Completely"
     echo -e "${cyan}--------------------------------------------------------------------${plain}"
     echo -e "${yellow} 0.${plain} Exit"
     echo -e "${cyan}====================================================================${plain}"
-    read -p "Please choose an option [0-11]: " choice
+    read -p "Please choose an option [0-12]: " choice
 
     case "$choice" in
         1)
@@ -117,6 +118,11 @@ show_menu() {
             git reset --hard "origin/$BRANCH"
             npm install --legacy-peer-deps
             npm run build
+            # Preserve server license
+            mkdir -p "$INSTALL_DIR/public" "$INSTALL_DIR/dist"
+            if [[ ! -f "$INSTALL_DIR/dist/server_license.json" && -f "$INSTALL_DIR/public/server_license.json" ]]; then
+                cp "$INSTALL_DIR/public/server_license.json" "$INSTALL_DIR/dist/server_license.json"
+            fi
             systemctl restart curen.service
             echo -e "${green}Successfully updated to the latest version from GitHub!${plain}"
             read -p "Press Enter to continue..." && show_menu
@@ -154,16 +160,19 @@ show_menu() {
             echo -e "${green}Nightly auto-update cron job configured (runs daily at 4:00 AM).${plain}"
             sleep 2; show_menu ;;
         10)
+            manage_server_license
+            ;;
+        11)
             IP=$(curl -s4 ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')
             PORT=$(grep -oP '(?<=--port )\d+' /etc/systemd/system/curen.service 2>/dev/null || echo "3000")
             echo -e "\n${cyan}================ Server & Access Info ================${plain}"
             echo -e "Web App URL : ${green}http://${IP}:${PORT}${plain}"
             echo -e "Install Path: ${yellow}${INSTALL_DIR}${plain}"
             echo -e "Status      : $(systemctl is-active curen.service)"
-            echo -e "License     : ${green}Linux Edition is Fully Free & Unlocked (No Activation Required)${plain}"
+            echo -e "Server Scope: ${green}One-Time Server Activation (All IP Clients Auto-Unlocked)${plain}"
             echo -e "${cyan}======================================================${plain}\n"
             read -p "Press Enter to return..." && show_menu ;;
-        11)
+        12)
             read -p "Are you sure you want to completely uninstall Curen? [y/N]: " confirm
             if [[ "$confirm" =~ ^[Yy]$ ]]; then
                 systemctl stop curen.service >/dev/null 2>&1 || true
@@ -181,6 +190,86 @@ show_menu() {
         *)
             echo -e "${red}Invalid option. Please try again.${plain}"
             sleep 1; show_menu ;;
+    esac
+}
+
+manage_server_license() {
+    clear
+    LIC_FILE="${INSTALL_DIR}/dist/server_license.json"
+    PUB_LIC="${INSTALL_DIR}/public/server_license.json"
+    STATUS="ACTIVE (Unlocked for all IP clients)"
+    if [[ -f "$LIC_FILE" ]]; then
+        if grep -q '"isActivated": false' "$LIC_FILE"; then
+            STATUS="INACTIVE (Server Locked)"
+        fi
+    fi
+    echo -e "${cyan}====================================================================${plain}"
+    echo -e "${green}              Curen Server-Level License Manager                    ${plain}"
+    echo -e "${cyan}====================================================================${plain}"
+    echo -e " Current Server Status : ${green}${STATUS}${plain}"
+    echo -e " Server Machine ID     : ${yellow}TB-SRV-LINUX-ENTERPRISE${plain}"
+    echo -e " Active License Key    : ${cyan}8512-3519-4923-6788${plain}"
+    echo -e " Scope                 : ${green}Activated Once on Server -> All IP Clients Auto-Unlocked${plain}"
+    echo -e "${cyan}--------------------------------------------------------------------${plain}"
+    echo -e "${green} 1.${plain} One-Click Instant Server Activation (Unlock All IP Clients)"
+    echo -e "${green} 2.${plain} Enter Custom 16-Digit Server Activation Key"
+    echo -e "${red} 3.${plain} Deactivate Server License"
+    echo -e "${yellow} 0.${plain} Return to Main Menu"
+    echo -e "${cyan}====================================================================${plain}"
+    read -p "Select an option [0-3]: " lic_opt
+    case "$lic_opt" in
+        1)
+            cat <<'LIC_EOF' > "$PUB_LIC"
+{
+  "isActivated": true,
+  "serverEdition": "Linux Server Edition",
+  "licenseType": "SERVER_WIDE_IP_UNLOCKED",
+  "machineId": "TB-SRV-LINUX-ENTERPRISE",
+  "activatedKey": "8512-3519-4923-6788",
+  "activatedAt": "1404/08/12",
+  "unlockedForAllIpClients": true
+}
+LIC_EOF
+            mkdir -p "${INSTALL_DIR}/dist"
+            cp "$PUB_LIC" "$LIC_FILE" 2>/dev/null || true
+            echo -e "${green}Server license is now ACTIVE! All IP clients have unlimited access.${plain}"
+            sleep 2; manage_server_license ;;
+        2)
+            read -p "Enter 16-digit key (XXXX-XXXX-XXXX-XXXX): " user_key
+            if [[ -n "$user_key" ]]; then
+                cat <<LIC_EOF > "$PUB_LIC"
+{
+  "isActivated": true,
+  "serverEdition": "Linux Server Edition",
+  "licenseType": "SERVER_WIDE_IP_UNLOCKED",
+  "machineId": "TB-SRV-LINUX-ENTERPRISE",
+  "activatedKey": "${user_key}",
+  "activatedAt": "1404/08/12",
+  "unlockedForAllIpClients": true
+}
+LIC_EOF
+                mkdir -p "${INSTALL_DIR}/dist"
+                cp "$PUB_LIC" "$LIC_FILE" 2>/dev/null || true
+                echo -e "${green}Server license updated successfully!${plain}"
+            fi
+            sleep 2; manage_server_license ;;
+        3)
+            cat <<'LIC_EOF' > "$PUB_LIC"
+{
+  "isActivated": false,
+  "serverEdition": "Linux Server Edition",
+  "unlockedForAllIpClients": false
+}
+LIC_EOF
+            mkdir -p "${INSTALL_DIR}/dist"
+            cp "$PUB_LIC" "$LIC_FILE" 2>/dev/null || true
+            echo -e "${yellow}Server license has been DEACTIVATED.${plain}"
+            sleep 2; manage_server_license ;;
+        0)
+            show_menu ;;
+        *)
+            echo -e "${red}Invalid option.${plain}"
+            sleep 1; manage_server_license ;;
     esac
 }
 
@@ -220,6 +309,22 @@ do_install() {
     cd "$INSTALL_DIR"
     npm install --legacy-peer-deps
     npm run build
+
+    # Initialize Server-Wide License (One-Time Server Activation for All IP Clients)
+    mkdir -p "$INSTALL_DIR/public" "$INSTALL_DIR/dist"
+    cat <<'LIC_EOF' > "$INSTALL_DIR/public/server_license.json"
+{
+  "isActivated": true,
+  "serverEdition": "Linux Server Edition",
+  "licenseType": "SERVER_WIDE_IP_UNLOCKED",
+  "machineId": "TB-SRV-LINUX-ENTERPRISE",
+  "activatedKey": "8512-3519-4923-6788",
+  "activatedAt": "1404/08/12",
+  "unlockedForAllIpClients": true,
+  "description": "Server license is active. All incoming IP connections are authorized without client-side activation."
+}
+LIC_EOF
+    cp "$INSTALL_DIR/public/server_license.json" "$INSTALL_DIR/dist/server_license.json" 2>/dev/null || true
 
     # Configure Systemd Service
     echo -e "${yellow}[5/5] Configuring systemd background daemon service (curen.service)...${plain}"

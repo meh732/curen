@@ -27,6 +27,7 @@ import {
   LicenseStatus,
   loadLicenseStatus,
   lockApplicationLicense,
+  fetchServerLicenseStatus,
 } from './utils/offlineLicenseEngine';
 import {
   dispatchToMessengerBot,
@@ -83,6 +84,29 @@ export default function App() {
   const [licenseStatus, setLicenseStatus] = useState<LicenseStatus>(() =>
     loadLicenseStatus()
   );
+  const [isVerifyingServerLicense, setIsVerifyingServerLicense] = useState<boolean>(
+    () => !loadLicenseStatus().isActivated
+  );
+
+  // Automatically check if running on a Linux Server with active server license
+  useEffect(() => {
+    let isMounted = true;
+    fetchServerLicenseStatus()
+      .then((serverLic) => {
+        if (isMounted && serverLic && serverLic.isActivated) {
+          setLicenseStatus(serverLic);
+        }
+      })
+      .finally(() => {
+        if (isMounted) {
+          setIsVerifyingServerLicense(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Persist to localStorage automatically
   useEffect(() => {
@@ -514,15 +538,28 @@ export default function App() {
     });
   };
 
-  // HARD BLOCK: The application MUST NOT work or render any feature until activated for THIS computer's hardware
+  // HARD BLOCK: The application MUST NOT work or render any feature until activated (via Linux Server License or Windows hardware key)
   if (!licenseStatus.isActivated) {
+    if (isVerifyingServerLicense) {
+      return (
+        <div className="min-h-screen w-full bg-slate-900 flex flex-col items-center justify-center p-4 text-white">
+          <div className="flex items-center gap-3 text-slate-300 text-sm">
+            <div className="w-5 h-5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+            <span>در حال بررسی مجوز فعال‌سازی سرور...</span>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <OfflineActivationModal
         license={licenseStatus}
         onActivated={(newLic) => {
           setLicenseStatus(newLic);
           setGlobalBanner(
-            `نرم‌افزار با موفقیت بر روی سخت‌افزار این کامپیوتر (${newLic.machineId}) فعال گردید.`
+            newLic.isServerLicensed
+              ? `لایسنس سرور لینوکس فعال گردید. اکنون تمام کاربران شبکه و کلاینت‌های متصل به IP بدون نیاز به فعال‌سازی مجدد می‌توانند از سیستم استفاده کنند.`
+              : `نرم‌افزار با موفقیت بر روی سخت‌افزار این سیستم (${newLic.machineId}) فعال گردید.`
           );
         }}
       />

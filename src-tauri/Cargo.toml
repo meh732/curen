@@ -1,0 +1,19 @@
+[package]
+name = "tarazban-accounting"
+version = "1.0.0"
+description = "TarazBan Multi-Currency Accounting System"
+authors = ["TarazBan Team"]
+license = ""
+repository = "https://github.com/meh732/curen"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "1.5", features = [] }
+
+[dependencies]
+tauri = { version = "1.5", features = ["dialog-all", "fs-all", "clipboard-all", "window-all"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]

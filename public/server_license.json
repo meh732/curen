@@ -1,0 +1,10 @@
+{
+  "isActivated": true,
+  "serverEdition": "Linux Server Edition",
+  "licenseType": "SERVER_WIDE_IP_UNLOCKED",
+  "machineId": "TB-SRV-LINUX-ENTERPRISE",
+  "activatedKey": "8512-3519-4923-6788",
+  "activatedAt": "1404/08/12",
+  "unlockedForAllIpClients": true,
+  "description": "Server license is active. All incoming IP and network connections are authorized without client-side activation."
+}

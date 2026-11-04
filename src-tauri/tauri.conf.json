@@ -1,0 +1,64 @@
+{
+  "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/tooling/cli/schema.json",
+  "build": {
+    "beforeBuildCommand": "npm run build",
+    "beforeDevCommand": "npm run dev",
+    "devPath": "http://localhost:3000",
+    "distDir": "../dist"
+  },
+  "package": {
+    "productName": "TarazBan_Accounting",
+    "version": "1.0.0"
+  },
+  "tauri": {
+    "allowlist": {
+      "all": false,
+      "fs": {
+        "all": true,
+        "scope": ["$APPDATA/*", "$DESKTOP/*", "$DOCUMENT/*"]
+      },
+      "dialog": {
+        "all": true
+      },
+      "clipboard": {
+        "all": true
+      },
+      "window": {
+        "all": true
+      }
+    },
+    "bundle": {
+      "active": true,
+      "targets": ["msi", "nsis"],
+      "identifier": "com.tarazban.accounting",
+      "icon": [
+        "icons/icon.ico",
+        "icons/icon.png"
+      ],
+      "resources": [],
+      "shortDescription": "Curen Multi-Currency Exchange & Accounting System",
+      "longDescription": "High-performance native desktop accounting software for Windows with offline hardware security.",
+      "copyright": "TarazBan 2026",
+      "windows": {
+        "certificateThumbprint": null,
+        "digestAlgorithm": "sha256",
+        "timestampUrl": ""
+      }
+    },
+    "security": {
+      "csp": null
+    },
+    "windows": [
+      {
+        "fullscreen": false,
+        "height": 850,
+        "resizable": true,
+        "title": "ترازبان — سیستم حسابداری و صرافی دوارزی",
+        "width": 1360,
+        "minWidth": 980,
+        "minHeight": 650,
+        "center": true
+      }
+    ]
+  }
+}
