@@ -104,17 +104,25 @@ app.get('/api/health', (req, res) => {
 });
 
 async function startServer() {
-  // Mount Vite middleware in development mode
-  const vite = await createViteServer({
-    server: { middlewareMode: true },
-    appType: 'spa',
-  });
-
-  app.use(vite.middlewares);
+  const distPath = path.join(__dirname, 'dist');
+  if (fs.existsSync(distPath) && process.env.NODE_ENV === 'production') {
+    // Production mode: Serve pre-compiled static assets from dist/
+    app.use(express.static(distPath));
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
+  } else {
+    // Dev Mode / Preview Mode: Mount Vite middleware
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: 'spa',
+    });
+    app.use(vite.middlewares);
+  }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 TarazBan Network Central Server running at http://0.0.0.0:${PORT}`);
-    console.log(`📱 Connect any PC or mobile phone via server IP: http://<SERVER_IP>:${PORT}`);
+    console.log(`🚀 TarazBan Central Network Server running at http://0.0.0.0:${PORT}`);
+    console.log(`📱 Connect any PC, laptop or mobile phone via server IP: http://<SERVER_IP>:${PORT}`);
   });
 }
 
