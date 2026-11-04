@@ -176,7 +176,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
               <span className="text-xs font-extrabold text-amber-950">
                 ۴. بکاپ اتوماتیک، بات و انبار
               </span>
-              <Monitor className="w-4 h-4 text-amber-700" />
+              <DatabaseBackup className="w-4 h-4 text-amber-700" />
             </div>
             <p className="text-[11px] text-slate-600 leading-relaxed">
               تنظیمات بکاپ اتوماتیک، ارسال به بازوی بله و تلگرام و مدیریت کاردکس لحظه‌ای انبار.
