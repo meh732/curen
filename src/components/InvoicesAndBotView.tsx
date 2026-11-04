@@ -301,12 +301,12 @@ export const InvoicesAndBotView: React.FC<InvoicesAndBotViewProps> = ({
               ) : (
                 <ShoppingCart className="w-5 h-5 text-amber-400" />
               )}
-              {editingInvoiceId ? 'ویرایش و اصلاح فاکتور' : 'ثبت سریع فاکتور خرید و فروش (با دریافت و پرداخت ترکیبی)'}
+              {editingInvoiceId ? 'ویرایش و اصلاح فاکتور معامله ارزی' : 'ثبت فاکتور معامله ارزی (خرید و فروش ارز به عنوان موضوع معامله)'}
             </h2>
             <p className="text-xs text-slate-400 mt-1">
               {editingInvoiceId
-                ? 'در حال اصلاح اقلام، مبالغ یا نحوه تسویه بانکی/ارزی این فاکتور هستید. پس از تغییرات دکمه ذخیره اصلاحات را بزنید.'
-                : 'کالا یا خدمات را وارد کنید و در همین فاکتور مشخص کنید پول آن از کدام بانک‌ها یا صندوق‌ها (ریالی یا ارزی با تعیین ارزش ارز) دریافت یا پرداخت شده است تا سند بانک و حساب شخص خودکار ثبت شود.'}
+                ? 'در حال اصلاح اقلام ارزی، نرخ معامله یا نحوه تسویه بانکی این معامله هستید. پس از تغییرات دکمه ذخیره اصلاحات را بزنید.'
+                : 'ارز مورد معامله (دلار، یورو، درهم، یوان و...) را انتخاب کنید و مشخص کنید پول آن از کدام بانک‌ها یا صندوق‌ها (ریالی یا ارزی به عنوان ابزار تسویه) دریافت یا پرداخت شده است.'}
             </p>
             {editingInvoiceId && (
               <div className="mt-2 flex items-center gap-2">
@@ -446,7 +446,7 @@ export const InvoicesAndBotView: React.FC<InvoicesAndBotViewProps> = ({
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
                 <Package className="w-4 h-4 text-teal-400" />
-                اقلام کالا یا خدمات فاکتور
+                اقلام معامله (ارزها، اسکناس و حواله‌ها)
               </span>
               <button
                 type="button"
@@ -454,7 +454,7 @@ export const InvoicesAndBotView: React.FC<InvoicesAndBotViewProps> = ({
                 className="text-xs bg-slate-800 hover:bg-slate-700 text-teal-400 px-3 py-1.5 rounded-lg flex items-center gap-1 transition cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />
-                افزودن ردیف کالا / خدمات
+                افزودن ردیف ارز / معامله
               </button>
             </div>
 
@@ -462,12 +462,12 @@ export const InvoicesAndBotView: React.FC<InvoicesAndBotViewProps> = ({
               <table className="w-full text-right text-xs">
                 <thead className="bg-slate-950/90 text-slate-400 border-b border-slate-800">
                   <tr>
-                    <th className="p-2.5 min-w-[220px]">انتخاب کالا یا شرح خدمات</th>
-                    <th className="p-2.5 w-24">تعداد</th>
-                    <th className="p-2.5 w-40">فی واحد (ریال)</th>
+                    <th className="p-2.5 min-w-[220px]">انتخاب ارز یا موضوع معامله</th>
+                    <th className="p-2.5 w-24">مقدار ارز</th>
+                    <th className="p-2.5 w-40">نرخ / فی (ریال)</th>
                     <th className="p-2.5 w-36">تخفیف (ریال)</th>
-                    <th className="p-2.5 w-24">مالیات (%)</th>
-                    <th className="p-2.5 w-40">جمع نهایی ردیف</th>
+                    <th className="p-2.5 w-24">کارمزد/مالیات (%)</th>
+                    <th className="p-2.5 w-40">جمع کل ردیف (ریال)</th>
                     <th className="p-2.5 w-12 text-center">حذف</th>
                   </tr>
                 </thead>

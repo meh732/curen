@@ -25,6 +25,8 @@ import { InvoicesAndBotView } from './components/InvoicesAndBotView';
 import { BanksAndReconciliationView } from './components/BanksAndReconciliationView';
 import { StandardAccountingReportsView } from './components/StandardAccountingReportsView';
 import { OfflineActivationModal } from './components/OfflineActivationModal';
+import { CurrencyManagerModal } from './components/CurrencyManagerModal';
+import { PWAInstallPrompt } from './components/PWAInstallPrompt';
 import {
   loadLicenseStatus,
   fetchServerLicenseStatus,
@@ -177,6 +179,7 @@ export function App() {
   const [networkSyncStatus, setNetworkSyncStatus] = useState<'connected' | 'connecting' | 'offline'>('connecting');
   const [lastSyncTime, setLastSyncTime] = useState<string>('');
   const [showBlankConfirmModal, setShowBlankConfirmModal] = useState<boolean>(false);
+  const [showCurrencyModal, setShowCurrencyModal] = useState<boolean>(false);
   const lastServerUpdatedAtRef = useRef<string | null>(null);
   const isRemoteUpdateRef = useRef<boolean>(false);
 
@@ -1080,41 +1083,41 @@ export function App() {
       icon: <LayoutDashboard className="w-4 h-4" />,
     },
     {
+      id: 'fx_desk',
+      label: 'خرید و فروش ارز (صرافی)',
+      icon: <Coins className="w-4 h-4 text-amber-400" />,
+      badge: 'اصلی',
+    },
+    {
       id: 'invoices',
-      label: 'فاکتور خرید و فروش',
-      icon: <ShoppingBag className="w-4 h-4" />,
-      badge: 'چندبانکی',
+      label: 'فاکتور معاملات ارزی',
+      icon: <ShoppingBag className="w-4 h-4 text-teal-400" />,
+      badge: 'تسویه چندارزی',
     },
     {
       id: 'vouchers',
-      label: 'امور مالی اتوماتیک',
-      icon: <Sparkles className="w-4 h-4" />,
-      badge: 'آسان',
-    },
-    {
-      id: 'fx_desk',
-      label: 'خرید و فروش ارز',
-      icon: <Coins className="w-4 h-4" />,
+      label: 'امور مالی و دریافت/پرداخت',
+      icon: <Sparkles className="w-4 h-4 text-emerald-400" />,
     },
     {
       id: 'persons',
-      label: 'حساب اشخاص (طلب/بدهی)',
-      icon: <Users className="w-4 h-4" />,
+      label: 'حساب اشخاص (طلب/بدهی ارزی)',
+      icon: <Users className="w-4 h-4 text-cyan-400" />,
     },
     {
       id: 'banks',
-      label: 'بانک‌ها و صندوق‌ها',
-      icon: <Landmark className="w-4 h-4" />,
+      label: 'بانک‌ها و صندوق‌های ارزی',
+      icon: <Landmark className="w-4 h-4 text-indigo-400" />,
     },
     {
       id: 'inventory',
-      label: 'انبار، کالا و پشتیبان',
-      icon: <Package className="w-4 h-4" />,
+      label: 'موجودی ارزها و پشتیبان',
+      icon: <Package className="w-4 h-4 text-purple-400" />,
     },
     {
       id: 'reports',
-      label: 'گزارش‌ها و PDF',
-      icon: <FileSpreadsheet className="w-4 h-4" />,
+      label: 'گزارش سود و زیان معاملات',
+      icon: <FileSpreadsheet className="w-4 h-4 text-rose-400" />,
     },
   ];
 
@@ -1129,6 +1132,9 @@ export function App() {
 
   return (
     <div className="min-h-screen bg-[#0B0F17] text-slate-100 flex flex-col">
+      {/* PWA Install Banner */}
+      <PWAInstallPrompt />
+
       {/* Top Header */}
       <header className="sticky top-0 z-30 bg-[#0B0F17]/95 backdrop-blur-md border-b border-slate-800/80 px-4 sm:px-6 py-3">
         <div className="max-w-[1600px] mx-auto flex flex-wrap items-center justify-between gap-3">
@@ -1139,10 +1145,10 @@ export function App() {
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-sm sm:text-base font-bold text-white tracking-tight">
-                  ترازبان — حسابداری شخصی، ارزی و چندبانکی آسان
+                  ترازبان ارزی — نرم‌افزار صرافی و معاملات ارزی
                 </h1>
                 <span className="px-2 py-0.5 text-[10px] sm:text-[11px] font-semibold bg-teal-500/15 text-teal-400 border border-teal-500/30 rounded-md">
-                  سند اتوماتیک بانک و صندوق
+                  تسویه ترکیبی چندارزی
                 </span>
                 <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 rounded-md">
                   <ShieldCheck className="w-3 h-3" />
@@ -1150,7 +1156,7 @@ export function App() {
                 </span>
               </div>
               <p className="text-[11px] sm:text-xs text-slate-400 line-clamp-1">
-                طراحی‌شده برای استفاده شخصی و جیبی در گوشی و رایانه • تسویه ترکیبی چند بانکی و چند صندوقی (ریالی و ارزی)
+                طراحی‌شده برای صرافی و حسابداری معاملات ارزی در گوشی و رایانه • تسویه ترکیبی بانک و صندوق
               </p>
             </div>
           </div>
@@ -1162,52 +1168,44 @@ export function App() {
                 <>
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                   <Server className="w-3.5 h-3.5 text-emerald-400" />
-                  <span className="text-emerald-400 font-semibold text-[11px]">سرور لینوکس متصل (سینک زنده)</span>
+                  <span className="text-emerald-400 font-semibold text-[11px]">سرور لینوکس متصل</span>
                 </>
               ) : networkSyncStatus === 'connecting' ? (
                 <>
                   <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
                   <RefreshCw className="w-3.5 h-3.5 text-amber-400 animate-spin" />
-                  <span className="text-amber-400 font-semibold text-[11px]">درحال اتصال به شبکه...</span>
+                  <span className="text-amber-400 font-semibold text-[11px]">درحال اتصال...</span>
                 </>
               ) : (
                 <>
                   <span className="w-2 h-2 rounded-full bg-slate-500" />
                   <WifiOff className="w-3.5 h-3.5 text-slate-400" />
-                  <span className="text-slate-400 font-semibold text-[11px]">حالت محلی (آفلاین)</span>
+                  <span className="text-slate-400 font-semibold text-[11px]">آفلاین</span>
                 </>
               )}
-              {lastSyncTime && (
-                <span className="text-[10px] text-slate-500 font-mono-num hidden lg:inline mr-1">
-                  [{lastSyncTime}]
-                </span>
-              )}
             </div>
 
-            {/* Quick Currency Rates Bar */}
-            <div className="hidden xl:flex items-center gap-4 bg-slate-900/90 border border-slate-800 rounded-xl px-3.5 py-1.5 text-xs">
-              {currencies
-                .filter((c) => !c.isBase)
-                .map((c) => (
-                  <div key={c.code} className="flex items-center gap-1.5">
-                    <span className="text-slate-400 font-semibold">{c.code}:</span>
-                    <span className="font-mono-num text-white font-bold">
-                      {c.defaultRateToIRR.toLocaleString('en-US')}
-                    </span>
-                    <span className="text-[10px] text-slate-500">ریال</span>
-                  </div>
-                ))}
+            {/* Quick Currency Rates Bar & Manage Currencies Button */}
+            <div className="flex items-center gap-2 bg-slate-900/90 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs">
+              <div className="hidden xl:flex items-center gap-3">
+                {currencies
+                  .filter((c) => !c.isBase)
+                  .map((c) => (
+                    <div key={c.code} className="flex items-center gap-1">
+                      <span className="text-slate-400 font-semibold">{c.code}:</span>
+                      <span className="font-mono-num text-white font-bold">
+                        {c.defaultRateToIRR.toLocaleString('en-US')}
+                      </span>
+                    </div>
+                  ))}
+              </div>
+              <button
+                onClick={() => setShowCurrencyModal(true)}
+                className="px-2 py-0.5 rounded bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 font-bold text-[11px] border border-teal-500/30 transition cursor-pointer"
+              >
+                + مدیریت ارزها ({currencies.length})
+              </button>
             </div>
-
-            {/* Blank DB Button */}
-            <button
-              onClick={() => setShowBlankConfirmModal(true)}
-              title="پاکسازی کامل داده‌ها و ایجاد دیتابیس خام برای شروع واقعی"
-              className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-xs text-amber-300 flex items-center gap-1.5 transition cursor-pointer"
-            >
-              <Database className="w-3.5 h-3.5 text-amber-400" />
-              <span>دیتابیس خام (شروع واقعی)</span>
-            </button>
 
             {/* Reset Demo Data */}
             <button
@@ -1221,6 +1219,14 @@ export function App() {
           </div>
         </div>
       </header>
+
+      {/* Currency Manager Modal */}
+      <CurrencyManagerModal
+        currencies={currencies}
+        isOpen={showCurrencyModal}
+        onClose={() => setShowCurrencyModal(false)}
+        onUpdateCurrencies={setCurrencies}
+      />
 
       {/* Blank Database Confirmation Modal */}
       {showBlankConfirmModal && (
@@ -1266,11 +1272,11 @@ export function App() {
         </div>
       )}
 
-      {/* Main Layout - Pocket Mobile Friendly with Horizontal Tabs on small screens, Vertical Sidebar on Desktop */}
-      <div className="max-w-[1600px] w-full mx-auto flex-1 flex flex-col lg:flex-row gap-5 p-4 sm:p-6">
-        {/* Navigation Bar */}
+      {/* Main Layout - Pocket Mobile Friendly with Vertical Sidebar on Desktop & Fixed Bottom Nav Bar on Mobile */}
+      <div className="max-w-[1600px] w-full mx-auto flex-1 flex flex-col lg:flex-row gap-5 p-3 sm:p-6 pb-24 lg:pb-6">
+        {/* Navigation Bar (Desktop Sidebar & Tablet Top Row) */}
         <aside className="w-full lg:w-64 shrink-0">
-          <nav className="bg-slate-900/80 border border-slate-800 rounded-xl p-2 flex lg:flex-col gap-1.5 overflow-x-auto lg:overflow-visible sticky top-16 lg:top-20 z-20">
+          <nav className="bg-slate-900/80 border border-slate-800 rounded-xl p-2 hidden sm:flex lg:flex-col gap-1.5 overflow-x-auto lg:overflow-visible sticky top-16 lg:top-20 z-20">
             {navItems.map((item) => {
               const active = activeTab === item.id;
               return (
@@ -1415,6 +1421,59 @@ export function App() {
             />
           )}
         </main>
+      </div>
+
+      {/* Sticky Bottom Mobile Navigation Bar for Phone Screens */}
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-slate-950/95 border-t border-slate-800 backdrop-blur-xl px-1.5 py-2 flex items-center justify-around shadow-2xl">
+        <button
+          onClick={() => setActiveTab('fx_desk')}
+          className={`flex flex-col items-center gap-1 px-2 py-1 rounded-xl transition ${
+            activeTab === 'fx_desk' ? 'text-amber-400 font-bold bg-amber-500/10' : 'text-slate-400'
+          }`}
+        >
+          <Coins className="w-5 h-5" />
+          <span className="text-[10px]">معامله صرافی</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('invoices')}
+          className={`flex flex-col items-center gap-1 px-2 py-1 rounded-xl transition ${
+            activeTab === 'invoices' ? 'text-teal-400 font-bold bg-teal-500/10' : 'text-slate-400'
+          }`}
+        >
+          <ShoppingBag className="w-5 h-5" />
+          <span className="text-[10px]">فاکتور ارزی</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('persons')}
+          className={`flex flex-col items-center gap-1 px-2 py-1 rounded-xl transition ${
+            activeTab === 'persons' ? 'text-cyan-400 font-bold bg-cyan-500/10' : 'text-slate-400'
+          }`}
+        >
+          <Users className="w-5 h-5" />
+          <span className="text-[10px]">طرف حساب‌ها</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('banks')}
+          className={`flex flex-col items-center gap-1 px-2 py-1 rounded-xl transition ${
+            activeTab === 'banks' ? 'text-indigo-400 font-bold bg-indigo-500/10' : 'text-slate-400'
+          }`}
+        >
+          <Landmark className="w-5 h-5" />
+          <span className="text-[10px]">خزانه و بانک</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('dashboard')}
+          className={`flex flex-col items-center gap-1 px-2 py-1 rounded-xl transition ${
+            activeTab === 'dashboard' ? 'text-emerald-400 font-bold bg-emerald-500/10' : 'text-slate-400'
+          }`}
+        >
+          <LayoutDashboard className="w-5 h-5" />
+          <span className="text-[10px]">داشبورد</span>
+        </button>
       </div>
     </div>
   );
