@@ -1118,30 +1118,29 @@ export function App() {
   const navItems: { id: NavTab; label: string; icon: React.ReactNode; badge?: string }[] = [
     {
       id: 'dashboard',
-      label: 'خلاصه وضعیت من',
+      label: 'میز کار و خلاصه وضعیت',
       icon: <LayoutDashboard className="w-4 h-4" />,
     },
     {
       id: 'fx_desk',
-      label: 'خرید و فروش ارز (صرافی)',
+      label: 'ثبت خرید و فروش ارز',
       icon: <Coins className="w-4 h-4 text-amber-500" />,
       badge: 'اصلی',
     },
     {
-      id: 'invoices',
-      label: 'فاکتور معاملات ارزی',
-      icon: <ShoppingBag className="w-4 h-4 text-teal-600" />,
-      badge: 'تسویه چندارزی',
+      id: 'persons',
+      label: 'بدهکاران و صورتحساب اشخاص',
+      icon: <Users className="w-4 h-4 text-cyan-600" />,
     },
     {
       id: 'vouchers',
-      label: 'امور مالی و دریافت/پرداخت',
+      label: 'ثبت دریافت و پرداخت به اشخاص',
       icon: <Sparkles className="w-4 h-4 text-emerald-600" />,
     },
     {
-      id: 'persons',
-      label: 'حساب اشخاص (طلب/بدهی ارزی)',
-      icon: <Users className="w-4 h-4 text-cyan-600" />,
+      id: 'reports',
+      label: 'سود ماهانه و گزارشات',
+      icon: <FileSpreadsheet className="w-4 h-4 text-rose-600" />,
     },
     {
       id: 'banks',
@@ -1149,14 +1148,14 @@ export function App() {
       icon: <Landmark className="w-4 h-4 text-indigo-600" />,
     },
     {
-      id: 'inventory',
-      label: 'موجودی ارزها و پشتیبان',
-      icon: <Package className="w-4 h-4 text-purple-600" />,
+      id: 'invoices',
+      label: 'فاکتور رسمی چندارزی',
+      icon: <ShoppingBag className="w-4 h-4 text-teal-600" />,
     },
     {
-      id: 'reports',
-      label: 'گزارش سود و زیان معاملات',
-      icon: <FileSpreadsheet className="w-4 h-4 text-rose-600" />,
+      id: 'inventory',
+      label: 'پشتیبان‌گیری و ربات بله/تلگرام',
+      icon: <Package className="w-4 h-4 text-purple-600" />,
     },
   ];
 
@@ -1394,6 +1393,8 @@ export function App() {
               currencies={currencies}
               contacts={contacts}
               banks={banks}
+              vouchers={vouchers}
+              companyName={companyName}
               onExecuteDeal={handleExecuteFXDeal}
               onAddContact={(newContact) => setContacts([...contacts, newContact])}
               onDeleteDeal={(dealId) => {
@@ -1449,54 +1450,56 @@ export function App() {
         </main>
       </div>
 
-      {/* Sticky Bottom Mobile Navigation Bar for Phone Screens */}
-      <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 border-t border-slate-200 backdrop-blur-xl px-1.5 py-2 flex items-center justify-around shadow-xl">
+      {/* Sticky Bottom Mobile Navigation Bar for Phone Screens (5 Core Goals) */}
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 border-t border-slate-200 backdrop-blur-xl px-1 py-1.5 flex items-center justify-around shadow-xl">
         <button
-          onClick={() => setActiveTab('fx_desk')}
-          className={`flex flex-col items-center gap-1 px-2 py-1 rounded-xl transition ${
-            activeTab === 'fx_desk' ? 'text-amber-700 font-bold bg-amber-50' : 'text-slate-600'
+          onClick={() => setActiveTab('dashboard')}
+          className={`flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl transition cursor-pointer ${
+            activeTab === 'dashboard' ? 'text-teal-700 font-extrabold bg-teal-50' : 'text-slate-600'
           }`}
         >
-          <Coins className="w-5 h-5 text-amber-600" />
-          <span className="text-[10px]">معامله صرافی</span>
+          <LayoutDashboard className="w-5 h-5 text-teal-600" />
+          <span className="text-[10px]">میز کار</span>
         </button>
 
         <button
-          onClick={() => setActiveTab('invoices')}
-          className={`flex flex-col items-center gap-1 px-2 py-1 rounded-xl transition ${
-            activeTab === 'invoices' ? 'text-teal-700 font-bold bg-teal-50' : 'text-slate-600'
+          onClick={() => setActiveTab('fx_desk')}
+          className={`flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl transition cursor-pointer ${
+            activeTab === 'fx_desk' ? 'text-amber-800 font-extrabold bg-amber-50' : 'text-slate-600'
           }`}
         >
-          <ShoppingBag className="w-5 h-5 text-teal-600" />
-          <span className="text-[10px]">فاکتور ارزی</span>
+          <Coins className="w-5 h-5 text-amber-600" />
+          <span className="text-[10px]">خرید/فروش ارز</span>
         </button>
 
         <button
           onClick={() => setActiveTab('persons')}
-          className={`flex flex-col items-center gap-1 px-2 py-1 rounded-xl transition ${
-            activeTab === 'persons' ? 'text-cyan-700 font-bold bg-cyan-50' : 'text-slate-600'
+          className={`flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl transition cursor-pointer ${
+            activeTab === 'persons' ? 'text-cyan-800 font-extrabold bg-cyan-50' : 'text-slate-600'
           }`}
         >
           <Users className="w-5 h-5 text-cyan-600" />
-          <span className="text-[10px]">طرف حساب‌ها</span>
+          <span className="text-[10px]">بدهکار/بستانکار</span>
         </button>
 
         <button
-          onClick={() => setActiveTab('banks')}
-          className={`flex flex-col items-center gap-1 px-2 py-1 rounded-xl transition ${
-            activeTab === 'banks' ? 'text-indigo-700 font-bold bg-indigo-50' : 'text-slate-600'
+          onClick={() => setActiveTab('vouchers')}
+          className={`flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl transition cursor-pointer ${
+            activeTab === 'vouchers' ? 'text-emerald-800 font-extrabold bg-emerald-50' : 'text-slate-600'
           }`}
         >
-          <Landmark className="w-5 h-5 text-indigo-600" />
-          <span className="text-[10px]">خزانه و بانک</span>
+          <Sparkles className="w-5 h-5 text-emerald-600" />
+          <span className="text-[10px]">دریافت/پرداخت</span>
         </button>
 
         <button
-          onClick={() => setShowSettingsModal(true)}
-          className="flex flex-col items-center gap-1 px-2 py-1 rounded-xl text-slate-600 transition"
+          onClick={() => setActiveTab('reports')}
+          className={`flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl transition cursor-pointer ${
+            activeTab === 'reports' ? 'text-rose-800 font-extrabold bg-rose-50' : 'text-slate-600'
+          }`}
         >
-          <Settings className="w-5 h-5 text-slate-700" />
-          <span className="text-[10px]">تنظیمات</span>
+          <FileSpreadsheet className="w-5 h-5 text-rose-600" />
+          <span className="text-[10px]">سود ماهانه</span>
         </button>
       </div>
     </div>

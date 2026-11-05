@@ -30,6 +30,8 @@ import {
   BookOpen,
   Sparkles,
   UserPlus,
+  X,
+  Eye,
 } from 'lucide-react';
 
 interface VoucherEntryViewProps {
@@ -104,8 +106,9 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
   const [newContactName, setNewContactName] = useState('');
   const [newContactPhone, setNewContactPhone] = useState('');
 
-  // پیام موفقیت
+  // پیام موفقیت و کارت تایید سند
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [submittedVoucherSuccess, setSubmittedVoucherSuccess] = useState<JournalVoucher | null>(null);
 
   // تب سند دستی (پیشرفته)
   const [manualLines, setManualLines] = useState<Partial<VoucherLine>[]>([
@@ -397,6 +400,7 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
       );
     }
 
+    setSubmittedVoucherSuccess(newVoucher);
     setDescription('');
     setTxAmountForeign(0);
     if (splits.length > 0) {
@@ -568,7 +572,58 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
           </div>
         )}
 
-        {successMsg && (
+        {/* SUCCESS CONFIRMATION CARD ON VOUCHER SUBMIT */}
+        {submittedVoucherSuccess && (
+          <div className="mb-6 bg-emerald-50 border-2 border-emerald-300 rounded-3xl p-5 sm:p-6 space-y-4 shadow-lg animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shadow-md shadow-emerald-600/20">
+                  <CheckCircle2 className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-emerald-950 text-sm sm:text-base">
+                    سند مالی شماره #{submittedVoucherSuccess.voucherNumber} با موفقیت ثبت شد!
+                  </h3>
+                  <p className="text-xs text-emerald-800">
+                    مانده حساب بانک، صندوق و طرف حساب در دیتابیس به‌روز گردید.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSubmittedVoucherSuccess(null)}
+                className="p-1 rounded-xl text-emerald-700 hover:bg-emerald-200 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-white p-4 rounded-2xl border border-emerald-200 text-xs font-mono-num">
+              <div>
+                <span className="text-slate-500 font-sans block text-[11px]">شماره سند:</span>
+                <span className="font-extrabold text-teal-800 text-sm">#{submittedVoucherSuccess.voucherNumber}</span>
+              </div>
+              <div>
+                <span className="text-slate-500 font-sans block text-[11px]">تاریخ سند:</span>
+                <span className="font-extrabold text-slate-900 text-sm">{submittedVoucherSuccess.date}</span>
+              </div>
+              <div>
+                <span className="text-slate-500 font-sans block text-[11px]">شرح سند:</span>
+                <span className="font-extrabold text-slate-900 text-xs font-sans truncate block">{submittedVoucherSuccess.description}</span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                onClick={() => setSubmittedVoucherSuccess(null)}
+                className="px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-extrabold text-xs cursor-pointer transition shadow-md shadow-teal-600/20"
+              >
+                + ثبت سند جدید
+              </button>
+            </div>
+          </div>
+        )}
+
+        {successMsg && !submittedVoucherSuccess && (
           <div className="mb-5 bg-emerald-50 border border-emerald-300 rounded-xl p-3.5 flex items-center gap-2.5 text-xs text-emerald-900 font-bold">
             <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
             <span>{successMsg}</span>
