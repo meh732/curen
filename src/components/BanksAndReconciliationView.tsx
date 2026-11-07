@@ -59,6 +59,7 @@ export const BanksAndReconciliationView: React.FC<BanksAndReconciliationViewProp
   const [newIban, setNewIban] = useState('');
   const [newCurrency, setNewCurrency] = useState<CurrencyCode>('IRR');
   const [newInitBalance, setNewInitBalance] = useState<number>(0);
+  const [showAddBankSection, setShowAddBankSection] = useState(false);
 
   // مدیریت ارزها
   const [newCurrCode, setNewCurrCode] = useState('');
@@ -189,6 +190,7 @@ export const BanksAndReconciliationView: React.FC<BanksAndReconciliationViewProp
     setNewAccountNumber('');
     setNewIban('');
     setNewInitBalance(0);
+    setShowAddBankSection(false);
   };
 
   const handleRateChange = (code: CurrencyCode, newRate: number) => {
@@ -232,7 +234,7 @@ export const BanksAndReconciliationView: React.FC<BanksAndReconciliationViewProp
       <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
         <div className="flex flex-wrap items-center justify-between gap-4 mb-5">
           <div>
-            <h2 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+            <h2 className="text-base sm:text-lg font-extrabold text-slate-900 flex items-center gap-2">
               <Landmark className="w-5 h-5 text-teal-600" />
               موجودی لحظه‌ای بانک‌ها و صندوق‌های نقدی / ارزی
             </h2>
@@ -240,7 +242,134 @@ export const BanksAndReconciliationView: React.FC<BanksAndReconciliationViewProp
               روی هر بانک یا صندوق کلیک کنید تا ریز واریزها و برداشت‌های اتوماتیک آن را مشاهده نمایید.
             </p>
           </div>
+
+          {onAddBank && (
+            <button
+              type="button"
+              onClick={() => setShowAddBankSection(!showAddBankSection)}
+              className="px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-extrabold flex items-center gap-2 shadow-xs cursor-pointer transition"
+            >
+              <Plus className="w-4 h-4" />
+              <span>{showAddBankSection ? 'بستن فرم تعریف' : '+ تعریف بانک یا صندوق جدید (ریالی و ارزی)'}</span>
+            </button>
+          )}
         </div>
+
+        {/* فرم بازشونده سریع برای تعریف حساب بانکی یا صندوق جدید */}
+        {showAddBankSection && (
+          <div className="mb-6 p-4 sm:p-5 bg-teal-50/70 border-2 border-teal-400 rounded-2xl animate-fadeIn shadow-xs space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-extrabold text-teal-950 flex items-center gap-2">
+                <Plus className="w-4 h-4 text-teal-700" />
+                تعریف بانک یا صندوق جدید (ریالی یا ارزی)
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowAddBankSection(false)}
+                className="text-xs text-teal-800 hover:underline font-bold cursor-pointer"
+              >
+                انصراف
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateBank} className="space-y-4 bg-white p-4 rounded-xl border border-teal-200">
+              <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 max-w-xs">
+                <button
+                  type="button"
+                  onClick={() => setNewBankKind('bank')}
+                  className={`flex-1 py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                    newBankKind === 'bank'
+                      ? 'bg-teal-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Landmark className="w-4 h-4" />
+                  حساب بانکی
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNewBankKind('cash_box')}
+                  className={`flex-1 py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                    newBankKind === 'cash_box'
+                      ? 'bg-amber-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Wallet className="w-4 h-4" />
+                  صندوق / گاوصندوق
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    {newBankKind === 'bank' ? 'نام بانک (مثلاً بانک ملت)' : 'نام صندوق (مثلاً گاوصندوق دلار)'}
+                  </label>
+                  <input
+                    type="text"
+                    value={newBankName}
+                    onChange={(e) => setNewBankName(e.target.value)}
+                    placeholder="نام را وارد کنید..."
+                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:border-teal-600 outline-none"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">نوع ارز حساب/صندوق</label>
+                  <select
+                    value={newCurrency}
+                    onChange={(e) => setNewCurrency(e.target.value as CurrencyCode)}
+                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:border-teal-600 outline-none"
+                  >
+                    {currencies.map((c) => (
+                      <option key={c.code} value={c.code}>
+                        {c.name} ({c.code})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    {newBankKind === 'bank' ? 'شماره حساب / کارت' : 'نام مسئول / محل صندوق'}
+                  </label>
+                  <input
+                    type="text"
+                    value={newAccountNumber}
+                    onChange={(e) => setNewAccountNumber(e.target.value)}
+                    placeholder="مثلاً: 6037-9918-..."
+                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:border-teal-600 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    موجودی اولیه ({newCurrency})
+                  </label>
+                  <input
+                    type="text"
+                    value={newInitBalance === 0 ? '' : formatNumber(newInitBalance)}
+                    onChange={(e) => setNewInitBalance(parseFormattedNumber(e.target.value))}
+                    placeholder="0"
+                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:border-teal-600 outline-none font-mono-num font-bold"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-2">
+                <button
+                  type="submit"
+                  disabled={!newBankName.trim()}
+                  className="px-5 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-extrabold text-xs flex items-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-50"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  ثبت و فعال‌سازی این {newBankKind === 'bank' ? 'بانک' : 'صندوق'}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {banks.map((b) => {
@@ -286,7 +415,13 @@ export const BanksAndReconciliationView: React.FC<BanksAndReconciliationViewProp
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            onDeleteBank(b.id);
+                            if (
+                              window.confirm(
+                                `آیا از حذف حساب/صندوق «${b.bankName}» و خارج کردن آن از لیست اطمینان دارید؟`
+                              )
+                            ) {
+                              onDeleteBank(b.id);
+                            }
                           }}
                           className="text-rose-600 hover:text-rose-700 p-1 rounded hover:bg-rose-100 cursor-pointer"
                           title="حذف بانک/صندوق"

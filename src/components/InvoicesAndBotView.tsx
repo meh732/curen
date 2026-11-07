@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   SalesInvoice,
   InvoiceItem,
@@ -26,6 +26,7 @@ import {
   Send,
   X,
   Sparkles,
+  Search,
 } from 'lucide-react';
 
 interface InvoicesAndBotViewProps {
@@ -83,27 +84,59 @@ export const InvoicesAndBotView: React.FC<InvoicesAndBotViewProps> = ({
   const [newContactName, setNewContactName] = useState('');
   const [newContactPhone, setNewContactPhone] = useState('');
 
-  // اقلام فاکتور
-  const [items, setItems] = useState<InvoiceItem[]>([
-    {
-      id: 'item-1',
-      productId: products[0]?.id || '__custom__',
-      productSku: products[0]?.sku || 'CUSTOM',
-      productName: products[0]?.name || 'معامله ارزی',
-      unit: products[0]?.unit || 'واحد',
-      quantity: 1,
-      unitPriceForeign: products[0]?.defaultPriceIRR || 1000000,
-      unitPriceIRR: products[0]?.defaultPriceIRR || 1000000,
+  // پیشنهاد فی بر اساس آخرین فاکتور صادر شده برای این کالا یا ارز
+  const getSuggestedPriceForProduct = (prodId: string): number => {
+    for (let i = invoices.length - 1; i >= 0; i--) {
+      const match = invoices[i].items.find(
+        (it) => it.productId === prodId && it.unitPriceIRR > 0
+      );
+      if (match) return match.unitPriceIRR;
+    }
+    const prod = products.find((p) => p.id === prodId);
+    return prod?.defaultPriceIRR || 0;
+  };
+
+  const createBlankItem = (prodId?: string): InvoiceItem => {
+    const selectedProd = products.find((p) => p.id === prodId) || products[0];
+    const pid = selectedProd?.id || '__custom__';
+    const suggestedPrice = getSuggestedPriceForProduct(pid);
+    return {
+      id: `item-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
+      productId: pid,
+      productSku: selectedProd?.sku || 'CUSTOM',
+      productName: selectedProd?.name || 'معامله ارزی',
+      unit: selectedProd?.unit || 'واحد',
+      quantity: 0,
+      unitPriceForeign: suggestedPrice,
+      unitPriceIRR: suggestedPrice,
       discountForeign: 0,
       discountIRR: 0,
       taxPercent: 0,
-      totalForeign: products[0]?.defaultPriceIRR || 1000000,
-      totalIRR: products[0]?.defaultPriceIRR || 1000000,
-    },
-  ]);
+      totalForeign: 0,
+      totalIRR: 0,
+    };
+  };
+
+  // اقلام فاکتور (به صورت پیش‌فرض خام)
+  const [items, setItems] = useState<InvoiceItem[]>(() => [createBlankItem()]);
 
   // ردیف‌های دریافت یا پرداخت ترکیبی چند بانکی / چند صندوقی
   const [payments, setPayments] = useState<PaymentSplitLine[]>([]);
+
+  // جستجوی شماره فاکتور، نام مشتری، تاریخ یا عنوان کالا/ارز
+  const [invoiceSearchQuery, setInvoiceSearchQuery] = useState('');
+
+  const filteredInvoices = useMemo(() => {
+    if (!invoiceSearchQuery.trim()) return invoices;
+    const q = invoiceSearchQuery.trim().toLowerCase();
+    return invoices.filter(
+      (inv) =>
+        inv.invoiceNumber.toLowerCase().includes(q) ||
+        inv.contactName.toLowerCase().includes(q) ||
+        inv.date.includes(q) ||
+        inv.items.some((it) => it.productName.toLowerCase().includes(q))
+    );
+  }, [invoices, invoiceSearchQuery]);
 
   const selectedContact = contacts.find((c) => c.id === contactId);
 
@@ -141,7 +174,7 @@ export const InvoicesAndBotView: React.FC<InvoicesAndBotViewProps> = ({
           updated.productSku = prod.sku;
           updated.productName = prod.name;
           updated.unit = prod.unit;
-          updated.unitPriceIRR = prod.defaultPriceIRR;
+          updated.unitPriceIRR = getSuggestedPriceForProduct(prod.id);
         }
       }
     }
@@ -151,25 +184,7 @@ export const InvoicesAndBotView: React.FC<InvoicesAndBotViewProps> = ({
   };
 
   const addItem = () => {
-    const firstProd = products[0];
-    setItems([
-      ...items,
-      recalcRow({
-        id: `item-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
-        productId: firstProd?.id || '__custom__',
-        productSku: firstProd?.sku || 'CUSTOM',
-        productName: firstProd?.name || 'معامله ارزی جدید',
-        unit: firstProd?.unit || 'واحد',
-        quantity: 1,
-        unitPriceForeign: firstProd?.defaultPriceIRR || 1000000,
-        unitPriceIRR: firstProd?.defaultPriceIRR || 1000000,
-        discountForeign: 0,
-        discountIRR: 0,
-        taxPercent: 0,
-        totalForeign: 0,
-        totalIRR: 0,
-      }),
-    ]);
+    setItems([...items, createBlankItem()]);
   };
 
   const removeItem = (index: number) => {
@@ -292,6 +307,7 @@ export const InvoicesAndBotView: React.FC<InvoicesAndBotViewProps> = ({
 
       setSubmittedInvoiceSuccess(targetInvoice);
       setInvoiceNumber(getNextInvoiceNum([targetInvoice, ...invoices]));
+      setItems([createBlankItem()]);
       setPayments([]);
       setNotes('');
     };
@@ -591,6 +607,7 @@ export const InvoicesAndBotView: React.FC<InvoicesAndBotViewProps> = ({
                               quantity: Math.max(0, parseFormattedNumber(e.target.value)),
                             })
                           }
+                          placeholder="مثلاً ۱"
                           className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono-num font-bold"
                         />
                       </div>
@@ -606,6 +623,7 @@ export const InvoicesAndBotView: React.FC<InvoicesAndBotViewProps> = ({
                               unitPriceIRR: parseFormattedNumber(e.target.value),
                             })
                           }
+                          placeholder="مبلغ فی واحد (ریال)"
                           className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono-num font-bold"
                         />
                       </div>
@@ -674,81 +692,119 @@ export const InvoicesAndBotView: React.FC<InvoicesAndBotViewProps> = ({
           </h3>
         </div>
 
+        {/* نوار جستجوی فاکتورها */}
+        <div className="relative">
+          <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <input
+            type="text"
+            value={invoiceSearchQuery}
+            onChange={(e) => setInvoiceSearchQuery(e.target.value)}
+            placeholder="🔍 جستجوی شماره فاکتور، نام مشتری، تاریخ یا عنوان کالا/ارز..."
+            className="w-full pl-9 pr-9 py-2.5 rounded-xl border border-slate-200 text-xs bg-slate-50 focus:bg-white focus:border-teal-500 focus:ring-1 focus:ring-teal-500 outline-none transition"
+          />
+          {invoiceSearchQuery && (
+            <button
+              type="button"
+              onClick={() => setInvoiceSearchQuery('')}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer text-xs"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+
         <div className="space-y-3">
-          {invoices.map((inv) => {
-            const paid = inv.paidAmountIRR ?? (inv.status === 'paid' ? inv.grandTotalIRR : 0);
-            const rem = inv.remainingAmountIRR ?? Math.max(0, inv.grandTotalIRR - paid);
+          {filteredInvoices.length === 0 ? (
+            <div className="p-8 text-center bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-500">
+              {invoiceSearchQuery.trim()
+                ? `فاکتوری منطبق با عبارت «${invoiceSearchQuery}» پیدا نشد.`
+                : 'هنوز هیچ فاکتوری صادر نشده است.'}
+            </div>
+          ) : (
+            filteredInvoices.map((inv) => {
+              const paid = inv.paidAmountIRR ?? (inv.status === 'paid' ? inv.grandTotalIRR : 0);
+              const rem = inv.remainingAmountIRR ?? Math.max(0, inv.grandTotalIRR - paid);
 
-            return (
-              <div
-                key={inv.id}
-                className="bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-2xl p-4 space-y-3 transition shadow-xs"
-              >
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-2.5">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-mono-num font-extrabold text-teal-800 text-sm">
-                      {inv.invoiceNumber}
-                    </span>
-                    <span
-                      className={`px-2.5 py-0.5 rounded-md text-[11px] font-extrabold ${
-                        inv.type === 'sales'
-                          ? 'bg-teal-100 text-teal-800 border border-teal-200'
-                          : 'bg-amber-100 text-amber-800 border border-amber-200'
-                      }`}
-                    >
-                      {inv.type === 'sales' ? 'فروش' : 'خرید'}
-                    </span>
-                    <span className="text-xs font-extrabold text-slate-900">{inv.contactName}</span>
-                    <span className="text-xs text-slate-500 font-mono-num">{inv.date}</span>
-                  </div>
+              return (
+                <div
+                  key={inv.id}
+                  className="bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-2xl p-4 space-y-3 transition shadow-xs"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-2.5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-mono-num font-extrabold text-teal-800 text-sm">
+                        {inv.invoiceNumber}
+                      </span>
+                      <span
+                        className={`px-2.5 py-0.5 rounded-md text-[11px] font-extrabold ${
+                          inv.type === 'sales'
+                            ? 'bg-teal-100 text-teal-800 border border-teal-200'
+                            : 'bg-amber-100 text-amber-800 border border-amber-200'
+                        }`}
+                      >
+                        {inv.type === 'sales' ? 'فروش' : 'خرید'}
+                      </span>
+                      <span className="text-xs font-extrabold text-slate-900">{inv.contactName}</span>
+                      <span className="text-xs text-slate-500 font-mono-num">{inv.date}</span>
+                    </div>
 
-                  <div className="flex items-center gap-2 justify-end">
-                    <button
-                      type="button"
-                      onClick={() => setPreviewInvoice(inv)}
-                      className="px-3 py-1.5 rounded-xl bg-teal-50 hover:bg-teal-100 border border-teal-200 text-teal-800 font-bold text-xs flex items-center gap-1 cursor-pointer transition"
-                    >
-                      <Eye className="w-3.5 h-3.5" />
-                      مشاهده فاکتور
-                    </button>
-                    {onUpdateInvoice && (
+                    <div className="flex items-center gap-2 justify-end">
                       <button
                         type="button"
-                        onClick={() => handleStartEdit(inv)}
-                        className="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs cursor-pointer transition"
+                        onClick={() => setPreviewInvoice(inv)}
+                        className="px-3 py-1.5 rounded-xl bg-teal-50 hover:bg-teal-100 border border-teal-200 text-teal-800 font-bold text-xs flex items-center gap-1 cursor-pointer transition"
                       >
-                        ویرایش
+                        <Eye className="w-3.5 h-3.5" />
+                        مشاهده فاکتور
                       </button>
-                    )}
-                    {onDeleteInvoice && (
-                      <button
-                        type="button"
-                        onClick={() => onDeleteInvoice(inv.id)}
-                        className="p-1.5 rounded-xl bg-rose-50 text-rose-700 hover:bg-rose-100 transition cursor-pointer"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    )}
+                      {onUpdateInvoice && (
+                        <button
+                          type="button"
+                          onClick={() => handleStartEdit(inv)}
+                          className="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs cursor-pointer transition"
+                        >
+                          ویرایش
+                        </button>
+                      )}
+                      {onDeleteInvoice && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (
+                              window.confirm(
+                                `آیا از حذف فاکتور ${inv.invoiceNumber} (طرف حساب: ${inv.contactName}) مطمئن هستید؟`
+                              )
+                            ) {
+                              onDeleteInvoice(inv.id);
+                            }
+                          }}
+                          className="p-1.5 rounded-xl bg-rose-50 text-rose-700 hover:bg-rose-100 transition cursor-pointer"
+                          title="حذف فاکتور"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs bg-white p-3 rounded-xl border border-slate-200 font-mono-num font-bold">
-                  <div className="flex justify-between">
-                    <span className="text-slate-500 font-sans">مبلغ کل فاکتور:</span>
-                    <span className="text-slate-900">{formatNumber(inv.grandTotalIRR)} ریال</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500 font-sans">تسویه شده:</span>
-                    <span className="text-emerald-700">{formatNumber(paid)} ریال</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500 font-sans">مانده حساب:</span>
-                    <span className="text-amber-800">{formatNumber(rem)} ریال</span>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs bg-white p-3 rounded-xl border border-slate-200 font-mono-num font-bold">
+                    <div className="flex justify-between">
+                      <span className="text-slate-500 font-sans">مبلغ کل فاکتور:</span>
+                      <span className="text-slate-900">{formatNumber(inv.grandTotalIRR)} ریال</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500 font-sans">تسویه شده:</span>
+                      <span className="text-emerald-700">{formatNumber(paid)} ریال</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500 font-sans">مانده حساب:</span>
+                      <span className="text-amber-800">{formatNumber(rem)} ریال</span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })
+          )}
         </div>
       </div>
     </div>

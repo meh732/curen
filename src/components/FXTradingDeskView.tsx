@@ -35,6 +35,8 @@ import {
   PlusCircle,
   FileDown,
   Clock,
+  Search,
+  Edit3,
 } from 'lucide-react';
 
 interface FXTradingDeskViewProps {
@@ -46,6 +48,7 @@ interface FXTradingDeskViewProps {
   companyName?: string;
   fiscalYear?: string;
   onExecuteDeal: (deal: FXDeal) => void;
+  onUpdateDeal?: (deal: FXDeal) => void;
   onRecordDealDelivery?: (dealId: string, split: FXDeliverySplit) => void;
   onAddContact?: (contact: Contact) => void;
   onDeleteDeal?: (id: string) => void;
@@ -60,6 +63,7 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
   companyName = 'آرکا (ARKA) — صرافی و خدمات ارزی',
   fiscalYear = 'سال مالی ۱۴۰۴',
   onExecuteDeal,
+  onUpdateDeal,
   onRecordDealDelivery,
   onAddContact,
   onDeleteDeal,
@@ -69,21 +73,32 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
   const foreignCurrencies = currencies.filter((c) => c.code !== 'IRR');
   const [dealType, setDealType] = useState<'buy' | 'sell'>('buy');
   const [currency, setCurrency] = useState<CurrencyCode>('USD');
-  const [foreignAmount, setForeignAmount] = useState<number>(1000);
+
+  // پیشنهاد فی بر اساس آخرین معامله ثبت شده برای این ارز
+  const getSuggestedRateForCurrency = (cur: CurrencyCode): number => {
+    for (let i = fxDeals.length - 1; i >= 0; i--) {
+      if (fxDeals[i].currency === cur && fxDeals[i].exchangeRate > 0) {
+        return fxDeals[i].exchangeRate;
+      }
+    }
+    const curCfg = currencies.find((c) => c.code === cur);
+    return curCfg?.defaultRateToIRR || 0;
+  };
+
+  // مقدار ارز و تحویل به صورت پیش‌فرض خام (۰) هستند تا کاربر مقدار دلخواه را وارد کند
+  const [foreignAmount, setForeignAmount] = useState<number>(0);
   const [dealDate, setDealDate] = useState<string>('1404/08/12');
   const [dealNotes, setDealNotes] = useState<string>('');
   const [dealTrackingNumber, setDealTrackingNumber] = useState<string>('');
 
   // وضعیت تحویل ارز در لحظه ثبت معامله (تحویل یکجا یا تحویل مرحله‌ای)
   const [isStagedDelivery, setIsStagedDelivery] = useState<boolean>(false);
-  const [initialDeliveredForeign, setInitialDeliveredForeign] = useState<number>(1000);
+  const [initialDeliveredForeign, setInitialDeliveredForeign] = useState<number>(0);
   const [initialDeliveryTracking, setInitialDeliveryTracking] = useState<string>('');
   const [initialDeliveryNotes, setInitialDeliveryNotes] = useState<string>('');
 
-  const selectedCurrencyConfig = currencies.find((c) => c.code === currency);
-  const [dealRate, setDealRate] = useState<number>(
-    selectedCurrencyConfig?.defaultRateToIRR || 685000
-  );
+  // فی بر اساس آخرین معامله ارز پیشنهاد می‌شود
+  const [dealRate, setDealRate] = useState<number>(() => getSuggestedRateForCurrency('USD'));
   const [commissionIRR, setCommissionIRR] = useState<number>(0);
   const [contactId, setContactId] = useState<string>(contacts[0]?.id || '');
 
@@ -136,15 +151,62 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
   // فیلتر مشتری در تب صورتحساب تحویل ارز
   const [deliveryFilterContactId, setDeliveryFilterContactId] = useState<string>('ALL');
 
+  // جستجوی شماره معامله، فیش، نام شخص یا ارز در فهرست معاملات
+  const [dealSearchQuery, setDealSearchQuery] = useState<string>('');
+
+  // وضعیت ویرایش معامله
+  const [editingDealId, setEditingDealId] = useState<string | null>(null);
+
   const activeDeliveryDeal = useMemo(
     () => fxDeals.find((d) => d.id === deliveryModalDealId) || null,
     [fxDeals, deliveryModalDealId]
   );
 
+  const filteredDeals = useMemo(() => {
+    if (!dealSearchQuery.trim()) return fxDeals;
+    const q = dealSearchQuery.trim().toLowerCase();
+    return fxDeals.filter(
+      (d) =>
+        d.dealNumber.toLowerCase().includes(q) ||
+        (d.trackingNumber && d.trackingNumber.toLowerCase().includes(q)) ||
+        d.contactName.toLowerCase().includes(q) ||
+        d.currency.toLowerCase().includes(q) ||
+        d.date.includes(q)
+    );
+  }, [fxDeals, dealSearchQuery]);
+
+  const handleStartEditDeal = (d: FXDeal) => {
+    setEditingDealId(d.id);
+    setDealType(d.type);
+    setCurrency(d.currency);
+    setForeignAmount(d.foreignAmount);
+    setDealRate(d.exchangeRate);
+    setCommissionIRR(d.commissionIRR || 0);
+    setContactId(d.contactId);
+    setDealDate(d.date);
+    setDealTrackingNumber(d.trackingNumber || '');
+    setDealNotes(d.notes || '');
+    if (d.targetForeignBankId) setTargetVaultBankId(d.targetForeignBankId);
+    setPayments(d.payments || []);
+    setIsStagedDelivery(d.deliveryStatus === 'partial' || (d.remainingForeignDelivery ?? 0) > 0);
+    setInitialDeliveredForeign(d.deliveredForeignAmount ?? d.foreignAmount);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleCancelEdit = () => {
+    setEditingDealId(null);
+    setForeignAmount(0);
+    setInitialDeliveredForeign(0);
+    setDealNotes('');
+    setDealTrackingNumber('');
+    setIsStagedDelivery(false);
+    setPayments([]);
+  };
+
   const handleCurrencyChange = (code: CurrencyCode) => {
     setCurrency(code);
-    const cfg = currencies.find((c) => c.code === code);
-    if (cfg) setDealRate(cfg.defaultRateToIRR);
+    const suggested = getSuggestedRateForCurrency(code);
+    setDealRate(suggested);
     const vaultForCur = banks.find((b) => b.currency === code);
     if (vaultForCur) setTargetVaultBankId(vaultForCur.id);
   };
@@ -287,6 +349,51 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
         ? 'partial'
         : 'pending';
 
+    if (editingDealId && onUpdateDeal) {
+      const existing = fxDeals.find((d) => d.id === editingDealId);
+      if (existing) {
+        const updatedDeal: FXDeal = {
+          ...existing,
+          date: dealDate || existing.date,
+          type: dealType,
+          currency,
+          foreignAmount,
+          exchangeRate: dealRate,
+          totalIRR,
+          commissionIRR,
+          contactId: targetContact.id,
+          contactName: targetContact.name,
+          settlementMethod,
+          targetForeignBankId: targetVaultBankId,
+          payments: validPayments,
+          paidAmountIRR: paidSumIRR,
+          remainingAmountIRR: remainingIRR,
+          deliveredForeignAmount: effectiveDeliveredNow,
+          remainingForeignDelivery: remainingUndeliveredNow,
+          deliveryStatus,
+          deliverySplits:
+            existing.deliverySplits && existing.deliverySplits.length > 0
+              ? existing.deliverySplits
+              : deliverySplits,
+          trackingNumber: trkMain,
+          notes: dealNotes.trim() || undefined,
+        };
+
+        onUpdateDeal(updatedDeal);
+        setEditingDealId(null);
+        setLastCreatedDeal(updatedDeal);
+        setPayments([]);
+        setDealNotes('');
+        setDealTrackingNumber('');
+        setIsStagedDelivery(false);
+        setForeignAmount(0);
+        setInitialDeliveredForeign(0);
+        setInitialDeliveryTracking('');
+        setInitialDeliveryNotes('');
+        return;
+      }
+    }
+
     const newDeal: FXDeal = {
       id: `fx-${Date.now()}`,
       dealNumber: dealNum,
@@ -319,7 +426,8 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
     setDealNotes('');
     setDealTrackingNumber('');
     setIsStagedDelivery(false);
-    setInitialDeliveredForeign(foreignAmount);
+    setForeignAmount(0);
+    setInitialDeliveredForeign(0);
     setInitialDeliveryTracking('');
     setInitialDeliveryNotes('');
   };
@@ -558,6 +666,27 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
 
           {/* فرم ثبت خرید یا فروش ارز به زبان ساده */}
           <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-xs">
+            {editingDealId && (
+              <div className="mb-4 p-3.5 bg-amber-50 border-2 border-amber-400 rounded-xl flex items-center justify-between gap-3 text-xs text-amber-950 font-bold animate-fadeIn">
+                <div className="flex items-center gap-2">
+                  <Edit3 className="w-4 h-4 text-amber-700 shrink-0" />
+                  <span>
+                    در حال ویرایش معامله{' '}
+                    <strong className="font-mono-num">
+                      {fxDeals.find((d) => d.id === editingDealId)?.dealNumber}
+                    </strong>
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCancelEdit}
+                  className="px-3 py-1.5 bg-white border border-amber-300 hover:bg-amber-100 rounded-lg text-slate-700 cursor-pointer text-xs font-bold transition"
+                >
+                  انصراف از ویرایش
+                </button>
+              </div>
+            )}
+
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5 pb-4 border-b border-slate-200">
               <div>
                 <h2 className="text-base sm:text-lg font-extrabold text-slate-900 flex items-center gap-2">
@@ -797,20 +926,33 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
                     inputMode="decimal"
                     value={foreignAmount ? formatNumber(foreignAmount) : ''}
                     onChange={(e) => handleForeignAmountChange(parseFormattedNumber(e.target.value))}
+                    placeholder={`مقدار ${currency} (مثلاً ۵,۰۰۰)`}
                     className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-sm font-extrabold text-slate-900 font-mono-num focus:border-teal-600 focus:outline-none"
                     required
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-extrabold text-slate-700 mb-1">
-                    نرخ توافقی هر ۱ {currency} (به ریال):
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-extrabold text-slate-700">
+                      نرخ توافقی هر ۱ {currency} (به ریال):
+                    </label>
+                    {getSuggestedRateForCurrency(currency) > 0 && (
+                      <span className="text-[10px] text-teal-700 font-bold bg-teal-50 px-1.5 py-0.5 rounded border border-teal-200">
+                        پیشنهاد آخرین نرخ: {formatNumber(getSuggestedRateForCurrency(currency))}
+                      </span>
+                    )}
+                  </div>
                   <input
                     type="text"
                     inputMode="numeric"
                     value={dealRate ? formatNumber(dealRate) : ''}
                     onChange={(e) => setDealRate(parseFormattedNumber(e.target.value))}
+                    placeholder={
+                      getSuggestedRateForCurrency(currency) > 0
+                        ? `مثلاً ${formatNumber(getSuggestedRateForCurrency(currency))}`
+                        : 'نرخ معامله (ریال)'
+                    }
                     className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-sm font-extrabold text-slate-900 font-mono-num focus:border-teal-600 focus:outline-none"
                     required
                   />
@@ -1128,20 +1270,40 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
               )}
 
               <div className="flex justify-end pt-1">
-                <button
-                  type="submit"
-                  disabled={!selectedContact || foreignAmount <= 0 || dealRate <= 0}
-                  className={`w-full sm:w-auto px-6 py-3 rounded-xl font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 transition shadow-md cursor-pointer disabled:opacity-50 ${
-                    dealType === 'buy'
-                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20'
-                      : 'bg-amber-600 hover:bg-amber-700 text-white shadow-amber-600/20'
-                  }`}
-                >
-                  <CheckCircle2 className="w-4 h-4 shrink-0" />
-                  {dealType === 'buy'
-                    ? `ثبت قطعی خرید ${formatNumber(foreignAmount)} ${currency} و صدور رسید`
-                    : `ثبت قطعی فروش ${formatNumber(foreignAmount)} ${currency} و صدور رسید`}
-                </button>
+                {editingDealId ? (
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <button
+                      type="button"
+                      onClick={handleCancelEdit}
+                      className="px-4 py-3 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 font-extrabold text-xs sm:text-sm cursor-pointer transition"
+                    >
+                      انصراف از ویرایش
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={!selectedContact || foreignAmount <= 0 || dealRate <= 0}
+                      className="flex-1 sm:flex-none px-6 py-3 rounded-xl font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-700 text-white shadow-md shadow-amber-600/20 cursor-pointer disabled:opacity-50 transition"
+                    >
+                      <CheckCircle2 className="w-4 h-4 shrink-0" />
+                      ذخیره تغییرات معامله
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="submit"
+                    disabled={!selectedContact || foreignAmount <= 0 || dealRate <= 0}
+                    className={`w-full sm:w-auto px-6 py-3 rounded-xl font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 transition shadow-md cursor-pointer disabled:opacity-50 ${
+                      dealType === 'buy'
+                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20'
+                        : 'bg-amber-600 hover:bg-amber-700 text-white shadow-amber-600/20'
+                    }`}
+                  >
+                    <CheckCircle2 className="w-4 h-4 shrink-0" />
+                    {dealType === 'buy'
+                      ? `ثبت قطعی خرید ${formatNumber(foreignAmount)} ${currency} و صدور رسید`
+                      : `ثبت قطعی فروش ${formatNumber(foreignAmount)} ${currency} و صدور رسید`}
+                  </button>
+                )}
               </div>
             </form>
           </div>
@@ -1181,13 +1343,36 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
               </div>
             </div>
 
+            {/* نوار جستجوی پیشرفته معاملات بر اساس شماره معامله، کد رهگیری، مشتری و ارز */}
+            <div className="relative mb-3.5">
+              <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                value={dealSearchQuery}
+                onChange={(e) => setDealSearchQuery(e.target.value)}
+                placeholder="🔍 جستجوی شماره معامله (مثلاً FX-1404-1002)، کد پیگیری، نام شخص یا نوع ارز..."
+                className="w-full pl-9 pr-9 py-2.5 rounded-xl border border-slate-200 text-xs bg-slate-50 focus:bg-white focus:border-teal-500 focus:ring-1 focus:ring-teal-500 outline-none transition"
+              />
+              {dealSearchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setDealSearchQuery('')}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer text-xs"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
             <div className="space-y-3">
-              {fxDeals.length === 0 ? (
+              {filteredDeals.length === 0 ? (
                 <div className="p-8 text-center bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-500">
-                  هنوز هیچ معامله خرید یا فروش ارزی ثبت نشده است.
+                  {dealSearchQuery.trim()
+                    ? `معامله‌ای منطبق با عبارت «${dealSearchQuery}» پیدا نشد.`
+                    : 'هنوز هیچ معامله خرید یا فروش ارزی ثبت نشده است.'}
                 </div>
               ) : (
-                fxDeals.map((d) => {
+                filteredDeals.map((d) => {
                   const paid =
                     d.paidAmountIRR ?? (d.settlementMethod !== 'credit_account' ? d.totalIRR : 0);
                   const rem = d.remainingAmountIRR ?? Math.max(0, d.totalIRR - paid);
@@ -1257,10 +1442,29 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
                               <Eye className="w-3.5 h-3.5" />
                               <span>مشاهده رسید</span>
                             </button>
+                            {onUpdateDeal && (
+                              <button
+                                type="button"
+                                onClick={() => handleStartEditDeal(d)}
+                                className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 text-xs font-bold flex items-center gap-1 cursor-pointer"
+                                title="ویرایش این معامله و مبالغ آن"
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                                <span>ویرایش</span>
+                              </button>
+                            )}
                             {onDeleteDeal && (
                               <button
                                 type="button"
-                                onClick={() => onDeleteDeal(d.id)}
+                                onClick={() => {
+                                  if (
+                                    window.confirm(
+                                      `آیا از حذف معامله ${d.dealNumber} (طرف حساب: ${d.contactName}) و سند مالی پیوسته آن اطمینان دارید؟`
+                                    )
+                                  ) {
+                                    onDeleteDeal(d.id);
+                                  }
+                                }}
                                 className="text-rose-600 hover:text-rose-700 p-1.5 rounded-lg hover:bg-rose-50 border border-transparent hover:border-rose-200 cursor-pointer"
                                 title="حذف معامله و سند مربوطه"
                               >

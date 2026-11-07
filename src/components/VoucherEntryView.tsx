@@ -215,6 +215,47 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
       ? Math.round(txAmountForeign)
       : Math.round(txAmountForeign * txExchangeRate);
 
+  // تسویه یا تحویل مستقیم مانده ارزی با یک کلیک در بخش دریافت و پرداخت
+  const handleSettleCurrencyBalance = (
+    curr: string,
+    balanceForeign: number,
+    status: 'بدهکار' | 'بستانکار' | 'تسویه'
+  ) => {
+    if (balanceForeign <= 0 || status === 'تسویه') return;
+
+    // اگر مشتری بستانکار است، یعنی ما باید به او ارز تحویل دهیم (پرداخت به شخص)
+    // اگر مشتری بدهکار است، یعنی او باید به ما ارز تحویل دهد (دریافت از شخص)
+    const newAutoType = status === 'بستانکار' ? 'pay_to_person' : 'receive_from_person';
+    setAutoType(newAutoType);
+
+    const matchingBank =
+      banks.find((b) => b.currency === curr) ||
+      banks.find((b) => b.currency !== 'IRR') ||
+      banks[0];
+
+    const rate = getRateForCurrency(curr as CurrencyCode);
+    const splitId = `sp-${Date.now()}`;
+    const newSplit: PaymentSplitLine = {
+      id: splitId,
+      bankId: matchingBank?.id || '',
+      bankName: matchingBank?.bankName || (curr === 'IRR' ? 'حساب ریالی' : `خزانه ارزی (${curr})`),
+      currency: curr as CurrencyCode,
+      amountForeign: balanceForeign,
+      exchangeRate: rate,
+      amountIRR: Math.round(balanceForeign * rate),
+      trackingNumber: `DLV-${Date.now().toString().slice(-4)}`,
+      description: `تحویل و تسویه مانده ارزی به میزان ${formatNumber(balanceForeign)} ${curr}`,
+    };
+
+    setSplits([newSplit]);
+    setMainTrackingNumber(newSplit.trackingNumber || '');
+    setDescription(
+      `تحویل مستقیم ${formatNumber(balanceForeign)} ${curr} ${
+        status === 'بستانکار' ? 'به' : 'از'
+      } ${selectedContact?.name || ''}`
+    );
+  };
+
   const handleAutoSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const voucherNumber =
@@ -889,14 +930,33 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
                         .map(([curr, b]) => (
                           <div
                             key={curr}
-                            className="flex items-center justify-between text-[11px] font-mono-num border-t border-slate-100 pt-1"
+                            className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono-num border-t border-slate-100 pt-1.5"
                           >
-                            <span className="font-sans text-teal-800 font-bold">
-                              مانده ارزی ({curr}):
-                            </span>
-                            <span className="font-extrabold text-teal-950">
-                              {formatNumber(b.balanceForeign)} {curr} ({b.status})
-                            </span>
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-sans text-teal-800 font-bold">
+                                مانده ارزی ({curr}):
+                              </span>
+                              <span className="font-extrabold text-teal-950">
+                                {formatNumber(b.balanceForeign)} {curr} ({b.status})
+                              </span>
+                            </div>
+                            {b.balanceForeign > 0 && b.status !== 'تسویه' && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleSettleCurrencyBalance(curr, b.balanceForeign, b.status)
+                                }
+                                className="px-2.5 py-1 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-extrabold text-[11px] flex items-center gap-1 cursor-pointer transition shadow-xs"
+                                title="ثبت مستقیم دریافت یا پرداخت این ارز بدون نیاز به فاکتور جدید"
+                              >
+                                <Coins className="w-3.5 h-3.5" />
+                                <span>
+                                  {b.status === 'بستانکار'
+                                    ? `⚡ تحویل ارز به شخص (پرداخت ${formatNumber(b.balanceForeign)} ${curr})`
+                                    : `⚡ تحویل گرفتن ارز از شخص (دریافت ${formatNumber(b.balanceForeign)} ${curr})`}
+                                </span>
+                              </button>
+                            )}
                           </div>
                         ))}
                     </div>
@@ -1426,20 +1486,29 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
                         <button
                           type="button"
                           onClick={() => handleStartEditVoucher(v)}
-                          className="text-teal-700 hover:text-teal-800 p-1 rounded hover:bg-teal-50 cursor-pointer text-xs flex items-center gap-1 font-bold"
+                          className="px-2 py-1 rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 cursor-pointer text-xs flex items-center gap-1 font-bold transition"
                           title="ویرایش و اصلاح این سند"
                         >
-                          ویرایش
+                          ویرایش سند
                         </button>
                       )}
                       {onDeleteVoucher && v.id !== 'vch-1' && (
                         <button
                           type="button"
-                          onClick={() => onDeleteVoucher(v.id)}
-                          className="text-rose-600 hover:text-rose-700 p-1 rounded hover:bg-rose-50 cursor-pointer"
+                          onClick={() => {
+                            if (
+                              window.confirm(
+                                `آیا از حذف سند مالی شماره #${v.voucherNumber} اطمینان دارید؟\nبا حذف این سند، مانده حساب شخص و بانک مربوطه به‌روز خواهد شد.`
+                              )
+                            ) {
+                              onDeleteVoucher(v.id);
+                            }
+                          }}
+                          className="px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 cursor-pointer text-xs flex items-center gap-1 font-bold transition"
                           title="حذف این سند"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>حذف</span>
                         </button>
                       )}
                     </div>

@@ -292,38 +292,42 @@ export const MultiPaymentSplitsEditor: React.FC<MultiPaymentSplitsEditorProps> =
                     </div>
                   )}
 
-                  {/* شماره پیگیری فیش */}
-                  <div className="md:col-span-2">
-                    <label className="block text-[11px] font-bold text-teal-800 mb-1">
-                      شماره پیگیری فیش / حواله
+                  {/* شماره پیگیری فیش اختصاصی ردیف (فقط در صورت تسویه ترکیبی از چند بانک) */}
+                  {splits.length > 1 && (
+                    <div className="md:col-span-2">
+                      <label className="block text-[11px] font-bold text-teal-800 mb-1">
+                        شماره پیگیری فیش این بانک
+                      </label>
+                      <input
+                        type="text"
+                        value={split.trackingNumber || ''}
+                        onChange={(e) =>
+                          handleUpdateSplit(split.id, { trackingNumber: e.target.value })
+                        }
+                        placeholder="مثلاً: 8941203"
+                        className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-2 text-xs text-slate-900 font-mono-num focus:border-teal-600 focus:ring-1 focus:ring-teal-600"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* توضیحات اختصاصی ردیف (فقط در صورت تسویه ترکیبی از چند بانک) */}
+                {splits.length > 1 && (
+                  <div>
+                    <label className="block text-[11px] font-medium text-slate-600 mb-1">
+                      توضیحات این ردیف:
                     </label>
                     <input
                       type="text"
-                      value={split.trackingNumber || ''}
+                      value={split.description || ''}
                       onChange={(e) =>
-                        handleUpdateSplit(split.id, { trackingNumber: e.target.value })
+                        handleUpdateSplit(split.id, { description: e.target.value })
                       }
-                      placeholder="مثلاً: 8941203"
-                      className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-2 text-xs text-slate-900 font-mono-num focus:border-teal-600 focus:ring-1 focus:ring-teal-600"
+                      placeholder="توضیحات واریز این بانک..."
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 focus:bg-white focus:border-teal-600 focus:outline-none"
                     />
                   </div>
-                </div>
-
-                {/* توضیحات خط‌به‌خط این فیش (نمایش در صورتحساب شخص) */}
-                <div>
-                  <label className="block text-[11px] font-medium text-slate-600 mb-1">
-                    توضیحات این فیش (در صورتحساب شخص دقیقاً نمایش داده می‌شود):
-                  </label>
-                  <input
-                    type="text"
-                    value={split.description || ''}
-                    onChange={(e) =>
-                      handleUpdateSplit(split.id, { description: e.target.value })
-                    }
-                    placeholder="مثلاً: واریز کارت به کارت توسط برادر مشتری / حواله پایا بابت..."
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 focus:bg-white focus:border-teal-600 focus:outline-none"
-                  />
-                </div>
+                )}
 
                 {/* نمایش معادل ریالی در صورت ارزی بودن */}
                 {isForeign && (
