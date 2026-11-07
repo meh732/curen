@@ -320,13 +320,14 @@ export default defineConfig(() => {
       tailwindcss(),
       apiServerPlugin(),
       VitePWA({
+        selfDestroying: true,
         registerType: 'autoUpdate',
-        includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'pwa-192x192.png', 'pwa-512x512.png'],
+        includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'pwa-192x192.png', 'pwa-512x512.png', 'arka-logo.jpg', 'icon.svg'],
         manifest: {
           id: '/',
-          name: 'ترازبان ارزی — حسابداری صرافی و معاملات ارزی',
-          short_name: 'ترازبان',
-          description: 'نرم‌افزار حسابداری تخصصی صرافی، خرید و فروش ارز، تسویه چندارزی و مدیریت خزانه',
+          name: 'آرکا (ARKA) — سیستم جامع حسابداری صرافی و معاملات ارزی',
+          short_name: 'آرکا (ARKA)',
+          description: 'نرم‌افزار تخصصی حسابداری صرافی آرکا، خرید و فروش ارز، صورتحساب دوارزی و مدیریت خزانه',
           theme_color: '#0B0F17',
           background_color: '#0B0F17',
           display: 'standalone',
@@ -355,7 +356,7 @@ export default defineConfig(() => {
           ],
         },
         devOptions: {
-          enabled: true,
+          enabled: false,
           type: 'module',
         },
       }),

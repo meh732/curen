@@ -161,38 +161,88 @@ export function buildPersonStatement(
     }
   > = {};
 
+  const runningByCurrency: Record<string, number> = {};
+  let lastActiveForeignCurrency: string | null = null;
+
   for (const voucher of sortedVouchers) {
+    const siblingBankLineWithTrk = voucher.lines.find(
+      (l) => l.bankId && l.trackingNumber && l.trackingNumber.trim() !== ''
+    );
+
     for (const line of voucher.lines) {
       if (line.contactId !== contactId) continue;
 
-      // Track breakdown across all currencies for this person
       const curr = line.currency || 'IRR';
-      if (!currencyBreakdown[curr]) {
-        currencyBreakdown[curr] = { debitForeign: 0, creditForeign: 0, balanceForeign: 0, status: 'تسویه' };
+      const isForeignLine = curr !== 'IRR';
+      const lineDebitFor = isForeignLine ? Number((line.debitForeign || 0).toFixed(2)) : 0;
+      const lineCreditFor = isForeignLine ? Number((line.creditForeign || 0).toFixed(2)) : 0;
+
+      // Track breakdown across all foreign currencies for this person
+      if (isForeignLine && (lineDebitFor > 0 || lineCreditFor > 0)) {
+        lastActiveForeignCurrency = curr;
+        if (!currencyBreakdown[curr]) {
+          currencyBreakdown[curr] = {
+            debitForeign: 0,
+            creditForeign: 0,
+            balanceForeign: 0,
+            status: 'تسویه',
+          };
+        }
+        currencyBreakdown[curr].debitForeign = Number(
+          (currencyBreakdown[curr].debitForeign + lineDebitFor).toFixed(2)
+        );
+        currencyBreakdown[curr].creditForeign = Number(
+          (currencyBreakdown[curr].creditForeign + lineCreditFor).toFixed(2)
+        );
+        const cBal = Number(
+          (currencyBreakdown[curr].debitForeign - currencyBreakdown[curr].creditForeign).toFixed(2)
+        );
+        currencyBreakdown[curr].balanceForeign = Math.abs(cBal);
+        currencyBreakdown[curr].status = cBal > 0 ? 'بدهکار' : cBal < 0 ? 'بستانکار' : 'تسویه';
       }
-      currencyBreakdown[curr].debitForeign = Number(
-        (currencyBreakdown[curr].debitForeign + line.debitForeign).toFixed(2)
-      );
-      currencyBreakdown[curr].creditForeign = Number(
-        (currencyBreakdown[curr].creditForeign + line.creditForeign).toFixed(2)
-      );
-      const cBal = Number(
-        (currencyBreakdown[curr].debitForeign - currencyBreakdown[curr].creditForeign).toFixed(2)
-      );
-      currencyBreakdown[curr].balanceForeign = Math.abs(cBal);
-      currencyBreakdown[curr].status = cBal > 0 ? 'بدهکار' : cBal < 0 ? 'بستانکار' : 'تسویه';
 
       if (currencyFilter !== 'ALL' && line.currency !== currencyFilter) {
         continue;
       }
 
-      runningIRR += line.debitIRR - line.creditIRR;
-      runningForeign = Number((runningForeign + (line.debitForeign - line.creditForeign)).toFixed(2));
+      runningIRR += (line.debitIRR || 0) - (line.creditIRR || 0);
+      totalDebitIRR += line.debitIRR || 0;
+      totalCreditIRR += line.creditIRR || 0;
 
-      totalDebitIRR += line.debitIRR;
-      totalCreditIRR += line.creditIRR;
-      totalDebitForeign = Number((totalDebitForeign + line.debitForeign).toFixed(2));
-      totalCreditForeign = Number((totalCreditForeign + line.creditForeign).toFixed(2));
+      if (isForeignLine) {
+        runningByCurrency[curr] = Number(
+          ((runningByCurrency[curr] || 0) + (lineDebitFor - lineCreditFor)).toFixed(2)
+        );
+        runningForeign = Number((runningForeign + (lineDebitFor - lineCreditFor)).toFixed(2));
+        totalDebitForeign = Number((totalDebitForeign + lineDebitFor).toFixed(2));
+        totalCreditForeign = Number((totalCreditForeign + lineCreditFor).toFixed(2));
+      }
+
+      const rowRunningForeign = isForeignLine
+        ? runningByCurrency[curr] || 0
+        : lastActiveForeignCurrency
+        ? runningByCurrency[lastActiveForeignCurrency] || 0
+        : runningForeign;
+
+      // Combine line description and voucher description if voucher has extra user notes
+      const baseDesc = (line.description || '').trim();
+      const vchDesc = (voucher.description || '').trim();
+      let fullDescription = baseDesc || vchDesc;
+      if (
+        baseDesc &&
+        vchDesc &&
+        !baseDesc.includes(vchDesc) &&
+        !vchDesc.startsWith('سند اتوماتیک') &&
+        !vchDesc.startsWith('سند فاکتور')
+      ) {
+        fullDescription = `${baseDesc} | توضیحات: ${vchDesc}`;
+      }
+
+      const resolvedTracking =
+        (line.trackingNumber || '').trim() ||
+        (siblingBankLineWithTrk?.trackingNumber || '').trim() ||
+        (voucher.referenceNumber || '').trim() ||
+        undefined;
 
       rows.push({
         lineId: line.id,
@@ -201,18 +251,19 @@ export function buildPersonStatement(
         date: voucher.date,
         accountCode: line.accountCode,
         accountName: line.accountName,
-        description: line.description || voucher.description,
+        description: fullDescription,
         currency: line.currency,
         exchangeRate: line.exchangeRate,
-        debitForeign: line.debitForeign,
-        creditForeign: line.creditForeign,
-        runningBalanceForeign: Math.abs(runningForeign),
-        balanceStatusForeign: runningForeign > 0 ? 'بدهکار' : runningForeign < 0 ? 'بستانکار' : 'تسویه',
+        debitForeign: lineDebitFor,
+        creditForeign: lineCreditFor,
+        runningBalanceForeign: Math.abs(rowRunningForeign),
+        balanceStatusForeign:
+          rowRunningForeign > 0 ? 'بدهکار' : rowRunningForeign < 0 ? 'بستانکار' : 'تسویه',
         debitIRR: line.debitIRR,
         creditIRR: line.creditIRR,
         runningBalanceIRR: Math.abs(runningIRR),
         balanceStatusIRR: runningIRR > 0 ? 'بدهکار' : runningIRR < 0 ? 'بستانکار' : 'تسویه',
-        trackingNumber: line.trackingNumber,
+        trackingNumber: resolvedTracking,
       });
     }
   }
@@ -561,6 +612,10 @@ export function buildStandardLedgerReport(params: {
       : 'USD';
 
   for (const v of sortedVouchers) {
+    const siblingBankLineWithTrk = v.lines.find(
+      (l) => l.bankId && l.trackingNumber && l.trackingNumber.trim() !== ''
+    );
+
     for (const line of v.lines) {
       let matches = false;
       if (params.filterType === 'bank') {
@@ -593,8 +648,9 @@ export function buildStandardLedgerReport(params: {
 
       const dIRR = Math.round(line.debitIRR || 0);
       const cIRR = Math.round(line.creditIRR || 0);
-      const dFor = Number((line.debitForeign || 0).toFixed(2));
-      const cFor = Number((line.creditForeign || 0).toFixed(2));
+      const isForeignRow = line.currency !== 'IRR' || params.filterType === 'bank';
+      const dFor = isForeignRow ? Number((line.debitForeign || 0).toFixed(2)) : 0;
+      const cFor = isForeignRow ? Number((line.creditForeign || 0).toFixed(2)) : 0;
 
       runningIRR += dIRR - cIRR;
       runningForeign = Number((runningForeign + (dFor - cFor)).toFixed(2));
@@ -603,6 +659,25 @@ export function buildStandardLedgerReport(params: {
       totalCreditIRR += cIRR;
       totalDebitForeign = Number((totalDebitForeign + dFor).toFixed(2));
       totalCreditForeign = Number((totalCreditForeign + cFor).toFixed(2));
+
+      const baseDesc = (line.description || '').trim();
+      const vchDesc = (v.description || '').trim();
+      let fullDescription = baseDesc || vchDesc;
+      if (
+        baseDesc &&
+        vchDesc &&
+        !baseDesc.includes(vchDesc) &&
+        !vchDesc.startsWith('سند اتوماتیک') &&
+        !vchDesc.startsWith('سند فاکتور')
+      ) {
+        fullDescription = `${baseDesc} | توضیحات: ${vchDesc}`;
+      }
+
+      const resolvedTrk =
+        (line.trackingNumber || '').trim() ||
+        (siblingBankLineWithTrk?.trackingNumber || '').trim() ||
+        (v.referenceNumber || '').trim() ||
+        '—';
 
       rows.push({
         rowNumber: rows.length + 1,
@@ -613,8 +688,8 @@ export function buildStandardLedgerReport(params: {
         accountCode: line.accountCode,
         accountName: line.accountName,
         subLedgerName: line.contactName || line.bankName || line.accountName,
-        description: line.description || v.description,
-        trackingNumber: line.trackingNumber || v.referenceNumber || '—',
+        description: fullDescription,
+        trackingNumber: resolvedTrk,
         currency: line.currency,
         exchangeRate: line.exchangeRate,
         debitForeign: dFor,

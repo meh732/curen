@@ -1,8 +1,8 @@
 [package]
 name = "tarazban-accounting"
-version = "1.0.0"
-description = "TarazBan Multi-Currency Accounting System"
-authors = ["TarazBan Team"]
+version = "5.5.0"
+description = "ARKA Multi-Currency Exchange & Accounting System"
+authors = ["ARKA Team"]
 edition = "2021"
 
 [build-dependencies]

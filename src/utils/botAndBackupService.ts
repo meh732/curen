@@ -32,7 +32,7 @@ export function formatInvoiceBotMessage(invoice: SalesInvoice, companyName: stri
         `🇮🇷 *معادل قطعی به ریال ایران:* ${formatNumber(invoice.grandTotalIRR)} ریال\n`
       : `💰 *مبلغ کل قابل پرداخت:* ${formatNumber(invoice.grandTotalIRR)} ریال\n`) +
     (invoice.notes ? `📌 توضیحات: ${invoice.notes}\n` : '') +
-    `✅ صادر شده توسط سیستم جامع حسابداری دوارزی ترازبان`
+    `✅ صادر شده توسط سیستم جامع حسابداری و صرافی دوارزی آرکا (ARKA)`
   );
 }
 
@@ -48,38 +48,44 @@ export function formatStatementBotMessage(
   const recentRows = statement.rows.slice(-10);
   const rowsText = recentRows
     .map((r) => {
-      const trkPart = r.trackingNumber ? ` | پیگیری فیش: ${r.trackingNumber}` : '';
+      const trkPart = r.trackingNumber ? ` | فیش/رهگیری: ${r.trackingNumber}` : '';
+      const fxBalPart =
+        r.currency !== 'IRR'
+          ? ` | مانده ارزی: ${formatNumber(r.runningBalanceForeign, 2)} ${r.currency} (${r.balanceStatusForeign})`
+          : '';
       const descPart = r.description ? `\n   📝 شرح: ${r.description}` : '';
       if (mode === 'rial') {
-        return `• ${r.date} | سند #${r.voucherNumber}${trkPart}: بدهکار ${formatNumber(r.debitIRR)} / بستانکار ${formatNumber(r.creditIRR)} ریال (مانده: ${formatNumber(r.runningBalanceIRR)} ${r.balanceStatusIRR})${descPart}`;
+        return `• ${r.date} | سند #${r.voucherNumber}${trkPart}: بدهکار ${formatNumber(r.debitIRR)} / بستانکار ${formatNumber(r.creditIRR)} ریال (مانده ریالی: ${formatNumber(r.runningBalanceIRR)} ${r.balanceStatusIRR}${fxBalPart})${descPart}`;
       }
-      return `• ${r.date} | سند #${r.voucherNumber}${trkPart} (${r.currency} - نرخ ${formatNumber(r.exchangeRate)}): بدهکار ${formatNumber(r.debitForeign, 2)} / بستانکار ${formatNumber(r.creditForeign, 2)} ${r.currency}${descPart}`;
+      return `• ${r.date} | سند #${r.voucherNumber}${trkPart} (${r.currency} - نرخ ${formatNumber(r.exchangeRate)}): بدهکار ${formatNumber(r.debitForeign, 2)} / بستانکار ${formatNumber(r.creditForeign, 2)} ${r.currency} (مانده ارزی: ${formatNumber(r.runningBalanceForeign, 2)} ${r.currency})${descPart}`;
     })
+    .join('\n');
+
+  const breakdownLines = Object.entries(statement.currencyBreakdown)
+    .filter(([curr]) => curr !== 'IRR')
+    .map(
+      ([curr, b]) =>
+        `• ارز ${curr}: بدهکار ${formatNumber(b.debitForeign, 2)} | بستانکار ${formatNumber(b.creditForeign, 2)} ⬅️ مانده ارزی: ${formatNumber(b.balanceForeign, 2)} ${curr} (${b.status})`
+    )
     .join('\n');
 
   if (mode === 'rial') {
     return (
-      `📊 *صورتحساب استاندارد ریالی طرف حساب*\n` +
+      `📊 *صورتحساب جامع ریالی و ارزی طرف حساب — آرکا (ARKA)*\n` +
       `🏢 ${companyName}\n` +
       `👤 نام شخص/شرکت: ${contact.name} (کد: ${contact.code})\n` +
       `----------------------------------\n` +
       `📥 جمع گردش بدهکار ریالی: ${formatNumber(statement.totalDebitIRR)} ریال\n` +
       `📤 جمع گردش بستانکار ریالی: ${formatNumber(statement.totalCreditIRR)} ریال\n` +
       `⚖️ *مانده نهایی ریالی:* ${formatNumber(statement.finalBalanceIRR)} ریال (${statement.finalStatusIRR})\n` +
+      (breakdownLines ? `💱 *مانده نهایی ارزی:*\n${breakdownLines}\n` : '') +
       `----------------------------------\n` +
       `📋 آخرین گردش‌ها:\n${rowsText || 'گردشی ثبت نشده است.'}`
     );
   }
 
-  const breakdownLines = Object.entries(statement.currencyBreakdown)
-    .map(
-      ([curr, b]) =>
-        `• ارز ${curr}: بدهکار ${formatNumber(b.debitForeign, 2)} | بستانکار ${formatNumber(b.creditForeign, 2)} ⬅️ مانده: ${formatNumber(b.balanceForeign, 2)} ${curr} (${b.status})`
-    )
-    .join('\n');
-
   return (
-    `🌍 *صورتحساب استاندارد ارزی و چندارزی طرف حساب*\n` +
+    `🌍 *صورتحساب استاندارد ارزی و چندارزی طرف حساب — آرکا (ARKA)*\n` +
     `🏢 ${companyName}\n` +
     `👤 نام شخص/شرکت: ${contact.name} (کد: ${contact.code})\n` +
     `----------------------------------\n` +

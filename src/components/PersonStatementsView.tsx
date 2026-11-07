@@ -41,6 +41,7 @@ interface PersonStatementsViewProps {
   state: AccountingState;
   onAddContact: (contact: Contact) => void;
   onRecordBotLog: (log: BotDeliveryLog) => void;
+  initialContactId?: string | null;
 }
 
 interface GlobalReceiptMatch {
@@ -66,12 +67,13 @@ export const PersonStatementsView: React.FC<PersonStatementsViewProps> = ({
   state,
   onAddContact,
   onRecordBotLog,
+  initialContactId,
 }) => {
   const [activeTab, setActiveTab] = useState<
     'debtors_creditors' | 'statement' | 'tracking_search' | 'new_contact'
-  >('debtors_creditors');
+  >(initialContactId ? 'statement' : 'debtors_creditors');
   const [selectedContactId, setSelectedContactId] = useState<string>(
-    state.contacts[0]?.id || ''
+    initialContactId || state.contacts[0]?.id || ''
   );
   const [statementMode, setStatementMode] = useState<'rial' | 'foreign' | 'delivery'>('rial');
   const [currencyFilter, setCurrencyFilter] = useState<CurrencyCode | 'ALL'>('ALL');
@@ -79,6 +81,13 @@ export const PersonStatementsView: React.FC<PersonStatementsViewProps> = ({
   const [globalTrackingQuery, setGlobalTrackingQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'DEBTOR' | 'CREDITOR'>('ALL');
   const [botToast, setBotToast] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (initialContactId) {
+      setSelectedContactId(initialContactId);
+      setActiveTab('statement');
+    }
+  }, [initialContactId]);
 
   // New Contact Form state
   const [newName, setNewName] = useState('');
@@ -104,51 +113,183 @@ export const PersonStatementsView: React.FC<PersonStatementsViewProps> = ({
     return state.fxDeals.filter((d) => d.contactId === selectedContact.id);
   }, [state.fxDeals, selectedContact]);
 
+  // غنی‌سازی ردیف‌های صورتحساب با شماره فیش/رهگیری و توضیحات ثبت‌شده در اسناد و معاملات ارزی
+  const enrichedStatementRows = useMemo(() => {
+    if (!statement) return [];
+    const voucherMap = new Map(state.vouchers.map((v) => [v.id, v]));
+    const dealByVoucherId = new Map(
+      state.fxDeals.filter((d) => d.linkedVoucherId).map((d) => [d.linkedVoucherId!, d])
+    );
+    const dealByNumber = new Map(state.fxDeals.map((d) => [d.dealNumber, d]));
+
+    return statement.rows.map((row) => {
+      const v = voucherMap.get(row.voucherId);
+      let linkedDeal = dealByVoucherId.get(row.voucherId);
+      if (!linkedDeal && v?.referenceNumber) {
+        linkedDeal = dealByNumber.get(v.referenceNumber);
+      }
+      if (!linkedDeal) {
+        for (const [dNum, dObj] of dealByNumber.entries()) {
+          if (row.description.includes(dNum) || (v?.description || '').includes(dNum)) {
+            linkedDeal = dObj;
+            break;
+          }
+        }
+      }
+
+      const siblingBankLine = v?.lines.find(
+        (ln) => ln.id !== row.lineId && (ln.bankId || ln.bankName || ln.trackingNumber)
+      );
+
+      const resolvedTracking = (
+        row.trackingNumber ||
+        siblingBankLine?.trackingNumber ||
+        linkedDeal?.trackingNumber ||
+        linkedDeal?.payments?.[0]?.trackingNumber ||
+        v?.referenceNumber ||
+        linkedDeal?.dealNumber ||
+        `سند-#${row.voucherNumber}`
+      ).trim();
+
+      const descParts: string[] = [row.description.trim()];
+      if (
+        v?.description &&
+        !row.description.includes(v.description.trim()) &&
+        !v.description.startsWith('سند اتوماتیک')
+      ) {
+        descParts.push(`توضیحات سند: ${v.description.trim()}`);
+      }
+      if (
+        siblingBankLine?.description &&
+        !row.description.includes(siblingBankLine.description.trim()) &&
+        siblingBankLine.description.includes('توضیحات')
+      ) {
+        descParts.push(siblingBankLine.description.trim());
+      }
+      if (linkedDeal?.notes && !row.description.includes(linkedDeal.notes.trim())) {
+        descParts.push(`توضیحات ثبت‌شده: ${linkedDeal.notes.trim()}`);
+      }
+
+      return {
+        ...row,
+        trackingNumber: resolvedTracking,
+        description: descParts.join(' — '),
+        bankName: siblingBankLine?.bankName || '',
+      };
+    });
+  }, [statement, state.vouchers, state.fxDeals]);
+
   // ساخت بانک جامع فیش‌ها و شماره‌های پیگیری کل مشتریان برای جستجوی سراسری آنی
   const allCustomerReceiptRecords = useMemo<GlobalReceiptMatch[]>(() => {
     const contactMap = new Map<string, Contact>(
       state.contacts.map((c) => [c.id, c])
     );
+    const dealByVoucherId = new Map(
+      state.fxDeals.filter((d) => d.linkedVoucherId).map((d) => [d.linkedVoucherId!, d])
+    );
+    const dealByNumber = new Map(state.fxDeals.map((d) => [d.dealNumber, d]));
     const list: GlobalReceiptMatch[] = [];
 
-    // ۱. تمامی آرتیکل‌های سندهای حسابداری که به یک شخص (مشتری) وصل هستند
+    // ۱. تمامی آرتیکل‌های سندهای حسابداری (دریافت، پرداخت، خرید/فروش ارز، فاکتور، و حتی اسناد بانکی)
     state.vouchers.forEach((v) => {
-      // پیدا کردن نام بانک در همان سند برای غنی‌سازی اطلاعات فیش
-      const bankLineInVoucher = v.lines.find((l) => l.bankName);
-      v.lines.forEach((ln) => {
-        if (!ln.contactId) return;
-        const cObj = contactMap.get(ln.contactId);
-        const trk = (ln.trackingNumber || v.referenceNumber || `VCH-${v.voucherNumber}`).trim();
-        // اگر در همان سند، ردیف بانک متناظر با همان شماره پیگیری وجود دارد، نام بانک را بردار
-        const matchingBankLine =
-          v.lines.find(
-            (bLn) => bLn.bankName && bLn.trackingNumber && bLn.trackingNumber === ln.trackingNumber
-          ) || bankLineInVoucher;
+      const linkedDeal =
+        dealByVoucherId.get(v.id) ||
+        (v.referenceNumber ? dealByNumber.get(v.referenceNumber) : undefined);
+      const bankLineInVoucher = v.lines.find((l) => l.bankName || l.bankId);
+      const personLines = v.lines.filter((l) => l.contactId || l.contactName);
 
-        list.push({
-          id: `vln-${v.id}-${ln.id}`,
-          trackingNumber: trk,
-          date: v.date,
-          voucherOrDocNumber: `سند #${v.voucherNumber}`,
-          contactId: ln.contactId,
-          contactName: cObj?.name || ln.contactName || 'شخص',
-          contactCode: cObj?.code || '—',
-          bankName: ln.bankName || matchingBankLine?.bankName || 'حساب دفتری / عمومی',
-          currency: ln.currency,
-          exchangeRate: ln.exchangeRate,
-          debitIRR: ln.debitIRR,
-          creditIRR: ln.creditIRR,
-          debitForeign: ln.debitForeign,
-          creditForeign: ln.creditForeign,
-          description: ln.description || v.description,
-          sourceLabel:
-            v.autoType === 'fx_deal'
-              ? 'معامله خرید/فروش ارز'
-              : v.autoType === 'invoice'
-              ? 'فاکتور فروش/خرید'
-              : 'سند دریافت و پرداخت',
+      if (personLines.length > 0) {
+        personLines.forEach((ln) => {
+          const cObj = ln.contactId ? contactMap.get(ln.contactId) : undefined;
+          const matchingBankLine =
+            v.lines.find(
+              (bLn) =>
+                bLn.bankName &&
+                bLn.trackingNumber &&
+                bLn.trackingNumber === ln.trackingNumber
+            ) || bankLineInVoucher;
+
+          const trk = (
+            ln.trackingNumber ||
+            matchingBankLine?.trackingNumber ||
+            linkedDeal?.trackingNumber ||
+            v.referenceNumber ||
+            `سند-${v.voucherNumber}`
+          ).trim();
+
+          const fullDescParts = [ln.description || v.description];
+          if (v.description && ln.description && !ln.description.includes(v.description)) {
+            fullDescParts.push(`شرح سند: ${v.description}`);
+          }
+          if (linkedDeal?.notes && !fullDescParts.join(' ').includes(linkedDeal.notes)) {
+            fullDescParts.push(`توضیحات: ${linkedDeal.notes}`);
+          }
+
+          list.push({
+            id: `vln-${v.id}-${ln.id}`,
+            trackingNumber: trk,
+            date: v.date,
+            voucherOrDocNumber: `سند #${v.voucherNumber}`,
+            contactId: ln.contactId || '',
+            contactName: cObj?.name || ln.contactName || linkedDeal?.contactName || 'شخص',
+            contactCode: cObj?.code || '—',
+            bankName: ln.bankName || matchingBankLine?.bankName || 'حساب دفتری / عمومی',
+            currency: ln.currency,
+            exchangeRate: ln.exchangeRate,
+            debitIRR: ln.debitIRR,
+            creditIRR: ln.creditIRR,
+            debitForeign: ln.currency !== 'IRR' ? ln.debitForeign : 0,
+            creditForeign: ln.currency !== 'IRR' ? ln.creditForeign : 0,
+            description: fullDescParts.join(' — '),
+            sourceLabel:
+              v.autoType === 'fx_deal'
+                ? 'معامله خرید/فروش ارز'
+                : v.autoType === 'invoice'
+                ? 'فاکتور فروش/خرید'
+                : v.autoType === 'receive_from_person'
+                ? 'فیش دریافت از شخص'
+                : v.autoType === 'pay_to_person'
+                ? 'فیش پرداخت به شخص'
+                : 'سند دریافت و پرداخت',
+          });
         });
-      });
+      } else {
+        // اسناد بانکی بدون شخص (انتقال، هزینه، شارژ حساب)
+        v.lines
+          .filter((l) => l.bankId || l.bankName || l.trackingNumber)
+          .forEach((bLn) => {
+            list.push({
+              id: `vbnk-${v.id}-${bLn.id}`,
+              trackingNumber: (
+                bLn.trackingNumber ||
+                v.referenceNumber ||
+                `سند-${v.voucherNumber}`
+              ).trim(),
+              date: v.date,
+              voucherOrDocNumber: `سند #${v.voucherNumber}`,
+              contactId: '',
+              contactName:
+                v.autoType === 'bank_transfer'
+                  ? 'انتقال داخلی بانک/صندوق'
+                  : v.autoType === 'expense'
+                  ? 'ثبت هزینه'
+                  : 'عملیات خزانه',
+              contactCode: 'داخلی',
+              bankName: bLn.bankName || 'بانک / صندوق',
+              currency: bLn.currency,
+              exchangeRate: bLn.exchangeRate,
+              debitIRR: bLn.debitIRR,
+              creditIRR: bLn.creditIRR,
+              debitForeign: bLn.currency !== 'IRR' ? bLn.debitForeign : 0,
+              creditForeign: bLn.currency !== 'IRR' ? bLn.creditForeign : 0,
+              description:
+                bLn.description && v.description && !bLn.description.includes(v.description)
+                  ? `${bLn.description} — ${v.description}`
+                  : bLn.description || v.description,
+              sourceLabel: 'سند مالی خزانه / بانک',
+            });
+          });
+      }
     });
 
     // ۲. مراحل تحویل مرحله‌ای ارز (FXDeliverySplit) که ممکن است شماره پیگیری تحویل مجزا داشته باشند
@@ -992,7 +1133,7 @@ export const PersonStatementsView: React.FC<PersonStatementsViewProps> = ({
                 </div>
               </div>
 
-              {/* ۴ کارت خلاصه وضعیت این شخص */}
+              {/* ۴ کارت خلاصه وضعیت این شخص (همراه با مانده ریالی و مانده ارزی درشت و واضح) */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200">
                   <div className="text-[11px] text-slate-500 font-bold">نام مشتری / شخص</div>
@@ -1002,6 +1143,9 @@ export const PersonStatementsView: React.FC<PersonStatementsViewProps> = ({
                   <div className="text-[11px] text-slate-600 mt-1 font-mono">
                     کد: {selectedContact.code} · تلفن: {selectedContact.phone}
                   </div>
+                  <div className="text-[11px] text-teal-800 font-bold mt-1">
+                    ارز اصلی: {selectedContact.defaultCurrency}
+                  </div>
                 </div>
 
                 <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200">
@@ -1009,8 +1153,8 @@ export const PersonStatementsView: React.FC<PersonStatementsViewProps> = ({
                   <div className="text-xs sm:text-sm font-extrabold font-mono-num text-amber-800 mt-1">
                     {formatNumber(statement.totalDebitIRR)} ریال
                   </div>
-                  <div className="text-[11px] font-mono-num text-slate-600 mt-1">
-                    ارزی:{' '}
+                  <div className="text-[11px] font-mono-num text-amber-900 font-extrabold mt-1 bg-amber-50 border border-amber-200 rounded-lg px-2 py-0.5 inline-block">
+                    بدهکار ارزی:{' '}
                     {formatCurrencyAmount(
                       statement.totalDebitForeign,
                       currencyFilter === 'ALL' ? selectedContact.defaultCurrency : currencyFilter
@@ -1024,8 +1168,8 @@ export const PersonStatementsView: React.FC<PersonStatementsViewProps> = ({
                   <div className="text-xs sm:text-sm font-extrabold font-mono-num text-emerald-800 mt-1">
                     {formatNumber(statement.totalCreditIRR)} ریال
                   </div>
-                  <div className="text-[11px] font-mono-num text-slate-600 mt-1">
-                    ارزی:{' '}
+                  <div className="text-[11px] font-mono-num text-emerald-900 font-extrabold mt-1 bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-0.5 inline-block">
+                    بستانکار ارزی:{' '}
                     {formatCurrencyAmount(
                       statement.totalCreditForeign,
                       currencyFilter === 'ALL' ? selectedContact.defaultCurrency : currencyFilter
@@ -1047,10 +1191,10 @@ export const PersonStatementsView: React.FC<PersonStatementsViewProps> = ({
                     وضعیت نهایی حساب {selectedContact.name}:
                   </div>
                   <div className="text-xs sm:text-sm font-extrabold font-mono-num text-slate-950 mt-1">
-                    {formatNumber(statement.finalBalanceIRR)} ریال
+                    مانده ریالی: {formatNumber(statement.finalBalanceIRR)} ریال
                   </div>
                   <div
-                    className={`text-[11px] font-extrabold mt-1 ${
+                    className={`text-[11px] font-extrabold mt-0.5 ${
                       statement.finalStatusIRR === 'بدهکار'
                         ? 'text-emerald-800'
                         : statement.finalStatusIRR === 'بستانکار'
@@ -1060,6 +1204,96 @@ export const PersonStatementsView: React.FC<PersonStatementsViewProps> = ({
                   >
                     {getPlainStatusLabel(statement.finalStatusIRR)}
                   </div>
+                  {/* نمایش مستقیم مانده ارزی نهایی داخل کارت چهارم */}
+                  <div className="mt-2 pt-2 border-t border-slate-300/70 space-y-1">
+                    <div className="text-[11px] font-extrabold text-teal-900">
+                      💰 مانده نهایی ارزی این شخص:
+                    </div>
+                    {Object.entries(statement.currencyBreakdown).filter(([c]) => c !== 'IRR')
+                      .length === 0 ? (
+                      <div className="text-xs font-mono-num font-extrabold text-slate-700">
+                        0.00 {selectedContact.defaultCurrency} (تسویه ارزی)
+                      </div>
+                    ) : (
+                      Object.entries(statement.currencyBreakdown)
+                        .filter(([c]) => c !== 'IRR')
+                        .map(([curr, b]) => (
+                          <div
+                            key={curr}
+                            className="px-2 py-1 rounded-lg bg-white border border-teal-300 font-mono-num text-xs font-extrabold text-teal-950 flex items-center justify-between gap-1"
+                          >
+                            <span>
+                              {formatCurrencyAmount(b.balanceForeign, curr)} {curr}
+                            </span>
+                            <span
+                              className={`text-[10px] font-sans px-1.5 py-0.5 rounded ${
+                                b.status === 'بدهکار'
+                                  ? 'bg-emerald-100 text-emerald-900'
+                                  : b.status === 'بستانکار'
+                                  ? 'bg-rose-100 text-rose-900'
+                                  : 'bg-slate-100 text-slate-700'
+                              }`}
+                            >
+                              {b.status === 'بدهکار'
+                                ? 'بدهکار ارزی به ما'
+                                : b.status === 'بستانکار'
+                                ? 'طلبکار ارزی از ما (بستانکار)'
+                                : 'تسویه ارزی'}
+                            </span>
+                          </div>
+                        ))
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* بنر اختصاصی مانده ارزی به تفکیک ارزها (برای دید آنی صراف در بالای جدول) */}
+              <div className="bg-gradient-to-l from-teal-50 via-emerald-50/70 to-cyan-50 border-2 border-teal-300 rounded-2xl p-3.5 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <Scale className="w-5 h-5 text-teal-700 shrink-0" />
+                  <div>
+                    <span className="text-xs sm:text-sm font-extrabold text-teal-950 block">
+                      تراز و مانده قطعی ارزی «{selectedContact.name}» به تفکیک هر ارز:
+                    </span>
+                    <span className="text-[11px] text-teal-800">
+                      این کادر مانده دقیق دلاری/ارزی مشتری را مستقل از نوسان ریال نشان می‌دهد.
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 font-mono-num">
+                  {Object.entries(statement.currencyBreakdown).filter(([c]) => c !== 'IRR')
+                    .length === 0 ? (
+                    <span className="px-3 py-1.5 rounded-xl bg-white border border-slate-300 text-xs font-extrabold text-slate-700">
+                      مانده ارزی: ۰ (بدون گردش ارزی)
+                    </span>
+                  ) : (
+                    Object.entries(statement.currencyBreakdown)
+                      .filter(([c]) => c !== 'IRR')
+                      .map(([curr, b]) => (
+                        <div
+                          key={curr}
+                          className={`px-3.5 py-2 rounded-xl border-2 text-xs sm:text-sm font-extrabold flex items-center gap-2 shadow-xs ${
+                            b.status === 'بدهکار'
+                              ? 'bg-emerald-100 border-emerald-400 text-emerald-950'
+                              : b.status === 'بستانکار'
+                              ? 'bg-rose-100 border-rose-400 text-rose-950'
+                              : 'bg-white border-slate-300 text-slate-800'
+                          }`}
+                        >
+                          <span>
+                            مانده {curr}: {formatCurrencyAmount(b.balanceForeign, curr)} {curr}
+                          </span>
+                          <span className="font-sans text-xs px-2 py-0.5 rounded-lg bg-white/90 border border-current">
+                            {b.status === 'بدهکار'
+                              ? '🟢 بدهکار ارزی به ما (طلب ما)'
+                              : b.status === 'بستانکار'
+                              ? '🔴 طلبکار ارزی از ما (بستانکار)'
+                              : '⚪ تسویه کامل ارزی'}
+                          </span>
+                        </div>
+                      ))
+                  )}
                 </div>
               </div>
 
@@ -1211,156 +1445,160 @@ export const PersonStatementsView: React.FC<PersonStatementsViewProps> = ({
                     </div>
                   )}
 
-                  {/* Pocket Mobile Cards View for Phones (همراه با شماره پیگیری فیش و شرح کامل خط به خط) */}
+                  {/* Pocket Mobile Cards View for Phones (همراه با شماره پیگیری فیش، مانده ارزی و شرح کامل خط به خط) */}
                   <div className="sm:hidden space-y-3">
-                    {statement.rows.length === 0 ? (
+                    {enrichedStatementRows.length === 0 ? (
                       <div className="p-6 text-center text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-2xl">
                         هیچ گردش مالی برای این طرف حساب ثبت نشده است.
                       </div>
                     ) : (
-                      statement.rows.map((row, idx) => (
+                      enrichedStatementRows.map((row, idx) => (
                         <div
                           key={row.lineId}
                           className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 space-y-2.5 text-xs shadow-xs"
                         >
                           <div className="flex flex-wrap items-center justify-between gap-1.5 border-b border-slate-200 pb-2">
-                            <div className="flex items-center gap-2">
+                            <div className="flex flex-wrap items-center gap-1.5">
                               <span className="font-mono text-slate-400">#{idx + 1}</span>
                               <span className="font-mono font-bold text-blue-700">
                                 سند #{row.voucherNumber}
                               </span>
-                              <span className="px-2 py-0.5 rounded bg-teal-50 border border-teal-200 font-mono font-extrabold text-teal-800 text-[11px]">
-                                پیگیری فیش: {row.trackingNumber || '—'}
+                              <span className="px-2 py-0.5 rounded bg-teal-600 text-white font-mono font-extrabold text-[11px]">
+                                فیش / رهگیری: {row.trackingNumber}
                               </span>
                             </div>
                             <span className="font-mono text-slate-500 text-[11px]">{row.date}</span>
                           </div>
 
                           <div className="text-slate-900 font-bold text-xs leading-relaxed bg-white p-2.5 rounded-xl border border-slate-200">
-                            <span className="text-slate-500 text-[11px] block mb-0.5">
-                              📝 شرح و توضیحات خط‌به‌خط:
+                            <span className="text-teal-800 text-[11px] font-extrabold block mb-0.5">
+                              📝 شرح معامله و توضیحات ثبت‌شده:
                             </span>
                             {row.description}
                           </div>
 
-                          {statementMode === 'rial' ? (
-                            <div className="grid grid-cols-2 gap-2 bg-white p-2.5 rounded-xl border border-slate-200 font-mono-num text-[11px]">
-                              <div>
-                                <span className="text-[10px] text-slate-400 block font-sans">بدهکار (ریال)</span>
-                                <span className="font-extrabold text-amber-800">
-                                  {row.debitIRR > 0 ? formatNumber(row.debitIRR) : '—'}
+                          <div className="grid grid-cols-2 gap-2 bg-white p-2.5 rounded-xl border border-slate-200 font-mono-num text-[11px]">
+                            <div>
+                              <span className="text-[10px] text-slate-400 block font-sans">بدهکار (ریال / ارزی)</span>
+                              <span className="font-extrabold text-amber-800 block">
+                                {row.debitIRR > 0 ? `${formatNumber(row.debitIRR)} ریال` : '—'}
+                              </span>
+                              {row.currency !== 'IRR' && row.debitForeign > 0 && (
+                                <span className="font-bold text-amber-700 text-[10px] block">
+                                  ({formatCurrencyAmount(row.debitForeign, row.currency)} {row.currency})
                                 </span>
-                              </div>
-                              <div>
-                                <span className="text-[10px] text-slate-400 block font-sans">بستانکار (ریال)</span>
-                                <span className="font-extrabold text-emerald-800">
-                                  {row.creditIRR > 0 ? formatNumber(row.creditIRR) : '—'}
-                                </span>
-                              </div>
+                              )}
                             </div>
-                          ) : (
-                            <div className="grid grid-cols-2 gap-2 bg-white p-2.5 rounded-xl border border-slate-200 font-mono-num text-[11px]">
-                              <div>
-                                <span className="text-[10px] text-slate-400 block font-sans">بدهکار ارزی</span>
-                                <span className="font-extrabold text-amber-800">
-                                  {row.debitForeign > 0
-                                    ? `${formatCurrencyAmount(row.debitForeign, row.currency)} ${row.currency}`
-                                    : '—'}
+                            <div>
+                              <span className="text-[10px] text-slate-400 block font-sans">بستانکار (ریال / ارزی)</span>
+                              <span className="font-extrabold text-emerald-800 block">
+                                {row.creditIRR > 0 ? `${formatNumber(row.creditIRR)} ریال` : '—'}
+                              </span>
+                              {row.currency !== 'IRR' && row.creditForeign > 0 && (
+                                <span className="font-bold text-emerald-700 text-[10px] block">
+                                  ({formatCurrencyAmount(row.creditForeign, row.currency)} {row.currency})
                                 </span>
-                              </div>
-                              <div>
-                                <span className="text-[10px] text-slate-400 block font-sans">بستانکار ارزی</span>
-                                <span className="font-extrabold text-emerald-800">
-                                  {row.creditForeign > 0
-                                    ? `${formatCurrencyAmount(row.creditForeign, row.currency)} ${row.currency}`
-                                    : '—'}
-                                </span>
-                              </div>
+                              )}
                             </div>
-                          )}
+                          </div>
 
-                          <div className="flex items-center justify-between pt-1 border-t border-slate-200/80 font-mono-num">
-                            <span className="text-slate-500 text-[11px]">مانده تا این لحظه:</span>
-                            <span className="font-extrabold text-teal-900">
-                              {statementMode === 'rial'
-                                ? `${formatNumber(row.runningBalanceIRR)} ریال (${getPlainStatusLabel(
-                                    row.balanceStatusIRR
-                                  )})`
-                                : `${formatCurrencyAmount(row.runningBalanceForeign, row.currency)} ${
-                                    row.currency
-                                  } (${row.balanceStatusForeign})`}
-                            </span>
+                          <div className="space-y-1 pt-1 border-t border-slate-200/80 font-mono-num text-[11px]">
+                            <div className="flex items-center justify-between">
+                              <span className="text-slate-500 font-sans">مانده ریالی تا این لحظه:</span>
+                              <span className="font-extrabold text-slate-900">
+                                {formatNumber(row.runningBalanceIRR)} ریال ({getPlainStatusLabel(row.balanceStatusIRR)})
+                              </span>
+                            </div>
+                            {row.currency !== 'IRR' && (
+                              <div className="flex items-center justify-between bg-teal-50 px-2 py-1 rounded-lg border border-teal-200">
+                                <span className="text-teal-900 font-sans font-bold">مانده ارزی تا این لحظه:</span>
+                                <span className="font-extrabold text-teal-950">
+                                  {formatCurrencyAmount(row.runningBalanceForeign, row.currency)} {row.currency} ({row.balanceStatusForeign})
+                                </span>
+                              </div>
+                            )}
                           </div>
                         </div>
                       ))
                     )}
                   </div>
 
-                  {/* Desktop / Tablet Table View (با ستون شماره پیگیری فیش و شرح کامل خط‌به‌خط) */}
+                  {/* Desktop / Tablet Table View (با ستون شماره فیش/رهگیری، توضیحات کامل، مانده ارزی و مانده ریالی) */}
                   <div className="hidden sm:block overflow-x-auto border border-slate-200 rounded-2xl">
                     <table className="w-full text-right border-collapse text-xs">
                       <thead>
                         {statementMode === 'rial' ? (
                           <tr className="bg-slate-100 border-b border-slate-200 font-extrabold text-slate-800">
-                            <th className="py-3 px-2.5">ردیف</th>
-                            <th className="py-3 px-2.5">تاریخ</th>
-                            <th className="py-3 px-2.5">سند</th>
-                            <th className="py-3 px-2.5 text-teal-800">شماره پیگیری فیش</th>
-                            <th className="py-3 px-3">شرح کامل معامله / دریافت و پرداخت و توضیحات خط‌به‌خط</th>
-                            <th className="py-3 px-2.5">ارز و نرخ</th>
+                            <th className="py-3 px-2">ردیف</th>
+                            <th className="py-3 px-2">تاریخ</th>
+                            <th className="py-3 px-2">سند</th>
+                            <th className="py-3 px-2.5 text-teal-900 bg-teal-50/70">
+                              شماره فیش / رهگیری / رسید
+                            </th>
+                            <th className="py-3 px-3">
+                              شرح کامل معامله / دریافت و پرداخت و توضیحات ثبت‌شده
+                            </th>
+                            <th className="py-3 px-2">ارز و نرخ</th>
                             <th className="py-3 px-2.5 text-left">بدهکار (ریال)</th>
                             <th className="py-3 px-2.5 text-left">بستانکار (ریال)</th>
-                            <th className="py-3 px-2.5 text-center">وضعیت</th>
-                            <th className="py-3 px-3 text-left bg-teal-50 text-teal-950">
+                            <th className="py-3 px-2 text-center">وضعیت</th>
+                            <th className="py-3 px-2.5 text-left bg-teal-50 text-teal-950">
                               مانده لحظه‌ای (ریال)
+                            </th>
+                            <th className="py-3 px-2.5 text-left bg-emerald-50 text-emerald-950 border-r border-emerald-200">
+                              مانده لحظه‌ای ارزی
                             </th>
                           </tr>
                         ) : (
                           <tr className="bg-slate-100 border-b border-slate-200 font-extrabold text-slate-800">
-                            <th className="py-3 px-2.5">ردیف</th>
-                            <th className="py-3 px-2.5">تاریخ</th>
-                            <th className="py-3 px-2.5">سند</th>
-                            <th className="py-3 px-2.5 text-teal-800">شماره پیگیری فیش</th>
-                            <th className="py-3 px-3">شرح کامل عملیات ارزی و توضیحات خط‌به‌خط</th>
-                            <th className="py-3 px-2.5">ارز</th>
-                            <th className="py-3 px-2.5 text-left">نرخ تبدیل (ریال)</th>
-                            <th className="py-3 px-2.5 text-left bg-emerald-50/70">بدهکار ارزی</th>
-                            <th className="py-3 px-2.5 text-left bg-emerald-50/70">بستانکار ارزی</th>
-                            <th className="py-3 px-2.5 text-center">تشخیص ارزی</th>
-                            <th className="py-3 px-3 text-left bg-teal-50 text-teal-950">
+                            <th className="py-3 px-2">ردیف</th>
+                            <th className="py-3 px-2">تاریخ</th>
+                            <th className="py-3 px-2">سند</th>
+                            <th className="py-3 px-2.5 text-teal-900 bg-teal-50/70">
+                              شماره فیش / رهگیری / رسید
+                            </th>
+                            <th className="py-3 px-3">
+                              شرح کامل عملیات ارزی و توضیحات ثبت‌شده خط‌به‌خط
+                            </th>
+                            <th className="py-3 px-2">ارز</th>
+                            <th className="py-3 px-2 text-left">نرخ تبدیل (ریال)</th>
+                            <th className="py-3 px-2.5 text-left bg-amber-50/60">بدهکار ارزی</th>
+                            <th className="py-3 px-2.5 text-left bg-emerald-50/60">بستانکار ارزی</th>
+                            <th className="py-3 px-2 text-center">تشخیص ارزی</th>
+                            <th className="py-3 px-3 text-left bg-teal-100/80 text-teal-950">
                               مانده در گردش ارزی
                             </th>
-                            <th className="py-3 px-2.5 text-left text-slate-600">
+                            <th className="py-3 px-2.5 text-left text-slate-700">
                               معادل مانده به ریال
                             </th>
                           </tr>
                         )}
                       </thead>
                       <tbody className="divide-y divide-slate-200 text-xs">
-                        {statement.rows.length === 0 ? (
+                        {enrichedStatementRows.length === 0 ? (
                           <tr>
                             <td colSpan={12} className="py-8 text-center text-slate-500">
                               هیچ گردش مالی برای این طرف حساب یافت نشد.
                             </td>
                           </tr>
                         ) : (
-                          statement.rows.map((row, idx) =>
+                          enrichedStatementRows.map((row, idx) =>
                             statementMode === 'rial' ? (
                               <tr key={row.lineId} className="hover:bg-slate-50">
-                                <td className="py-2.5 px-2.5 font-mono text-slate-500">{idx + 1}</td>
-                                <td className="py-2.5 px-2.5 font-mono">{row.date}</td>
-                                <td className="py-2.5 px-2.5 font-mono font-bold text-blue-700">
+                                <td className="py-2.5 px-2 font-mono text-slate-500">{idx + 1}</td>
+                                <td className="py-2.5 px-2 font-mono">{row.date}</td>
+                                <td className="py-2.5 px-2 font-mono font-bold text-blue-700">
                                   #{row.voucherNumber}
                                 </td>
-                                <td className="py-2.5 px-2.5 font-mono font-extrabold text-teal-800">
-                                  <span className="px-2 py-0.5 rounded bg-teal-50 border border-teal-200 inline-block">
-                                    {row.trackingNumber || '—'}
+                                <td className="py-2.5 px-2.5 font-mono font-extrabold text-teal-900 bg-teal-50/30">
+                                  <span className="px-2 py-0.5 rounded-lg bg-teal-100/80 border border-teal-300 inline-block">
+                                    {row.trackingNumber}
                                   </span>
                                 </td>
                                 <td className="py-2.5 px-3 text-slate-900 font-semibold leading-relaxed">
                                   {row.description}
                                 </td>
-                                <td className="py-2.5 px-2.5 font-mono text-slate-500">
+                                <td className="py-2.5 px-2 font-mono text-slate-600">
                                   {row.currency === 'IRR'
                                     ? 'ریال'
                                     : `${row.currency} (نرخ: ${formatNumber(row.exchangeRate)})`}
@@ -1371,7 +1609,7 @@ export const PersonStatementsView: React.FC<PersonStatementsViewProps> = ({
                                 <td className="py-2.5 px-2.5 font-mono text-left font-bold text-emerald-800">
                                   {formatNumber(row.creditIRR)}
                                 </td>
-                                <td className="py-2.5 px-2.5 text-center font-bold">
+                                <td className="py-2.5 px-2 text-center font-bold">
                                   <span
                                     className={
                                       row.balanceStatusIRR === 'بدهکار'
@@ -1384,44 +1622,67 @@ export const PersonStatementsView: React.FC<PersonStatementsViewProps> = ({
                                     {getPlainStatusLabel(row.balanceStatusIRR)}
                                   </span>
                                 </td>
-                                <td className="py-2.5 px-3 font-mono text-left font-bold bg-teal-50/60 text-slate-900">
-                                  {formatNumber(row.runningBalanceIRR)}
+                                <td className="py-2.5 px-2.5 font-mono text-left font-extrabold bg-teal-50/60 text-slate-900">
+                                  {formatNumber(row.runningBalanceIRR)} ریال
+                                </td>
+                                <td className="py-2.5 px-2.5 font-mono text-left font-extrabold bg-emerald-50/50 text-teal-950 border-r border-emerald-100">
+                                  {row.currency === 'IRR' ? (
+                                    <span className="text-slate-400 font-sans text-[11px]">ریالی</span>
+                                  ) : (
+                                    <span>
+                                      {formatCurrencyAmount(row.runningBalanceForeign, row.currency)}{' '}
+                                      {row.currency}{' '}
+                                      <span className="font-sans text-[10px] text-teal-800">
+                                        ({row.balanceStatusForeign})
+                                      </span>
+                                    </span>
+                                  )}
                                 </td>
                               </tr>
                             ) : (
                               <tr key={row.lineId} className="hover:bg-slate-50">
-                                <td className="py-2.5 px-2.5 font-mono text-slate-500">{idx + 1}</td>
-                                <td className="py-2.5 px-2.5 font-mono">{row.date}</td>
-                                <td className="py-2.5 px-2.5 font-mono font-bold text-blue-700">
+                                <td className="py-2.5 px-2 font-mono text-slate-500">{idx + 1}</td>
+                                <td className="py-2.5 px-2 font-mono">{row.date}</td>
+                                <td className="py-2.5 px-2 font-mono font-bold text-blue-700">
                                   #{row.voucherNumber}
                                 </td>
-                                <td className="py-2.5 px-2.5 font-mono font-extrabold text-teal-800">
-                                  <span className="px-2 py-0.5 rounded bg-teal-50 border border-teal-200 inline-block">
-                                    {row.trackingNumber || '—'}
+                                <td className="py-2.5 px-2.5 font-mono font-extrabold text-teal-900 bg-teal-50/30">
+                                  <span className="px-2 py-0.5 rounded-lg bg-teal-100/80 border border-teal-300 inline-block">
+                                    {row.trackingNumber}
                                   </span>
                                 </td>
                                 <td className="py-2.5 px-3 text-slate-900 font-semibold leading-relaxed">
                                   {row.description}
                                 </td>
-                                <td className="py-2.5 px-2.5 font-mono font-bold text-blue-800">
+                                <td className="py-2.5 px-2 font-mono font-bold text-blue-800">
                                   {row.currency}
                                 </td>
-                                <td className="py-2.5 px-2.5 font-mono text-left text-slate-600">
+                                <td className="py-2.5 px-2 font-mono text-left text-slate-600">
                                   {formatNumber(row.exchangeRate)}
                                 </td>
-                                <td className="py-2.5 px-2.5 font-mono text-left font-bold bg-emerald-50/30 text-amber-800">
+                                <td className="py-2.5 px-2.5 font-mono text-left font-bold bg-amber-50/30 text-amber-800">
                                   {formatCurrencyAmount(row.debitForeign, row.currency)} {row.currency}
                                 </td>
                                 <td className="py-2.5 px-2.5 font-mono text-left font-bold bg-emerald-50/30 text-emerald-800">
                                   {formatCurrencyAmount(row.creditForeign, row.currency)} {row.currency}
                                 </td>
-                                <td className="py-2.5 px-2.5 text-center font-bold">
-                                  {row.balanceStatusForeign}
+                                <td className="py-2.5 px-2 text-center font-extrabold">
+                                  <span
+                                    className={
+                                      row.balanceStatusForeign === 'بدهکار'
+                                        ? 'text-emerald-800'
+                                        : row.balanceStatusForeign === 'بستانکار'
+                                        ? 'text-rose-800'
+                                        : 'text-slate-600'
+                                    }
+                                  >
+                                    {row.balanceStatusForeign}
+                                  </span>
                                 </td>
-                                <td className="py-2.5 px-3 font-mono text-left font-bold bg-teal-50/60 text-teal-950">
+                                <td className="py-2.5 px-3 font-mono text-left font-extrabold bg-teal-100/60 text-teal-950">
                                   {formatCurrencyAmount(row.runningBalanceForeign, row.currency)} {row.currency}
                                 </td>
-                                <td className="py-2.5 px-2.5 font-mono text-left text-slate-600">
+                                <td className="py-2.5 px-2.5 font-mono text-left font-bold text-slate-700">
                                   {formatNumber(row.runningBalanceIRR)} ریال
                                 </td>
                               </tr>
@@ -1429,6 +1690,77 @@ export const PersonStatementsView: React.FC<PersonStatementsViewProps> = ({
                           )
                         )}
                       </tbody>
+                      {enrichedStatementRows.length > 0 && (
+                        <tfoot>
+                          <tr className="bg-slate-900 text-white font-extrabold text-xs">
+                            <td colSpan={6} className="py-3 px-3 text-left">
+                              جمع کل گردش و مانده نهایی حساب «{selectedContact.name}»:
+                            </td>
+                            {statementMode === 'rial' ? (
+                              <>
+                                <td className="py-3 px-2.5 font-mono text-left text-amber-300">
+                                  {formatNumber(statement.totalDebitIRR)}
+                                </td>
+                                <td className="py-3 px-2.5 font-mono text-left text-emerald-300">
+                                  {formatNumber(statement.totalCreditIRR)}
+                                </td>
+                                <td className="py-3 px-2 text-center text-teal-200">
+                                  {statement.finalStatusIRR}
+                                </td>
+                                <td className="py-3 px-2.5 font-mono text-left text-white bg-teal-900">
+                                  {formatNumber(statement.finalBalanceIRR)} ریال
+                                </td>
+                                <td className="py-3 px-2.5 font-mono text-left text-emerald-300 bg-slate-800">
+                                  {Object.entries(statement.currencyBreakdown)
+                                    .filter(([c]) => c !== 'IRR')
+                                    .map(
+                                      ([c, b]) =>
+                                        `${formatCurrencyAmount(b.balanceForeign, c)} ${c} (${b.status})`
+                                    )
+                                    .join(' | ') || '0.00'}
+                                </td>
+                              </>
+                            ) : (
+                              <>
+                                <td className="py-3 px-2"></td>
+                                <td className="py-3 px-2.5 font-mono text-left text-amber-300">
+                                  {formatCurrencyAmount(
+                                    statement.totalDebitForeign,
+                                    currencyFilter === 'ALL'
+                                      ? selectedContact.defaultCurrency
+                                      : currencyFilter
+                                  )}
+                                </td>
+                                <td className="py-3 px-2.5 font-mono text-left text-emerald-300">
+                                  {formatCurrencyAmount(
+                                    statement.totalCreditForeign,
+                                    currencyFilter === 'ALL'
+                                      ? selectedContact.defaultCurrency
+                                      : currencyFilter
+                                  )}
+                                </td>
+                                <td className="py-3 px-2 text-center text-teal-200">
+                                  {statement.finalStatusForeign}
+                                </td>
+                                <td className="py-3 px-3 font-mono text-left text-emerald-300 bg-teal-900">
+                                  {formatCurrencyAmount(
+                                    statement.finalBalanceForeign,
+                                    currencyFilter === 'ALL'
+                                      ? selectedContact.defaultCurrency
+                                      : currencyFilter
+                                  )}{' '}
+                                  {currencyFilter === 'ALL'
+                                    ? selectedContact.defaultCurrency
+                                    : currencyFilter}
+                                </td>
+                                <td className="py-3 px-2.5 font-mono text-left text-white">
+                                  {formatNumber(statement.finalBalanceIRR)} ریال
+                                </td>
+                              </>
+                            )}
+                          </tr>
+                        </tfoot>
+                      )}
                     </table>
                   </div>
                 </>

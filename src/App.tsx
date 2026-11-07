@@ -32,6 +32,7 @@ import { SettingsModal } from './components/SettingsModal';
 import { LoginModal } from './components/LoginModal';
 import { InitialSetupWizardModal } from './components/InitialSetupWizardModal';
 import { PWAInstallPrompt } from './components/PWAInstallPrompt';
+import { GlobalReceiptSearchModal } from './components/GlobalReceiptSearchModal';
 import {
   loadLicenseStatus,
   lockApplicationLicense,
@@ -55,6 +56,7 @@ import {
   Settings,
   LogOut,
   UserCheck,
+  Search,
 } from 'lucide-react';
 
 type NavTab =
@@ -91,9 +93,10 @@ export function App() {
 
   const savedState = loadInitialState();
 
-  const [companyName, setCompanyName] = useState<string>(
-    savedState?.companyName || INITIAL_ACCOUNTING_STATE.companyName
-  );
+  const [companyName, setCompanyName] = useState<string>(() => {
+    const raw = savedState?.companyName || INITIAL_ACCOUNTING_STATE.companyName;
+    return raw.includes('ترازبان') ? raw.replace(/ترازبان/g, 'آرکا') : raw;
+  });
   const [currencies, setCurrencies] = useState<Currency[]>(
     savedState?.currencies || INITIAL_ACCOUNTING_STATE.currencies
   );
@@ -195,6 +198,8 @@ export function App() {
   const [showBlankSetupWizard, setShowBlankSetupWizard] = useState<boolean>(false);
   const [showCurrencyModal, setShowCurrencyModal] = useState<boolean>(false);
   const [showSettingsModal, setShowSettingsModal] = useState<boolean>(false);
+  const [showGlobalSearchModal, setShowGlobalSearchModal] = useState<boolean>(false);
+  const [statementInitialContactId, setStatementInitialContactId] = useState<string | null>(null);
   const lastServerUpdatedAtRef = useRef<string | null>(null);
   const isRemoteUpdateRef = useRef<boolean>(false);
 
@@ -500,6 +505,7 @@ export function App() {
         : ' [تحویل کامل ارز]';
 
     const userNotePart = deal.notes ? ` — توضیحات: ${deal.notes}` : '';
+    const mainTracking = (deal.trackingNumber || '').trim() || deal.dealNumber;
 
     const lines: VoucherLine[] = [
       {
@@ -510,14 +516,14 @@ export function App() {
         bankName: vaultBank?.bankName,
         description: `${isBuy ? 'خرید ارز و ورود به' : 'فروش ارز و خروج از'} ${
           vaultBank?.bankName || 'خزانه ارزی'
-        } (${deal.foreignAmount} ${deal.currency} به نرخ ${deal.exchangeRate})${deliveryNote}${userNotePart}`,
+        } (${deal.foreignAmount} ${deal.currency} به نرخ ${deal.exchangeRate}) [شماره فیش/رهگیری: ${mainTracking}]${deliveryNote}${userNotePart}`,
         currency: deal.currency,
         exchangeRate: deal.exchangeRate,
         debitForeign: isBuy ? deal.foreignAmount : 0,
         creditForeign: isBuy ? 0 : deal.foreignAmount,
         debitIRR: isBuy ? deal.totalIRR : 0,
         creditIRR: isBuy ? 0 : deal.totalIRR,
-        trackingNumber: deal.dealNumber,
+        trackingNumber: mainTracking,
         reconciled: true,
       },
       {
@@ -528,14 +534,14 @@ export function App() {
         contactName: deal.contactName,
         description: `${isBuy ? 'خرید' : 'فروش'} ${deal.foreignAmount} ${
           deal.currency
-        } به نرخ ${deal.exchangeRate} ریال (${deal.dealNumber})${deliveryNote}${userNotePart}`,
+        } به نرخ ${deal.exchangeRate} ریال (${deal.dealNumber}) [شماره فیش/رهگیری: ${mainTracking}]${deliveryNote}${userNotePart}`,
         currency: deal.currency,
         exchangeRate: deal.exchangeRate,
         debitForeign: isBuy ? 0 : deal.foreignAmount,
         creditForeign: isBuy ? deal.foreignAmount : 0,
         debitIRR: isBuy ? 0 : deal.totalIRR,
         creditIRR: isBuy ? deal.totalIRR : 0,
-        trackingNumber: deal.dealNumber,
+        trackingNumber: mainTracking,
       },
     ];
 
@@ -545,10 +551,10 @@ export function App() {
         id: `bs-fx-v-${Date.now()}`,
         bankId: vaultBank.id,
         date: deal.date,
-        trackingNumber: deal.dealNumber,
+        trackingNumber: mainTracking,
         description: `${isBuy ? 'ورود ارز خریداری‌شده' : 'خروج ارز فروخته‌شده'} (${
           deal.contactName
-        })${deliveryNote}${userNotePart}`,
+        }) [فیش: ${mainTracking}]${deliveryNote}${userNotePart}`,
         currency: deal.currency,
         depositForeign: isBuy ? deal.foreignAmount : 0,
         withdrawalForeign: isBuy ? 0 : deal.foreignAmount,
@@ -565,14 +571,19 @@ export function App() {
         const payBankAcc = getAccountForBank(payBank);
         const isReceipt = !isBuy;
 
-        const splitExtraDesc = sp.description ? ` — توضیحات فیش: ${sp.description}` : '';
+        const trk = (sp.trackingNumber || '').trim() || `${mainTracking}-${idx + 1}`;
+        const splitExtraDesc = [
+          sp.description ? `توضیحات فیش: ${sp.description}` : '',
+          deal.notes ? `توضیحات معامله: ${deal.notes}` : '',
+        ]
+          .filter(Boolean)
+          .join(' — ');
         const splitDesc = `${
           isReceipt ? 'واریز به' : 'برداشت از'
         } ${payBank?.bankName || 'بانک/صندوق'} بابت تسویه ${deal.dealNumber} (${
           deal.contactName
-        })${splitExtraDesc}`;
+        }) [شماره فیش/رهگیری: ${trk}]${splitExtraDesc ? ` — ${splitExtraDesc}` : ''}`;
         const payBankLineId = `ln-fx-pay-b-${Date.now()}-${idx}`;
-        const trk = sp.trackingNumber || `${deal.dealNumber}-${idx + 1}`;
 
         lines.push({
           id: payBankLineId,
@@ -599,7 +610,9 @@ export function App() {
           contactName: deal.contactName,
           description: `${
             isReceipt ? 'دریافت از شخص و واریز به' : 'پرداخت به شخص از'
-          } ${payBank?.bankName || 'بانک/صندوق'} بابت ${deal.dealNumber}${splitExtraDesc}`,
+          } ${payBank?.bankName || 'بانک/صندوق'} بابت ${deal.dealNumber} [شماره فیش/رهگیری: ${trk}]${
+            splitExtraDesc ? ` — ${splitExtraDesc}` : ''
+          }`,
           currency: sp.currency,
           exchangeRate: sp.exchangeRate,
           debitForeign: isReceipt ? 0 : sp.amountForeign,
@@ -631,8 +644,8 @@ export function App() {
       date: deal.date,
       description: `سند اتوماتیک ${isBuy ? 'خرید' : 'فروش'} ارز ${deal.dealNumber} (${
         deal.contactName
-      })${userNotePart}`,
-      referenceNumber: deal.dealNumber,
+      }) [فیش/رهگیری: ${mainTracking}]${userNotePart}`,
+      referenceNumber: mainTracking,
       autoType: 'fx_deal',
       status: 'permanent',
       createdAt: deal.date,
@@ -1366,25 +1379,43 @@ export function App() {
       <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-xs px-3 sm:px-6 py-2.5">
         <div className="max-w-[1600px] mx-auto flex items-center justify-between gap-2 sm:gap-4 overflow-hidden">
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-teal-500 to-emerald-600 flex items-center justify-center shadow-md shadow-teal-500/20 shrink-0">
-              <Coins className="w-4 h-4 sm:w-6 sm:h-6 text-white" />
-            </div>
+            <img
+              src="/arka-logo.jpg"
+              alt="لوگو آرکا (ARKA)"
+              referrerPolicy="no-referrer"
+              className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl object-cover border-2 border-teal-500 shadow-md shadow-teal-500/20 shrink-0"
+            />
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 flex-wrap">
-                <h1 className="text-xs sm:text-base font-bold text-slate-900 tracking-tight truncate">
-                  {companyName || 'ترازبان ارزی — حسابداری صرافی'}
+                <span className="px-2 py-0.5 text-[10px] sm:text-xs font-extrabold bg-gradient-to-l from-teal-700 to-emerald-600 text-white rounded-lg shadow-xs shrink-0">
+                  آرکا (ARKA)
+                </span>
+                <h1 className="text-xs sm:text-base font-extrabold text-slate-900 tracking-tight truncate">
+                  {companyName || 'آرکا (ARKA) — سیستم حسابداری و صرافی دوارزی'}
                 </h1>
-                <span className="hidden xs:inline-block px-1.5 sm:px-2 py-0.5 text-[9px] sm:text-[11px] font-bold bg-teal-50 text-teal-700 border border-teal-200 rounded-md shrink-0">
+                <span className="hidden md:inline-block px-1.5 sm:px-2 py-0.5 text-[9px] sm:text-[11px] font-bold bg-teal-50 text-teal-700 border border-teal-200 rounded-md shrink-0">
                   تسویه چندارزی
                 </span>
               </div>
               <p className="hidden sm:block text-[11px] sm:text-xs text-slate-500 line-clamp-1">
-                طراحی‌شده برای صرافی و حسابداری معاملات ارزی در شبکه محلی صرافی
+                نرم‌افزار تخصصی آرکا (ARKA) — مدیریت صرافی، معاملات ارزی، دریافت و پرداخت و صورتحساب دوارزی
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            {/* Global System-Wide Receipt & Tracking Code Search Button */}
+            <button
+              type="button"
+              onClick={() => setShowGlobalSearchModal(true)}
+              className="px-2.5 sm:px-3.5 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-extrabold text-[10px] sm:text-xs flex items-center gap-1.5 transition cursor-pointer shrink-0 shadow-sm shadow-teal-600/20"
+              title="جستجوی سراسری شماره فیش، کد رهگیری و رسید در کل سیستم"
+            >
+              <Search className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">سرچ کل سیستم (فیش / کد رهگیری)</span>
+              <span className="sm:hidden">سرچ فیش</span>
+            </button>
+
             {/* User Profile Badge & Logout */}
             <div className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 px-2 sm:px-2.5 py-1 rounded-xl text-xs font-bold transition">
               <UserCheck className="w-3.5 h-3.5 text-teal-600" />
@@ -1440,6 +1471,18 @@ export function App() {
           </div>
         </div>
       </header>
+
+      {/* Global System-Wide Receipt & Tracking Search Modal */}
+      <GlobalReceiptSearchModal
+        isOpen={showGlobalSearchModal}
+        onClose={() => setShowGlobalSearchModal(false)}
+        state={fullAccountingState}
+        onOpenPersonStatement={(cId) => {
+          setStatementInitialContactId(cId);
+          setActiveTab('persons');
+        }}
+        onNavigateToVouchers={() => setActiveTab('vouchers')}
+      />
 
       {/* Currency Manager Modal */}
       <CurrencyManagerModal
@@ -1593,6 +1636,7 @@ export function App() {
               state={fullAccountingState}
               onAddContact={(newContact) => setContacts([...contacts, newContact])}
               onRecordBotLog={(log) => setBotLogs([log, ...botLogs])}
+              initialContactId={statementInitialContactId}
             />
           )}
 

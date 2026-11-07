@@ -1,8 +1,24 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <rect width="512" height="512" rx="128" fill="#0B0F17"/>
-  <circle cx="256" cy="256" r="200" fill="none" stroke="#14B8A6" stroke-width="16" opacity="0.3"/>
-  <path d="M256 96 C 167.6 96, 96 167.6, 96 256 C 96 344.4, 167.6 416, 256 416 C 344.4 416, 416 344.4, 416 256 C 416 167.6, 344.4 96, 256 96 Z" fill="none" stroke="#10B981" stroke-width="20"/>
-  <text x="256" y="290" text-anchor="middle" font-family="Vazirmatn, sans-serif" font-weight="900" font-size="160" fill="#14B8A6">$</text>
-  <circle cx="380" cy="132" r="32" fill="#F59E0B"/>
-  <text x="380" y="142" text-anchor="middle" font-family="sans-serif" font-weight="bold" font-size="28" fill="#0B0F17">€</text>
+  <defs>
+    <linearGradient id="arkaBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#064e3b" />
+      <stop offset="50%" stop-color="#0f2942" />
+      <stop offset="100%" stop-color="#091526" />
+    </linearGradient>
+    <linearGradient id="arkaGold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fde68a" />
+      <stop offset="50%" stop-color="#eab308" />
+      <stop offset="100%" stop-color="#ca8a04" />
+    </linearGradient>
+    <linearGradient id="arkaEmerald" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34d399" />
+      <stop offset="100%" stop-color="#059669" />
+    </linearGradient>
+  </defs>
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="url(#arkaBg)" stroke="#10b981" stroke-width="8" stroke-opacity="0.4" />
+  <!-- Stylized Geometric 'A' for ARKA -->
+  <path d="M256 96 L120 396 L178 396 L256 218 L334 396 L392 396 Z" fill="url(#arkaGold)" />
+  <!-- Inner Triangle & Exchange Arrows -->
+  <path d="M188 292 C220 250, 290 245, 348 272 L334 244 L388 282 L330 310 L342 288 C290 268, 232 272, 198 310 Z" fill="url(#arkaEmerald)" />
+  <text x="256" y="452" text-anchor="middle" font-family="Vazirmatn, sans-serif" font-weight="900" font-size="44" fill="#fde68a" letter-spacing="2">ARKA • آرکا</text>
 </svg>

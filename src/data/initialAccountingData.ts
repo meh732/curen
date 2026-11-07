@@ -38,7 +38,7 @@ export const INITIAL_USERS: UserAccount[] = [
 ];
 
 export const INITIAL_ACCOUNTING_STATE: AccountingState = {
-  companyName: 'دفتر حسابداری شخصی و معاملات ارزی من',
+  companyName: 'آرکا (ARKA) — صرافی و حسابداری معاملات ارزی',
   fiscalYear: 'سال مالی ۱۴۰۴',
   currencies: [
     {

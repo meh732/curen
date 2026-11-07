@@ -32,6 +32,8 @@ import {
   UserPlus,
   X,
   Eye,
+  Search,
+  Hash,
 } from 'lucide-react';
 
 interface VoucherEntryViewProps {
@@ -69,6 +71,8 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
   const [autoType, setAutoType] = useState<AutoFinanceType>('receive_from_person');
   const [date, setDate] = useState('1404/08/12');
   const [description, setDescription] = useState('');
+  const [mainTrackingNumber, setMainTrackingNumber] = useState('');
+  const [voucherSearchQuery, setVoucherSearchQuery] = useState('');
 
   // فیلدهای مشترک حالت اتوماتیک
   const [selectedContactId, setSelectedContactId] = useState<string>(contacts[0]?.id || '');
@@ -201,8 +205,13 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
         const extraNotes = [description.trim(), (sp.description || '').trim()]
           .filter(Boolean)
           .join(' — ');
-        const lineDesc = extraNotes ? `${baseActionDesc} | توضیحات: ${extraNotes}` : baseActionDesc;
-        const trk = (sp.trackingNumber || '').trim() || `AUTO-${voucherNumber}-${idx + 1}`;
+        const trk =
+          (sp.trackingNumber || '').trim() ||
+          mainTrackingNumber.trim() ||
+          `AUTO-${voucherNumber}-${idx + 1}`;
+        const lineDesc = extraNotes
+          ? `${baseActionDesc} | توضیحات: ${extraNotes}`
+          : baseActionDesc;
 
         // ردیف بانک / صندوق
         lines.push({
@@ -211,7 +220,7 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
           accountName: bankAcc.name,
           bankId: sp.bankId,
           bankName: bank?.bankName,
-          description: `${lineDesc} (شماره پیگیری فیش: ${trk})`,
+          description: `${lineDesc} (شماره فیش/رهگیری: ${trk})`,
           currency: sp.currency,
           exchangeRate: sp.exchangeRate,
           debitForeign: isReceipt ? sp.amountForeign : 0,
@@ -235,7 +244,7 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
                   sp.exchangeRate
                 )} ریال`
               : `${formatNumber(sp.amountIRR)} ریال`
-          })`,
+          }) [شماره فیش/رهگیری: ${trk}]`,
           currency: sp.currency,
           exchangeRate: sp.exchangeRate,
           debitForeign: isReceipt ? 0 : sp.amountForeign,
@@ -257,6 +266,7 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
       const dstBank = banks.find((b) => b.id === destBankId);
       const srcAcc = getAccountHelperForBank(srcBank);
       const dstAcc = getAccountHelperForBank(dstBank);
+      const trk = mainTrackingNumber.trim() || `TRF-${voucherNumber}`;
 
       autoTitle =
         description.trim() ||
@@ -269,13 +279,14 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
         accountName: dstAcc.name,
         bankId: destBankId,
         bankName: dstBank?.bankName,
-        description: `ورود وجه انتقالی از ${srcBank?.bankName} - ${autoTitle}`,
+        description: `ورود وجه انتقالی از ${srcBank?.bankName} - ${autoTitle} (شماره فیش/رهگیری: ${trk})`,
         currency: txCurrency,
         exchangeRate: txExchangeRate,
         debitForeign: txAmountForeign,
         creditForeign: 0,
         debitIRR: txComputedIRR,
         creditIRR: 0,
+        trackingNumber: trk,
         reconciled: true,
       });
 
@@ -286,13 +297,14 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
         accountName: srcAcc.name,
         bankId: sourceBankId,
         bankName: srcBank?.bankName,
-        description: `خروج وجه انتقالی به ${dstBank?.bankName} - ${autoTitle}`,
+        description: `خروج وجه انتقالی به ${dstBank?.bankName} - ${autoTitle} (شماره فیش/رهگیری: ${trk})`,
         currency: txCurrency,
         exchangeRate: txExchangeRate,
         debitForeign: 0,
         creditForeign: txAmountForeign,
         debitIRR: 0,
         creditIRR: txComputedIRR,
+        trackingNumber: trk,
         reconciled: true,
       });
     } else if (autoType === 'expense') {
@@ -300,6 +312,7 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
       const srcBank = banks.find((b) => b.id === sourceBankId);
       const srcAcc = getAccountHelperForBank(srcBank);
       const expNode = accounts.find((a) => a.code === expenseAccountCode);
+      const trk = mainTrackingNumber.trim() || `EXP-${voucherNumber}`;
 
       autoTitle =
         description.trim() ||
@@ -309,13 +322,14 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
         id: `ln-exp-d-${Date.now()}`,
         accountCode: expNode?.code || '5201',
         accountName: expNode?.name || 'هزینه‌های شخصی، حقوق و دستمزد',
-        description: autoTitle,
+        description: `${autoTitle} (شماره فیش/رهگیری: ${trk})`,
         currency: txCurrency,
         exchangeRate: txExchangeRate,
         debitForeign: txAmountForeign,
         creditForeign: 0,
         debitIRR: txComputedIRR,
         creditIRR: 0,
+        trackingNumber: trk,
       });
 
       lines.push({
@@ -324,13 +338,14 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
         accountName: srcAcc.name,
         bankId: sourceBankId,
         bankName: srcBank?.bankName,
-        description: autoTitle,
+        description: `${autoTitle} (شماره فیش/رهگیری: ${trk})`,
         currency: txCurrency,
         exchangeRate: txExchangeRate,
         debitForeign: 0,
         creditForeign: txAmountForeign,
         debitIRR: 0,
         creditIRR: txComputedIRR,
+        trackingNumber: trk,
         reconciled: true,
       });
     } else if (autoType === 'income') {
@@ -338,6 +353,7 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
       const dstBank = banks.find((b) => b.id === sourceBankId);
       const dstAcc = getAccountHelperForBank(dstBank);
       const incNode = accounts.find((a) => a.code === incomeAccountCode);
+      const trk = mainTrackingNumber.trim() || `INC-${voucherNumber}`;
 
       autoTitle =
         description.trim() ||
@@ -351,13 +367,14 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
         accountName: dstAcc.name,
         bankId: sourceBankId,
         bankName: dstBank?.bankName,
-        description: autoTitle,
+        description: `${autoTitle} (شماره فیش/رهگیری: ${trk})`,
         currency: txCurrency,
         exchangeRate: txExchangeRate,
         debitForeign: txAmountForeign,
         creditForeign: 0,
         debitIRR: txComputedIRR,
         creditIRR: 0,
+        trackingNumber: trk,
         reconciled: true,
       });
 
@@ -365,23 +382,30 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
         id: `ln-inc-c-${Date.now()}`,
         accountCode: incNode?.code || '4101',
         accountName: incNode?.name || 'درآمد فروش ریالی',
-        description: autoTitle,
+        description: `${autoTitle} (شماره فیش/رهگیری: ${trk})`,
         currency: txCurrency,
         exchangeRate: txExchangeRate,
         debitForeign: 0,
         creditForeign: txAmountForeign,
         debitIRR: 0,
         creditIRR: txComputedIRR,
+        trackingNumber: trk,
       });
     }
 
     if (lines.length === 0) return;
+
+    const resolvedRef =
+      lines.find((l) => l.trackingNumber)?.trackingNumber ||
+      mainTrackingNumber.trim() ||
+      `VCH-${voucherNumber}`;
 
     const newVoucher: JournalVoucher = {
       id: `vch-auto-${Date.now()}`,
       voucherNumber,
       date,
       description: autoTitle,
+      referenceNumber: resolvedRef,
       status: 'permanent',
       createdAt: date,
       autoType,
@@ -406,6 +430,7 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
 
     setSubmittedVoucherSuccess(newVoucher);
     setDescription('');
+    setMainTrackingNumber('');
     setTxAmountForeign(0);
     if (splits.length > 0) {
       setSplits([
@@ -415,6 +440,7 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
           amountForeign: 0,
           amountIRR: 0,
           trackingNumber: '',
+          description: '',
         },
       ]);
     }
@@ -792,27 +818,44 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
                     />
                   </div>
 
-                  {/* نمایش مانده لحظه‌ای شخص انتخاب شده */}
+                  {/* نمایش مانده لحظه‌ای ریالی و ارزی شخص انتخاب شده */}
                   {selectedContactStatement && (
-                    <div className="bg-white border border-slate-200 rounded-lg p-2.5 flex items-center justify-between shadow-xs">
-                      <span className="text-xs text-slate-600">وضعیت فعلی حساب این شخص:</span>
-                      <span
-                        className={`text-xs font-extrabold font-mono-num ${
-                          selectedContactStatement.finalStatusIRR === 'بدهکار'
-                            ? 'text-emerald-700'
-                            : selectedContactStatement.finalStatusIRR === 'بستانکار'
-                            ? 'text-rose-700'
-                            : 'text-slate-600'
-                        }`}
-                      >
-                        {selectedContactStatement.finalStatusIRR === 'تسویه'
-                          ? 'تسویه (۰ ریال)'
-                          : `${formatNumber(selectedContactStatement.finalBalanceIRR)} ریال (${
-                              selectedContactStatement.finalStatusIRR === 'بدهکار'
-                                ? 'طلب ما از ایشان'
-                                : 'بدهی ما به ایشان'
-                            })`}
-                      </span>
+                    <div className="bg-white border border-slate-200 rounded-lg p-2.5 space-y-1 shadow-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-slate-600">مانده ریالی فعلی:</span>
+                        <span
+                          className={`text-xs font-extrabold font-mono-num ${
+                            selectedContactStatement.finalStatusIRR === 'بدهکار'
+                              ? 'text-emerald-700'
+                              : selectedContactStatement.finalStatusIRR === 'بستانکار'
+                              ? 'text-rose-700'
+                              : 'text-slate-600'
+                          }`}
+                        >
+                          {selectedContactStatement.finalStatusIRR === 'تسویه'
+                            ? 'تسویه (۰ ریال)'
+                            : `${formatNumber(selectedContactStatement.finalBalanceIRR)} ریال (${
+                                selectedContactStatement.finalStatusIRR === 'بدهکار'
+                                  ? 'طلب ما'
+                                  : 'بدهی ما'
+                              })`}
+                        </span>
+                      </div>
+                      {Object.entries(selectedContactStatement.currencyBreakdown)
+                        .filter(([c]) => c !== 'IRR')
+                        .map(([curr, b]) => (
+                          <div
+                            key={curr}
+                            className="flex items-center justify-between text-[11px] font-mono-num border-t border-slate-100 pt-1"
+                          >
+                            <span className="font-sans text-teal-800 font-bold">
+                              مانده ارزی ({curr}):
+                            </span>
+                            <span className="font-extrabold text-teal-950">
+                              {formatNumber(b.balanceForeign)} {curr} ({b.status})
+                            </span>
+                          </div>
+                        ))}
                     </div>
                   )}
                 </div>
@@ -1031,25 +1074,61 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
               </div>
             )}
 
-            {/* شرح دلخواه و دکمه ثبت اتوماتیک */}
-            <div className="flex flex-wrap items-center justify-between gap-4 pt-2">
-              <div className="flex-1 min-w-[260px]">
-                <input
-                  type="text"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="توضیحات یا بابت (اختیاری - اگر خالی بگذارید سیستم خودش شرح استاندارد می‌نویسد)..."
-                  className="w-full bg-white border border-slate-300 rounded-lg px-3.5 py-2.5 text-xs text-slate-900 focus:border-teal-600 focus:ring-1 focus:ring-teal-600"
-                />
+            {/* شماره فیش / کد رهگیری + توضیحات کامل (نمایش در صورتحساب و جستجوی سراسری) */}
+            <div className="bg-teal-50/70 border-2 border-teal-300 rounded-2xl p-4 space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 items-end">
+                <div>
+                  <label className="block text-xs font-extrabold text-teal-900 mb-1 flex items-center gap-1">
+                    <Hash className="w-3.5 h-3.5 text-teal-700" />
+                    شماره فیش / کد رهگیری / شماره رسید:
+                  </label>
+                  <input
+                    type="text"
+                    value={
+                      (autoType === 'receive_from_person' || autoType === 'pay_to_person') &&
+                      splits.length === 1 &&
+                      splits[0].trackingNumber
+                        ? splits[0].trackingNumber
+                        : mainTrackingNumber
+                    }
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setMainTrackingNumber(val);
+                      if (
+                        (autoType === 'receive_from_person' || autoType === 'pay_to_person') &&
+                        splits.length === 1
+                      ) {
+                        setSplits([{ ...splits[0], trackingNumber: val }]);
+                      }
+                    }}
+                    placeholder="مثلاً: 8941203 یا PAY-101 (در صورتحساب و جستجو می‌آید)"
+                    className="w-full bg-white border-2 border-teal-400 rounded-xl px-3.5 py-2.5 text-xs font-extrabold font-mono-num text-slate-900 focus:border-teal-600 focus:outline-none"
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-extrabold text-slate-800 mb-1">
+                    توضیحات کامل فیش و سند (دقیقاً خط به خط در صورتحساب مشتری نمایش داده می‌شود):
+                  </label>
+                  <input
+                    type="text"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="توضیحات یا بابت را اینجا بنویسید (مثلاً: واریز نقدی بابت تسویه ۵۰۰ دلار / حواله پایا)..."
+                    className="w-full bg-white border-2 border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 focus:border-teal-600 focus:outline-none"
+                  />
+                </div>
               </div>
 
-              <button
-                type="submit"
-                className="px-6 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-extrabold text-sm flex items-center gap-2 transition shadow-xs cursor-pointer"
-              >
-                <CheckCircle2 className="w-4 h-4" />
-                ثبت اتوماتیک سند مالی و به‌روزرسانی بانک/حساب
-              </button>
+              <div className="flex justify-end pt-1">
+                <button
+                  type="submit"
+                  className="w-full sm:w-auto px-6 py-3 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-extrabold text-sm flex items-center justify-center gap-2 transition shadow-md shadow-teal-600/20 cursor-pointer"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  ثبت اتوماتیک سند مالی و به‌روزرسانی بانک/حساب
+                </button>
+              </div>
             </div>
           </form>
         ) : (
@@ -1220,104 +1299,163 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
         )}
       </div>
 
-      {/* فهرست اسناد مالی ثبت‌شده (اتوماتیک و دستی) */}
-      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
-        <h3 className="text-base font-extrabold text-slate-900 mb-4 flex items-center gap-2">
-          <Landmark className="w-5 h-5 text-teal-600" />
-          تاریخچه اسناد مالی و تراکنش‌های ثبت‌شده ({formatNumber(vouchers.length)} سند)
-        </h3>
+      {/* فهرست اسناد مالی ثبت‌شده (اتوماتیک و دستی) + جستجوی فوری فیش و کد رهگیری */}
+      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+            <Landmark className="w-5 h-5 text-teal-600" />
+            تاریخچه اسناد مالی، فیش‌ها و تراکنش‌های ثبت‌شده ({formatNumber(vouchers.length)} سند)
+          </h3>
+
+          <div className="relative w-full sm:w-80">
+            <Search className="w-4 h-4 text-teal-600 absolute right-3 top-2.5" />
+            <input
+              type="text"
+              value={voucherSearchQuery}
+              onChange={(e) => setVoucherSearchQuery(e.target.value)}
+              placeholder="🔍 جستجوی شماره فیش، کد رهگیری، نام شخص یا مبلغ..."
+              className="w-full pr-9 pl-3 py-2 text-xs bg-teal-50/70 border-2 border-teal-400 rounded-xl focus:bg-white focus:border-teal-600 focus:outline-none font-bold text-slate-900"
+            />
+          </div>
+        </div>
 
         <div className="space-y-3">
-          {vouchers.map((v) => {
-            const sumIRR = v.lines.reduce((s, l) => s + l.debitIRR, 0);
-            return (
-              <div
-                key={v.id}
-                className="bg-slate-50/80 border border-slate-200 rounded-xl p-4 space-y-2.5"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-2">
-                  <div className="flex flex-wrap items-center gap-2.5">
-                    <span className="px-2 py-0.5 rounded bg-teal-100 text-teal-800 font-mono-num text-xs font-bold border border-teal-200">
-                      سند #{v.voucherNumber}
-                    </span>
-                    <span className="text-xs text-slate-500 font-mono-num">{v.date}</span>
-                    <span className="text-sm font-bold text-slate-900">{v.description}</span>
+          {vouchers
+            .filter((v) => {
+              const q = voucherSearchQuery.trim().toLowerCase();
+              if (!q) return true;
+              if (
+                String(v.voucherNumber).includes(q) ||
+                (v.referenceNumber || '').toLowerCase().includes(q) ||
+                v.description.toLowerCase().includes(q) ||
+                v.date.toLowerCase().includes(q)
+              ) {
+                return true;
+              }
+              return v.lines.some(
+                (ln) =>
+                  (ln.trackingNumber || '').toLowerCase().includes(q) ||
+                  (ln.contactName || '').toLowerCase().includes(q) ||
+                  (ln.bankName || '').toLowerCase().includes(q) ||
+                  (ln.description || '').toLowerCase().includes(q) ||
+                  String(ln.debitIRR).includes(q) ||
+                  String(ln.creditIRR).includes(q)
+              );
+            })
+            .map((v) => {
+              const sumIRR = v.lines.reduce((s, l) => s + l.debitIRR, 0);
+              const voucherTrackingNumbers = Array.from(
+                new Set(
+                  v.lines
+                    .map((l) => l.trackingNumber)
+                    .filter((t): t is string => Boolean(t && t.trim()))
+                )
+              );
+
+              return (
+                <div
+                  key={v.id}
+                  className="bg-slate-50/80 border border-slate-200 rounded-xl p-4 space-y-2.5"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="px-2 py-0.5 rounded bg-teal-100 text-teal-800 font-mono-num text-xs font-bold border border-teal-200">
+                        سند #{v.voucherNumber}
+                      </span>
+                      <span className="text-xs text-slate-500 font-mono-num">{v.date}</span>
+                      {voucherTrackingNumbers.map((trk) => (
+                        <span
+                          key={trk}
+                          className="px-2.5 py-0.5 rounded-lg bg-teal-700 text-white font-mono-num text-xs font-extrabold flex items-center gap-1"
+                        >
+                          <Hash className="w-3 h-3" />
+                          فیش/رهگیری: {trk}
+                        </span>
+                      ))}
+                      <span className="text-sm font-bold text-slate-900">{v.description}</span>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs font-extrabold text-emerald-700 font-mono-num">
+                        جمع سند: {formatNumber(sumIRR)} ریال
+                      </span>
+                      {onUpdateVoucher && (
+                        <button
+                          type="button"
+                          onClick={() => handleStartEditVoucher(v)}
+                          className="text-teal-700 hover:text-teal-800 p-1 rounded hover:bg-teal-50 cursor-pointer text-xs flex items-center gap-1 font-bold"
+                          title="ویرایش و اصلاح این سند"
+                        >
+                          ویرایش
+                        </button>
+                      )}
+                      {onDeleteVoucher && v.id !== 'vch-1' && (
+                        <button
+                          type="button"
+                          onClick={() => onDeleteVoucher(v.id)}
+                          className="text-rose-600 hover:text-rose-700 p-1 rounded hover:bg-rose-50 cursor-pointer"
+                          title="حذف این سند"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
                   </div>
 
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs font-extrabold text-emerald-700 font-mono-num">
-                      جمع سند: {formatNumber(sumIRR)} ریال
-                    </span>
-                    {onUpdateVoucher && (
-                      <button
-                        type="button"
-                        onClick={() => handleStartEditVoucher(v)}
-                        className="text-teal-700 hover:text-teal-800 p-1 rounded hover:bg-teal-50 cursor-pointer text-xs flex items-center gap-1 font-bold"
-                        title="ویرایش و اصلاح این سند"
-                      >
-                        ویرایش
-                      </button>
-                    )}
-                    {onDeleteVoucher && v.id !== 'vch-1' && (
-                      <button
-                        type="button"
-                        onClick={() => onDeleteVoucher(v.id)}
-                        className="text-rose-600 hover:text-rose-700 p-1 rounded hover:bg-rose-50 cursor-pointer"
-                        title="حذف این سند"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
-                  {v.lines.map((ln) => {
-                    const bankObj = ln.bankId ? banks.find((b) => b.id === ln.bankId) : undefined;
-                    const contactObj = ln.contactId
-                      ? contacts.find((c) => c.id === ln.contactId)
-                      : undefined;
-                    return (
-                      <div
-                        key={ln.id}
-                        className="bg-white border border-slate-200 rounded-lg px-3 py-2 flex items-center justify-between gap-2 shadow-xs"
-                      >
-                        <div className="truncate">
-                          <span className="font-bold text-slate-900">{ln.accountName}</span>
-                          {bankObj && (
-                            <span className="text-teal-700 font-bold mr-1.5">({bankObj.bankName})</span>
-                          )}
-                          {contactObj && (
-                            <span className="text-amber-800 font-bold mr-1.5">({contactObj.name})</span>
-                          )}
-                          <p className="text-[11px] text-slate-500 truncate mt-0.5">
-                            {ln.description}
-                          </p>
-                        </div>
-                        <div className="text-left shrink-0 font-mono-num">
-                          {ln.debitIRR > 0 ? (
-                            <span className="text-emerald-700 font-bold">
-                              بدهکار: {formatNumber(ln.debitIRR)}
-                            </span>
-                          ) : (
-                            <span className="text-rose-700 font-bold">
-                              بستانکار: {formatNumber(ln.creditIRR)}
-                            </span>
-                          )}
-                          {ln.currency !== 'IRR' && (
-                            <div className="text-[10px] text-amber-800 font-semibold">
-                              ({formatNumber(ln.debitForeign || ln.creditForeign)} {ln.currency} ×{' '}
-                              {formatNumber(ln.exchangeRate)})
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                    {v.lines.map((ln) => {
+                      const bankObj = ln.bankId ? banks.find((b) => b.id === ln.bankId) : undefined;
+                      const contactObj = ln.contactId
+                        ? contacts.find((c) => c.id === ln.contactId)
+                        : undefined;
+                      return (
+                        <div
+                          key={ln.id}
+                          className="bg-white border border-slate-200 rounded-lg px-3 py-2 flex items-center justify-between gap-2 shadow-xs"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="font-bold text-slate-900">{ln.accountName}</span>
+                              {bankObj && (
+                                <span className="text-teal-700 font-bold">({bankObj.bankName})</span>
+                              )}
+                              {contactObj && (
+                                <span className="text-amber-800 font-bold">({contactObj.name})</span>
+                              )}
+                              {ln.trackingNumber && (
+                                <span className="px-1.5 py-0.5 rounded bg-teal-50 border border-teal-200 font-mono font-bold text-teal-800 text-[10px]">
+                                  رهگیری: {ln.trackingNumber}
+                                </span>
+                              )}
                             </div>
-                          )}
+                            <p className="text-[11px] text-slate-700 mt-1 leading-relaxed break-words">
+                              {ln.description}
+                            </p>
+                          </div>
+                          <div className="text-left shrink-0 font-mono-num">
+                            {ln.debitIRR > 0 ? (
+                              <span className="text-emerald-700 font-bold">
+                                بدهکار: {formatNumber(ln.debitIRR)}
+                              </span>
+                            ) : (
+                              <span className="text-rose-700 font-bold">
+                                بستانکار: {formatNumber(ln.creditIRR)}
+                              </span>
+                            )}
+                            {ln.currency !== 'IRR' && (
+                              <div className="text-[10px] text-amber-800 font-semibold">
+                                ({formatNumber(ln.debitForeign || ln.creditForeign)} {ln.currency} ×{' '}
+                                {formatNumber(ln.exchangeRate)})
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
         </div>
       </div>
     </div>

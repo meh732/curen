@@ -86,15 +86,20 @@ export const InitialSetupWizardModal: React.FC<InitialSetupWizardModalProps> = (
         <div className="bg-gradient-to-br from-amber-600 via-amber-700 to-slate-900 text-white p-6 sm:p-7 text-center relative overflow-hidden">
           <div className="absolute -top-10 -right-10 w-32 h-32 bg-amber-400/20 rounded-full blur-2xl" />
 
-          <div className="w-14 h-14 mx-auto rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center shadow-lg mb-3">
-            <Sparkles className="w-7 h-7 text-amber-200" />
+          <div className="w-14 h-14 mx-auto rounded-2xl bg-slate-900 border border-amber-300/40 flex items-center justify-center shadow-lg mb-3 overflow-hidden">
+            <img
+              src="/arka-logo.jpg"
+              alt="لوگو آرکا (ARKA)"
+              referrerPolicy="no-referrer"
+              className="w-full h-full object-cover"
+            />
           </div>
 
           <h3 className="text-lg sm:text-xl font-extrabold tracking-tight">
-            راه‌اندازی صرافی و دیتابیس ۱۰۰٪ خام
+            راه‌اندازی سیستم صرافی آرکا (ARKA) و دیتابیس ۱۰۰٪ خام
           </h3>
           <p className="text-xs text-amber-100/90 mt-1">
-            تنظیم نام مجموعه و تعریف مدیر اصلی سیستم برای شروع کار واقعی
+            تنظیم نام مجموعه و تعریف مدیر اصلی سیستم آرکا برای شروع کار واقعی
           </p>
         </div>
 

@@ -65,15 +65,20 @@ export const LoginModal: React.FC<LoginModalProps> = ({ users, onLoginSuccess })
           <div className="absolute -top-10 -right-10 w-32 h-32 bg-teal-500/10 rounded-full blur-2xl" />
           <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-emerald-500/10 rounded-full blur-2xl" />
 
-          <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-tr from-teal-500 to-emerald-400 flex items-center justify-center shadow-lg shadow-teal-500/30 mb-4 relative z-10">
-            <Coins className="w-9 h-9 text-white" />
+          <div className="w-16 h-16 mx-auto rounded-2xl bg-slate-900 border border-teal-400/40 flex items-center justify-center shadow-lg shadow-teal-500/30 mb-4 relative z-10 overflow-hidden">
+            <img
+              src="/arka-logo.jpg"
+              alt="لوگو آرکا (ARKA)"
+              referrerPolicy="no-referrer"
+              className="w-full h-full object-cover"
+            />
           </div>
 
           <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight relative z-10">
-            ورود به سیستم ترازبان ارزی
+            ورود به سیستم جامع صرافی و حسابداری آرکا (ARKA)
           </h2>
           <p className="text-xs text-teal-200/80 mt-1.5 relative z-10">
-            نرم‌افزار صرافی، حسابداری ارزی و مدیریت شبکه محلی
+            نرم‌افزار تخصصی صرافی، حسابداری دوارزی و مدیریت شبکه محلی آرکا
           </p>
         </div>
 

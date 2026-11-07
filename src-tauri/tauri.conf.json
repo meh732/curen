@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "TarazBan_Accounting",
-  "version": "1.0.0",
+  "version": "5.5.0",
   "identifier": "com.tarazban.accounting",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "ترازبان — سیستم حسابداری و صرافی دوارزی",
+        "title": "آرکا (ARKA) — سیستم جامع حسابداری و صرافی دوارزی",
         "width": 1360,
         "height": 850,
         "minWidth": 980,
@@ -35,8 +35,8 @@
       "icons/icon.ico",
       "icons/icon.png"
     ],
-    "shortDescription": "Curen Multi-Currency Exchange & Accounting System",
-    "longDescription": "High-performance native desktop accounting software for Windows with offline hardware security.",
-    "copyright": "TarazBan 2026"
+    "shortDescription": "ARKA Multi-Currency Exchange & Accounting System",
+    "longDescription": "ARKA high-performance native desktop accounting & currency exchange software for Windows with offline hardware security.",
+    "copyright": "ARKA 2026"
   }
 }

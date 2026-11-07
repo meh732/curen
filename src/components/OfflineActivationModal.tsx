@@ -54,12 +54,18 @@ export const OfflineActivationModal: React.FC<OfflineActivationModalProps> = ({
         <div className="bg-white border-2 border-slate-300 rounded-xl shadow-2xl overflow-hidden">
           {/* Header */}
           <div className="bg-slate-950 text-white px-6 py-5 flex items-center gap-3.5 border-b border-slate-800">
-            <div className="w-11 h-11 rounded-lg bg-amber-500/20 border border-amber-400/40 flex items-center justify-center text-amber-400 shrink-0">
-              <Lock className="w-6 h-6" />
+            <div className="w-12 h-12 rounded-xl bg-slate-900 border border-amber-400/50 flex items-center justify-center text-amber-400 shrink-0 overflow-hidden shadow-md">
+              <img
+                src="/arka-logo.jpg"
+                alt="لوگو آرکا (ARKA)"
+                referrerPolicy="no-referrer"
+                className="w-full h-full object-cover"
+              />
             </div>
             <div>
-              <h1 className="text-base md:text-lg font-extrabold text-white">
-                قفل سخت‌افزاری و فعال‌سازی آفلاین — ترازبان ویندوز
+              <h1 className="text-base md:text-lg font-extrabold text-white flex items-center gap-2">
+                <Lock className="w-4 h-4 text-amber-400 shrink-0" />
+                <span>قفل سخت‌افزاری و فعال‌سازی آفلاین — آرکا (ARKA) ویندوز</span>
               </h1>
               <p className="text-xs text-slate-300 mt-1">
                 این نرم‌افزار هنوز روی این کامپیوتر فعال نشده است. تا زمان ثبت رمز فعال‌سازی معتبر، امکان ورود به برنامه وجود ندارد.

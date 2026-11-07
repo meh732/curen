@@ -21,6 +21,10 @@ export function exportOrPrintStandardLedgerPDF(
   const rowsHtml = report.rows
     .map((r) => {
       if (isRial) {
+        const fxBalText =
+          r.currency !== 'IRR'
+            ? `${formatCurrencyAmount(r.runningBalanceForeign, r.currency)} ${r.currency} (${r.diagnosisForeign})`
+            : '—';
         return `
           <tr>
             <td class="center mono">${r.rowNumber}</td>
@@ -46,6 +50,7 @@ export function exportOrPrintStandardLedgerPDF(
             <td class="left mono bold balance-col">${formatNumber(
               r.runningBalanceIRR
             )}</td>
+            <td class="left mono bold" style="background:#f0fdfa; color:#0f766e;">${fxBalText}</td>
           </tr>
         `;
       } else {
@@ -82,7 +87,7 @@ export function exportOrPrintStandardLedgerPDF(
 <html lang="fa" dir="rtl">
 <head>
   <meta charset="UTF-8" />
-  <title>${report.reportTitle} - ${companyName}</title>
+  <title>${report.reportTitle} - ${companyName} | آرکا (ARKA)</title>
   <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;600;700;800&display=swap" rel="stylesheet" />
   <style>
     @page { size: A4 landscape; margin: 10mm; }
@@ -114,27 +119,24 @@ export function exportOrPrintStandardLedgerPDF(
 </head>
 <body>
   <div class="toolbar no-print">
-    <div><strong>پیش‌نمایش رسمی چاپ و خروجی PDF کامل صورتحساب (همراه با شماره پیگیری فیش و شرح خط‌به‌خط):</strong> برای ذخیره به صورت فایل PDF، در پنجره چاپ گزینه <strong>Save as PDF</strong> را انتخاب کنید.</div>
+    <div><strong>پیش‌نمایش رسمی چاپ و خروجی PDF کامل صورتحساب آرکا (ARKA) — همراه با مانده ارزی، شماره پیگیری فیش و شرح خط‌به‌خط:</strong> برای ذخیره به صورت فایل PDF، در پنجره چاپ گزینه <strong>Save as PDF</strong> را انتخاب کنید.</div>
     <button class="btn" onclick="window.print()">چاپ / ذخیره فایل PDF (Ctrl+P)</button>
   </div>
 
   <div class="header-box">
     <div class="header-title">
-      <h1>${companyName} (${fiscalYear})</h1>
+      <h1>${companyName} (${fiscalYear}) — سیستم جامع صرافی و حسابداری آرکا (ARKA)</h1>
       <h2>${report.reportTitle}</h2>
-      <p>${report.reportSubtitle} — همراه با شماره پیگیری فیش‌ها و توضیحات کامل خط به خط</p>
+      <p>${report.reportSubtitle} — همراه با مانده ریالی و ارزی، شماره پیگیری فیش‌ها و توضیحات کامل خط به خط</p>
     </div>
     <div class="header-meta mono">
       <div><strong>تاریخ گزارش:</strong> 1404/08/12</div>
       <div><strong>تعداد کل ردیف‌ها:</strong> ${report.rows.length} ردیف</div>
-      <div><strong>مانده نهایی:</strong> ${
-        isRial
-          ? `${formatNumber(report.finalBalanceIRR)} ریال (${report.finalDiagnosisIRR})`
-          : `${formatCurrencyAmount(
-              report.finalBalanceForeign,
-              report.selectedCurrency
-            )} ${report.selectedCurrency} (${report.finalDiagnosisForeign})`
-      }</div>
+      <div><strong>مانده نهایی ریالی:</strong> ${formatNumber(report.finalBalanceIRR)} ریال (${report.finalDiagnosisIRR})</div>
+      <div><strong>مانده نهایی ارزی:</strong> ${formatCurrencyAmount(
+        report.finalBalanceForeign,
+        report.selectedCurrency
+      )} ${report.selectedCurrency} (${report.finalDiagnosisForeign})</div>
     </div>
   </div>
 
@@ -143,23 +145,24 @@ export function exportOrPrintStandardLedgerPDF(
       ${
         isRial
           ? `<tr>
-              <th class="center" style="width:38px">ردیف</th>
-              <th class="center" style="width:76px">تاریخ</th>
-              <th class="center" style="width:55px">سند</th>
-              <th class="center" style="width:110px">شماره پیگیری فیش</th>
-              <th style="width:140px">سرفصل حساب</th>
+              <th class="center" style="width:36px">ردیف</th>
+              <th class="center" style="width:72px">تاریخ</th>
+              <th class="center" style="width:52px">سند</th>
+              <th class="center" style="width:105px">شماره فیش / رهگیری</th>
+              <th style="width:130px">سرفصل حساب</th>
               <th>شرح و توضیحات کامل خط به خط</th>
-              <th class="center" style="width:110px">ارز و نرخ</th>
-              <th class="center" style="width:115px">بدهکار (ریال)</th>
-              <th class="center" style="width:115px">بستانکار (ریال)</th>
-              <th class="center" style="width:65px">تشخیص</th>
-              <th class="center" style="width:130px">مانده لحظه‌ای (ریال)</th>
+              <th class="center" style="width:105px">ارز و نرخ</th>
+              <th class="center" style="width:110px">بدهکار (ریال)</th>
+              <th class="center" style="width:110px">بستانکار (ریال)</th>
+              <th class="center" style="width:60px">تشخیص</th>
+              <th class="center" style="width:120px">مانده لحظه‌ای (ریال)</th>
+              <th class="center" style="width:120px">مانده لحظه‌ای ارزی</th>
             </tr>`
           : `<tr>
               <th class="center" style="width:38px">ردیف</th>
               <th class="center" style="width:76px">تاریخ</th>
               <th class="center" style="width:55px">سند</th>
-              <th class="center" style="width:110px">شماره پیگیری فیش</th>
+              <th class="center" style="width:110px">شماره فیش / رهگیری</th>
               <th>شرح و توضیحات کامل عملیات ارزی (خط به خط)</th>
               <th class="center" style="width:55px">ارز</th>
               <th class="center" style="width:95px">نرخ تبدیل</th>
@@ -181,11 +184,15 @@ export function exportOrPrintStandardLedgerPDF(
       ${
         isRial
           ? `<tr>
-              <td colspan="7" style="text-align:left">جمع کل گردش و مانده نهایی از بالا به پایین:</td>
+              <td colspan="7" style="text-align:left">جمع کل گردش و مانده نهایی (ریالی و ارزی):</td>
               <td class="left mono">${formatNumber(report.totalDebitIRR)}</td>
               <td class="left mono">${formatNumber(report.totalCreditIRR)}</td>
               <td class="center">${report.finalDiagnosisIRR}</td>
               <td class="left mono">${formatNumber(report.finalBalanceIRR)} ریال</td>
+              <td class="left mono" style="color:#0f766e;">${formatCurrencyAmount(
+                report.finalBalanceForeign,
+                report.selectedCurrency
+              )} ${report.selectedCurrency} (${report.finalDiagnosisForeign})</td>
             </tr>`
           : `<tr>
               <td colspan="7" style="text-align:left">جمع کل گردش ارزی و مانده نهایی:</td>

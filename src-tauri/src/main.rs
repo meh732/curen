@@ -64,7 +64,47 @@ fn read_latest_auto_backup() -> Result<String, String> {
   fs::read_to_string(&latest_path).map_err(|e| e.to_string())
 }
 
+fn purge_stale_webview_cache_on_upgrade() {
+  #[cfg(target_os = "windows")]
+  {
+    const CURRENT_BUILD_STAMP: &str = "ARKA-5.5.0";
+    if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
+      let base = PathBuf::from(&local_app_data);
+      let candidate_roots = [
+        base.join("com.tarazban.accounting"),
+        base.join("TarazBan_Accounting"),
+      ];
+      for root in candidate_roots.iter() {
+        if !root.exists() {
+          continue;
+        }
+        let stamp_file = root.join(".arka_webview_version");
+        let existing_stamp = fs::read_to_string(&stamp_file).unwrap_or_default();
+        if existing_stamp.trim() != CURRENT_BUILD_STAMP {
+          let eb_default = root.join("EBWebView").join("Default");
+          // Purge only cached assets and Service Workers; NEVER touch Local Storage or IndexedDB!
+          let cache_dirs = [
+            eb_default.join("Service Worker"),
+            eb_default.join("Cache"),
+            eb_default.join("Code Cache"),
+            eb_default.join("GPUCache"),
+            eb_default.join("DawnCache"),
+          ];
+          for dir in cache_dirs.iter() {
+            if dir.exists() {
+              let _ = fs::remove_dir_all(dir);
+            }
+          }
+          let _ = fs::write(&stamp_file, CURRENT_BUILD_STAMP);
+        }
+      }
+    }
+  }
+}
+
 fn main() {
+  purge_stale_webview_cache_on_upgrade();
+
   tauri::Builder::default()
     .invoke_handler(tauri::generate_handler![
       get_backup_folder_path,
