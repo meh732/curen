@@ -10,6 +10,7 @@ import {
   JournalVoucher,
   VoucherLine,
   FXDeal,
+  FXDeliverySplit,
   SalesInvoice,
   InventoryMovement,
   BankStatementEntry,
@@ -33,7 +34,7 @@ import { InitialSetupWizardModal } from './components/InitialSetupWizardModal';
 import { PWAInstallPrompt } from './components/PWAInstallPrompt';
 import {
   loadLicenseStatus,
-  fetchServerLicenseStatus,
+  lockApplicationLicense,
   LicenseStatus,
 } from './utils/offlineLicenseEngine';
 import { dispatchToMessengerBot } from './utils/botAndBackupService';
@@ -73,18 +74,6 @@ export function App() {
   const [licenseStatus, setLicenseStatus] = useState<LicenseStatus>(() =>
     loadLicenseStatus()
   );
-
-  // بررسی خودکار فایل لایسنس سروری
-  useEffect(() => {
-    if (licenseStatus.isActivated) return;
-    fetchServerLicenseStatus()
-      .then((serverStatus) => {
-        if (serverStatus && serverStatus.isActivated) {
-          setLicenseStatus(serverStatus);
-        }
-      })
-      .catch(() => {});
-  }, [licenseStatus.isActivated]);
 
   const [activeTab, setActiveTab] = useState<NavTab>('dashboard');
 
@@ -308,26 +297,133 @@ export function App() {
     return () => clearTimeout(timer);
   }, [fullAccountingState]);
 
-  // ۴. ارسال خودکار ساعتی بکاپ به ربات‌های بله و تلگرام
+  const latestStateRef = useRef<AccountingState>(fullAccountingState);
   useEffect(() => {
-    if (!botConfig.baleEnabled && !botConfig.telegramEnabled) return;
+    latestStateRef.current = fullAccountingState;
+  }, [fullAccountingState]);
 
-    const intervalHours = Math.max(1, botConfig.autoBackupIntervalHours || 1);
+  // تابع مرکزی ذخیره بکاپ اتوماتیک در ویندوز Tauri و سرور لینوکس/محلی
+  const performAutoBackup = async (reason: string): Promise<string | null> => {
+    let savedPath: string | null = null;
+    const stateToSave = latestStateRef.current;
+    const payloadObj = {
+      app: 'TarazBan Personal & Exchange Multi-Currency Accounting',
+      version: '2.5.0',
+      reason,
+      exportedAtISO: new Date().toISOString(),
+      data: stateToSave,
+    };
+
+    try {
+      const tauriInvoke = (
+        window as unknown as {
+          __TAURI__?: { invoke?: (cmd: string, args?: Record<string, unknown>) => Promise<string> };
+        }
+      ).__TAURI__?.invoke;
+
+      if (tauriInvoke) {
+        try {
+          savedPath = await tauriInvoke('save_auto_backup', {
+            jsonContent: JSON.stringify(payloadObj, null, 2),
+            reason,
+          });
+        } catch {
+          // continue to server endpoint
+        }
+      }
+
+      const res = await fetch('/api/auto-backup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state: stateToSave, reason }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (!savedPath) {
+          savedPath = data.latestPath || data.backupPath || null;
+        }
+      }
+    } catch {
+      // ignore offline error
+    }
+    return savedPath;
+  };
+
+  // ۴. بکاپ اتوماتیک اولیه + بکاپ اتوماتیک موقع بستن برنامه (ویندوز تائوری و مرورگر)
+  useEffect(() => {
+    const startupTimer = setTimeout(() => {
+      performAutoBackup('startup_auto');
+    }, 3000);
+
+    const handleBeforeUnloadOrClose = () => {
+      try {
+        const stateSnapshot = latestStateRef.current;
+        const tauriInvoke = (
+          window as unknown as {
+            __TAURI__?: { invoke?: (cmd: string, args?: Record<string, unknown>) => Promise<string> };
+          }
+        ).__TAURI__?.invoke;
+
+        if (tauriInvoke) {
+          tauriInvoke('save_auto_backup', {
+            jsonContent: JSON.stringify(
+              {
+                app: 'TarazBan Personal & Exchange Multi-Currency Accounting',
+                version: '2.5.0',
+                reason: 'app_close_auto',
+                exportedAtISO: new Date().toISOString(),
+                data: stateSnapshot,
+              },
+              null,
+              2
+            ),
+            reason: 'app_close_auto',
+          }).catch(() => {});
+        }
+
+        if (navigator.sendBeacon) {
+          const blob = new Blob(
+            [JSON.stringify({ state: stateSnapshot, reason: 'app_close_auto' })],
+            { type: 'application/json' }
+          );
+          navigator.sendBeacon('/api/auto-backup', blob);
+        }
+      } catch {
+        // ignore close error
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnloadOrClose);
+    window.addEventListener('pagehide', handleBeforeUnloadOrClose);
+
+    return () => {
+      clearTimeout(startupTimer);
+      window.removeEventListener('beforeunload', handleBeforeUnloadOrClose);
+      window.removeEventListener('pagehide', handleBeforeUnloadOrClose);
+    };
+  }, []);
+
+  // ۵. بکاپ اتوماتیک هر ۲ ساعت یکبار (در پوشه ویندوز/سرور + ربات‌های بله و تلگرام)
+  useEffect(() => {
+    const intervalHours = Math.max(1, botConfig.autoBackupIntervalHours || 2);
     const backupIntervalMs = intervalHours * 60 * 60 * 1000;
 
     const intervalId = setInterval(async () => {
       const now = new Date();
       const timeStr = `1404/08/12 - ${now.toTimeString().slice(0, 8)}`;
-      const backupSummary = `پشتیبان خودکار ساعتی (${intervalHours} ساعته) با موفقیت در دیتابیس مرکزی سرور لینوکس ثبت و به ربات پیام‌رسان ارسال شد.`;
+      const savedPath = await performAutoBackup(`interval_${intervalHours}h`);
+      const backupSummary = `پشتیبان خودکار ${intervalHours} ساعته با موفقیت در مسیر (${
+        savedPath || 'C:\\TarazBan_Backups\\TarazBan_Latest_AutoBackup.json'
+      }) ذخیره شد.`;
 
       if (botConfig.baleEnabled && botConfig.baleDefaultChatId) {
         const log = await dispatchToMessengerBot({
           platform: 'bale',
           botToken: botConfig.baleBotToken,
           chatId: botConfig.baleDefaultChatId,
-          recipientName: 'بکاپ خودکار بله (ساعتی)',
+          recipientName: `بکاپ خودکار بله (${intervalHours} ساعته)`,
           messageType: 'backup',
-          text: `📦 *پشتیبان خودکار ساعتی ترازبان*\n📅 زمان: ${timeStr}\n${backupSummary}\n\nاطلاعات کامل در سرور مرکزی لینوکس سینک و پایدار شد.`,
+          text: `📦 *پشتیبان خودکار ${intervalHours} ساعته ترازبان*\n📅 زمان: ${timeStr}\n${backupSummary}`,
           summary: backupSummary,
         });
         setBotLogs((prev) => [log, ...prev]);
@@ -338,9 +434,9 @@ export function App() {
           platform: 'telegram',
           botToken: botConfig.telegramBotToken,
           chatId: botConfig.telegramDefaultChatId,
-          recipientName: 'بکاپ خودکار تلگرام (ساعتی)',
+          recipientName: `بکاپ خودکار تلگرام (${intervalHours} ساعته)`,
           messageType: 'backup',
-          text: `📦 *پشتیبان خودکار ساعتی ترازبان*\n📅 زمان: ${timeStr}\n${backupSummary}\n\nاطلاعات کامل در سرور مرکزی لینوکس سینک و پایدار شد.`,
+          text: `📦 *پشتیبان خودکار ${intervalHours} ساعته ترازبان*\n📅 زمان: ${timeStr}\n${backupSummary}`,
           summary: backupSummary,
         });
         setBotLogs((prev) => [log, ...prev]);
@@ -361,7 +457,6 @@ export function App() {
     botConfig.baleDefaultChatId,
     botConfig.telegramBotToken,
     botConfig.telegramDefaultChatId,
-    fullAccountingState,
   ]);
 
   const getAccountForBank = (bank?: BankAccount) => {
@@ -395,6 +490,17 @@ export function App() {
     const vchId = deal.linkedVoucherId || `vch-fx-${Date.now()}`;
     const vaultLineId = `ln-fx-vault-${Date.now()}-1`;
 
+    const deliveryNote =
+      deal.deliveryStatus && deal.deliveryStatus !== 'delivered'
+        ? ` [تحویل مرحله‌ای ارز: تحویل‌شده ${deal.deliveredForeignAmount ?? 0} ${
+            deal.currency
+          } | مانده تحویل‌نشده: ${
+            deal.remainingForeignDelivery ?? deal.foreignAmount
+          } ${deal.currency}]`
+        : ' [تحویل کامل ارز]';
+
+    const userNotePart = deal.notes ? ` — توضیحات: ${deal.notes}` : '';
+
     const lines: VoucherLine[] = [
       {
         id: vaultLineId,
@@ -404,7 +510,7 @@ export function App() {
         bankName: vaultBank?.bankName,
         description: `${isBuy ? 'خرید ارز و ورود به' : 'فروش ارز و خروج از'} ${
           vaultBank?.bankName || 'خزانه ارزی'
-        } (${deal.foreignAmount} ${deal.currency} به نرخ ${deal.exchangeRate})`,
+        } (${deal.foreignAmount} ${deal.currency} به نرخ ${deal.exchangeRate})${deliveryNote}${userNotePart}`,
         currency: deal.currency,
         exchangeRate: deal.exchangeRate,
         debitForeign: isBuy ? deal.foreignAmount : 0,
@@ -422,7 +528,7 @@ export function App() {
         contactName: deal.contactName,
         description: `${isBuy ? 'خرید' : 'فروش'} ${deal.foreignAmount} ${
           deal.currency
-        } به نرخ ${deal.exchangeRate} ریال (${deal.dealNumber})`,
+        } به نرخ ${deal.exchangeRate} ریال (${deal.dealNumber})${deliveryNote}${userNotePart}`,
         currency: deal.currency,
         exchangeRate: deal.exchangeRate,
         debitForeign: isBuy ? 0 : deal.foreignAmount,
@@ -442,7 +548,7 @@ export function App() {
         trackingNumber: deal.dealNumber,
         description: `${isBuy ? 'ورود ارز خریداری‌شده' : 'خروج ارز فروخته‌شده'} (${
           deal.contactName
-        })`,
+        })${deliveryNote}${userNotePart}`,
         currency: deal.currency,
         depositForeign: isBuy ? deal.foreignAmount : 0,
         withdrawalForeign: isBuy ? 0 : deal.foreignAmount,
@@ -459,11 +565,12 @@ export function App() {
         const payBankAcc = getAccountForBank(payBank);
         const isReceipt = !isBuy;
 
+        const splitExtraDesc = sp.description ? ` — توضیحات فیش: ${sp.description}` : '';
         const splitDesc = `${
           isReceipt ? 'واریز به' : 'برداشت از'
         } ${payBank?.bankName || 'بانک/صندوق'} بابت تسویه ${deal.dealNumber} (${
           deal.contactName
-        })`;
+        })${splitExtraDesc}`;
         const payBankLineId = `ln-fx-pay-b-${Date.now()}-${idx}`;
         const trk = sp.trackingNumber || `${deal.dealNumber}-${idx + 1}`;
 
@@ -492,7 +599,7 @@ export function App() {
           contactName: deal.contactName,
           description: `${
             isReceipt ? 'دریافت از شخص و واریز به' : 'پرداخت به شخص از'
-          } ${payBank?.bankName || 'بانک/صندوق'} بابت ${deal.dealNumber}`,
+          } ${payBank?.bankName || 'بانک/صندوق'} بابت ${deal.dealNumber}${splitExtraDesc}`,
           currency: sp.currency,
           exchangeRate: sp.exchangeRate,
           debitForeign: isReceipt ? 0 : sp.amountForeign,
@@ -524,7 +631,7 @@ export function App() {
       date: deal.date,
       description: `سند اتوماتیک ${isBuy ? 'خرید' : 'فروش'} ارز ${deal.dealNumber} (${
         deal.contactName
-      })`,
+      })${userNotePart}`,
       referenceNumber: deal.dealNumber,
       autoType: 'fx_deal',
       status: 'permanent',
@@ -535,6 +642,76 @@ export function App() {
     setVouchers([autoVoucher, ...vouchers]);
     if (newBankStatements.length > 0) {
       setBankStatements([...newBankStatements, ...bankStatements]);
+    }
+    if (botConfig.autoBackupOnVoucherSave) {
+      setTimeout(() => performAutoBackup('fx_deal_save'), 300);
+    }
+  };
+
+  // ثبت مرحله جدید تحویل ارز برای معامله خرید یا فروش ارز
+  const handleRecordFXDealDelivery = (dealId: string, split: FXDeliverySplit) => {
+    const targetDeal = fxDeals.find((d) => d.id === dealId);
+    if (!targetDeal) return;
+
+    const prevDelivered =
+      targetDeal.deliveredForeignAmount !== undefined
+        ? targetDeal.deliveredForeignAmount
+        : targetDeal.foreignAmount;
+    const newDelivered = Math.min(targetDeal.foreignAmount, prevDelivered + split.amountForeign);
+    const newRemaining = Math.max(0, targetDeal.foreignAmount - newDelivered);
+    const newStatus: 'pending' | 'partial' | 'delivered' =
+      newRemaining <= 0.001 ? 'delivered' : newDelivered > 0 ? 'partial' : 'pending';
+    const updatedSplits = [...(targetDeal.deliverySplits || []), split];
+
+    const updatedDeal: FXDeal = {
+      ...targetDeal,
+      deliveredForeignAmount: newDelivered,
+      remainingForeignDelivery: newRemaining,
+      deliveryStatus: newStatus,
+      deliverySplits: updatedSplits,
+    };
+
+    setFxDeals((prev) => prev.map((d) => (d.id === dealId ? updatedDeal : d)));
+
+    // بروزرسانی شرح سند مرتبط با معامله جهت نمایش دقیق مراحل تحویل در صورتحساب شخص
+    if (targetDeal.linkedVoucherId) {
+      const stagesText = updatedSplits
+        .map(
+          (s, idx) =>
+            `مرحله ${idx + 1}: ${s.amountForeign} ${targetDeal.currency} در ${s.date}${
+              s.trackingNumber ? ` (پیگیری: ${s.trackingNumber})` : ''
+            }${s.notes ? ` - ${s.notes}` : ''}`
+        )
+        .join(' | ');
+
+      const deliverySummaryText = ` [وضعیت تحویل ارز: تحویل‌شده ${newDelivered} از ${targetDeal.foreignAmount} ${targetDeal.currency} | مانده تحویل‌نشده: ${newRemaining} ${targetDeal.currency} | مراحل: ${stagesText}]`;
+      const userNotePart = targetDeal.notes ? ` — توضیحات: ${targetDeal.notes}` : '';
+
+      setVouchers((prev) =>
+        prev.map((v) => {
+          if (v.id !== targetDeal.linkedVoucherId) return v;
+          return {
+            ...v,
+            lines: v.lines.map((ln) => {
+              if (ln.contactId === targetDeal.contactId && ln.trackingNumber === targetDeal.dealNumber) {
+                return {
+                  ...ln,
+                  description: `${targetDeal.type === 'buy' ? 'خرید' : 'فروش'} ${
+                    targetDeal.foreignAmount
+                  } ${targetDeal.currency} به نرخ ${targetDeal.exchangeRate} ریال (${
+                    targetDeal.dealNumber
+                  })${deliverySummaryText}${userNotePart}`,
+                };
+              }
+              return ln;
+            }),
+          };
+        })
+      );
+    }
+
+    if (botConfig.autoBackupOnVoucherSave) {
+      setTimeout(() => performAutoBackup('fx_delivery_stage_save'), 300);
     }
   };
 
@@ -1283,6 +1460,9 @@ export function App() {
         onUpdateUsers={setUsers}
         networkSyncStatus={networkSyncStatus}
         lastSyncTime={lastSyncTime}
+        licenseStatus={licenseStatus}
+        onLockLicense={() => setLicenseStatus(lockApplicationLicense())}
+        onRestoreFullBackup={handleRestoreFullBackup}
       />
 
       {/* Main Layout */}
@@ -1396,6 +1576,7 @@ export function App() {
               vouchers={vouchers}
               companyName={companyName}
               onExecuteDeal={handleExecuteFXDeal}
+              onRecordDealDelivery={handleRecordFXDealDelivery}
               onAddContact={(newContact) => setContacts([...contacts, newContact])}
               onDeleteDeal={(dealId) => {
                 const target = fxDeals.find((d) => d.id === dealId);
@@ -1438,6 +1619,7 @@ export function App() {
               onRestoreFullBackup={handleRestoreFullBackup}
               onRecordInventoryMovement={handleRegisterMovement}
               onResetToBlankDatabase={handleOpenBlankSetupWizard}
+              onTriggerImmediateAutoBackup={performAutoBackup}
             />
           )}
 

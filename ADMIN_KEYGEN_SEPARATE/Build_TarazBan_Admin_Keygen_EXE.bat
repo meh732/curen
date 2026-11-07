@@ -30,6 +30,7 @@ echo     }
 echo     static string MakeKey(string raw) {
 echo       string clean = Regex.Replace((raw ?? "").ToUpperInvariant(), "[^A-Z0-9]", "");
 echo       if (clean.Length == 0) return "";
+echo       if (clean.Length == 8 ^&^& Regex.IsMatch(clean, "^[0-9]{8}$")) clean = "TBHW" + clean;
 echo       int h1 = 4821, h2 = 7394, h3 = 9106, h4 = 6253;
 echo       for (int i = 0; i ^< clean.Length; i++) {
 echo         int c = (int)clean[i];

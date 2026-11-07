@@ -18,6 +18,7 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 import { triggerBackupFileDownload } from '../utils/botAndBackupService';
+import { LicenseStatus } from '../utils/offlineLicenseEngine';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -29,6 +30,9 @@ interface SettingsModalProps {
   onUpdateUsers: (users: UserAccount[]) => void;
   networkSyncStatus: 'connected' | 'connecting' | 'offline';
   lastSyncTime: string;
+  licenseStatus?: LicenseStatus;
+  onLockLicense?: () => void;
+  onRestoreFullBackup?: (restored: AccountingState) => void;
 }
 
 const DEFAULT_PERMISSIONS: Record<UserRole, UserPermissions> = {
@@ -80,6 +84,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onUpdateUsers,
   networkSyncStatus,
   lastSyncTime,
+  licenseStatus,
+  onLockLicense,
+  onRestoreFullBackup,
 }) => {
   const [activeTab, setActiveTab] = useState<'users' | 'reset' | 'bot' | 'server'>('users');
   const [showConfirmReset, setShowConfirmReset] = useState(false);
@@ -651,18 +658,93 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           {/* TAB 2: Bot & Backup */}
           {activeTab === 'bot' && (
             <div className="space-y-4 text-xs">
-              <div className="flex items-center justify-between p-3.5 bg-slate-50 border border-slate-200 rounded-xl">
+              <div className="p-3.5 rounded-xl bg-indigo-50/70 border border-indigo-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-extrabold text-indigo-950">
+                    وضعیت بکاپ اتوماتیک ویندوز تائوری و سرور:
+                  </span>
+                  <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-bold text-[11px] border border-emerald-300">
+                    فعال: هر {state.botConfig.autoBackupIntervalHours || 2} ساعت + موقع بستن برنامه
+                  </span>
+                </div>
+                <div className="text-[11px] text-slate-600">
+                  مسیر ذخیره خودکار بکاپ در ویندوز:
+                  <span
+                    dir="ltr"
+                    className="block mt-1 font-mono font-bold text-indigo-900 bg-white px-2 py-1 rounded border border-indigo-200 select-all"
+                  >
+                    C:\TarazBan_Backups\TarazBan_Latest_AutoBackup.json
+                  </span>
+                </div>
+                <div className="flex items-center justify-between pt-1">
+                  <span className="font-semibold text-slate-700">بازه زمانی بکاپ اتوماتیک:</span>
+                  <select
+                    value={state.botConfig.autoBackupIntervalHours || 2}
+                    onChange={(e) =>
+                      onUpdateBotConfig({ autoBackupIntervalHours: Number(e.target.value) })
+                    }
+                    className="px-2.5 py-1 rounded-lg bg-white border border-slate-300 font-bold font-mono-num"
+                  >
+                    <option value={1}>هر ۱ ساعت یکبار</option>
+                    <option value={2}>هر ۲ ساعت یکبار (پیش‌فرض اتوماتیک)</option>
+                    <option value={4}>هر ۴ ساعت یکبار</option>
+                    <option value={6}>هر ۶ ساعت یکبار</option>
+                    <option value={12}>هر ۱۲ ساعت یکبار</option>
+                    <option value={24}>هر ۲۴ ساعت یکبار</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-2 p-3.5 bg-slate-50 border border-slate-200 rounded-xl">
                 <div>
                   <div className="font-bold text-slate-900">دانلود مستقیم آخرین بکاپ کامل</div>
                   <div className="text-[11px] text-slate-500">ذخیره تمام اطلاعات در یک فایل JSON روی دستگاه شما</div>
                 </div>
-                <button
-                  onClick={() => triggerBackupFileDownload(state)}
-                  className="px-3.5 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold flex items-center gap-1.5 transition cursor-pointer shadow-xs"
-                >
-                  <Download className="w-4 h-4" />
-                  دانلود فایل بکاپ
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => triggerBackupFileDownload(state)}
+                    className="px-3.5 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold flex items-center gap-1.5 transition cursor-pointer shadow-xs"
+                  >
+                    <Download className="w-4 h-4" />
+                    دانلود فایل بکاپ
+                  </button>
+                  {onRestoreFullBackup && (
+                    <label className="px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold flex items-center gap-1.5 transition cursor-pointer shadow-xs">
+                      <span>بازگردانی از فایل JSON</span>
+                      <input
+                        type="file"
+                        accept=".json,application/json"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          const reader = new FileReader();
+                          reader.onload = (evt) => {
+                            try {
+                              const parsed = JSON.parse(String(evt.target?.result || ''));
+                              const candidate: AccountingState = parsed.data || parsed.state || parsed;
+                              if (
+                                candidate &&
+                                (Array.isArray(candidate.vouchers) ||
+                                  Array.isArray(candidate.contacts) ||
+                                  Array.isArray(candidate.fxDeals))
+                              ) {
+                                onRestoreFullBackup(candidate);
+                                setNotice('✅ فایل بکاپ با موفقیت بازگردانی شد.');
+                              } else {
+                                setNotice('❌ فایل انتخابی معتبر نیست.');
+                              }
+                            } catch {
+                              setNotice('❌ خطا در خواندن فایل بکاپ.');
+                            }
+                            e.target.value = '';
+                          };
+                          reader.readAsText(file);
+                        }}
+                      />
+                    </label>
+                  )}
+                </div>
               </div>
 
               <div className="space-y-3 pt-2">
@@ -727,7 +809,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           )}
 
-          {/* TAB 3: Server & Network */}
+          {/* TAB 3: Server & Network & License */}
           {activeTab === 'server' && (
             <div className="space-y-4 text-xs">
               <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
@@ -752,6 +834,49 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <span className="font-bold text-slate-900">{lastSyncTime || 'هم‌اکنون (لحظاتی پیش)'}</span>
                 </div>
               </div>
+
+              {/* وضعیت لایسنس سخت‌افزاری و دکمه قفل مجدد جهت تست لایسنس */}
+              {licenseStatus && (
+                <div className="p-4 rounded-xl bg-amber-50/70 border border-amber-200 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-extrabold text-amber-950 flex items-center gap-1.5">
+                      <KeyRound className="w-4 h-4 text-amber-700" />
+                      وضعیت قفل و لایسنس سخت‌افزاری این سیستم:
+                    </span>
+                    <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold text-[11px]">
+                      فعال‌شده روی این دستگاه
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 font-mono text-[11px]">
+                    <div className="bg-white p-2 rounded border border-amber-200 flex items-center justify-between">
+                      <span className="text-slate-500 font-sans">شناسه سخت‌افزاری:</span>
+                      <strong dir="ltr" className="text-slate-900">{licenseStatus.machineId}</strong>
+                    </div>
+                    <div className="bg-white p-2 rounded border border-amber-200 flex items-center justify-between">
+                      <span className="text-slate-500 font-sans">کلید فعال‌سازی ثبت‌شده:</span>
+                      <strong dir="ltr" className="text-emerald-800">{licenseStatus.activatedKey || '—'}</strong>
+                    </div>
+                  </div>
+                  {onLockLicense && (
+                    <div className="pt-1 flex items-center justify-between gap-2">
+                      <span className="text-[11px] text-slate-600">
+                        اگر می‌خواهید صفحه قفل سخت‌افزاری و کد فعال‌سازی را دوباره روی این سیستم تست کنید:
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onClose();
+                          onLockLicense();
+                        }}
+                        className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-[11px] flex items-center gap-1 shrink-0 cursor-pointer"
+                      >
+                        <Lock className="w-3.5 h-3.5" />
+                        قفل کردن لایسنس (تست فعال‌سازی)
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="p-4 rounded-xl bg-emerald-50/80 border border-emerald-200 text-slate-800 space-y-2 leading-relaxed">
                 <div className="font-extrabold text-emerald-950 flex items-center gap-1.5 text-xs">

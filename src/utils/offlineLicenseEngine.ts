@@ -4,9 +4,19 @@
  * - The application will NOT run at all until a valid 16-digit key matching THIS computer's Hardware ID is entered.
  * - If the license file / storage is copied to another Windows computer with different hardware, the Hardware ID changes and the app immediately locks.
  * - ZERO keygen or key-display logic exists in the customer UI.
+ * - No automatic pre-activation: Each instance requires valid activation for its own hardware.
  */
 
-const LICENSE_STORAGE_KEY = 'TARAZBAN_HARDWARE_LOCKED_LICENSE_V2';
+const LICENSE_STORAGE_KEY = 'TARAZBAN_HARDWARE_LOCKED_LICENSE_V4_STRICT_SIGNED';
+
+const LEGACY_LICENSE_KEYS = [
+  'TARAZBAN_HARDWARE_LOCKED_LICENSE',
+  'TARAZBAN_HARDWARE_LOCKED_LICENSE_V1',
+  'TARAZBAN_HARDWARE_LOCKED_LICENSE_V2',
+  'TARAZBAN_HARDWARE_LOCKED_LICENSE_V3',
+  'TARAZBAN_HARDWARE_LOCKED_LICENSE_V3_STRICT',
+  'TARAZBAN_SERVER_ACTIVE_CACHE',
+];
 
 export interface HardwareSpecs {
   cpuCores: number;
@@ -25,13 +35,18 @@ export interface LicenseStatus {
   isServerLicensed?: boolean;
 }
 
-const SERVER_LICENSE_CACHE_KEY = 'TARAZBAN_SERVER_ACTIVE_CACHE';
-
 /**
  * Normalizes a System/Hardware ID to uppercase alphanumeric characters.
+ * If the user entered only the 8 digits (e.g. "6674-1764" or "66741764"),
+ * automatically prefixes "TBHW" so it matches "TB-HW-6674-1764".
  */
 export function normalizeMachineId(rawId: string): string {
-  return rawId.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const clean = (rawId || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (!clean) return '';
+  if (/^\d{8}$/.test(clean)) {
+    return `TBHW${clean}`;
+  }
+  return clean;
 }
 
 /**
@@ -125,12 +140,9 @@ export function getHardwareMachineId(): {
 }
 
 /**
- * Generates the deterministic 16-digit Offline Activation Key (XXXX-XXXX-XXXX-XXXX)
- * from a given Hardware/System ID.
- * Uses identical modular arithmetic in C# (.NET) and TypeScript.
+ * Internal helper that computes the 16-digit key for an exact alphanumeric string.
  */
-export function computeOfflineActivationKey(machineId: string): string {
-  const clean = normalizeMachineId(machineId);
+function computeKeyFromCleanString(clean: string): string {
   if (!clean) return '0000-0000-0000-0000';
 
   let h1 = 4821;
@@ -155,23 +167,53 @@ export function computeOfflineActivationKey(machineId: string): string {
 }
 
 /**
+ * Generates the deterministic 16-digit Offline Activation Key (XXXX-XXXX-XXXX-XXXX)
+ * from a given Hardware/System ID.
+ * Uses identical modular arithmetic in C# (.NET) and TypeScript.
+ */
+export function computeOfflineActivationKey(machineId: string): string {
+  const clean = normalizeMachineId(machineId);
+  return computeKeyFromCleanString(clean);
+}
+
+/**
+ * Computes an internal seal signature so legacy or tampered localStorage objects cannot bypass activation.
+ */
+function computeActivationSeal(machineId: string, formattedKey: string): string {
+  const raw = `SEAL::${normalizeMachineId(machineId)}::${formattedKey.replace(/[^0-9]/g, '')}::V4`;
+  let acc = 9182;
+  for (let i = 0; i < raw.length; i++) {
+    acc = (acc * 53 + raw.charCodeAt(i) * (i + 11) + 7719) % 1000000;
+  }
+  return `SIG4-${String(acc).padStart(6, '0')}`;
+}
+
+/**
  * Verifies whether a user-entered activation key is valid for THIS computer's hardware ID.
+ * Supports both full ID ("TB-HW-XXXX-XXXX") and numeric-only ("XXXX-XXXX") keygen inputs.
  */
 export function verifyOfflineActivationKey(
   machineId: string,
   enteredKey: string
 ): boolean {
-  const normalizedEntered = enteredKey.trim().replace(/\s+/g, '');
+  const normalizedEntered = (enteredKey || '').trim().replace(/\s+/g, '');
   if (!normalizedEntered) return false;
 
-  const expected = computeOfflineActivationKey(machineId);
   const cleanEnteredDigits = normalizedEntered.replace(/[^0-9]/g, '');
-  const cleanExpectedDigits = expected.replace(/[^0-9]/g, '');
+  if (cleanEnteredDigits.length !== 16) return false;
 
-  return (
-    cleanEnteredDigits.length === 16 &&
-    cleanEnteredDigits === cleanExpectedDigits
-  );
+  // 1. Standard full Hardware ID (TBHWXXXXXXXX)
+  const expectedFull = computeOfflineActivationKey(machineId).replace(/[^0-9]/g, '');
+  if (cleanEnteredDigits === expectedFull) return true;
+
+  // 2. Fallback if admin typed only the 8 digits (XXXXXXXX) without TB-HW- in an older keygen
+  const digitsOnlyId = machineId.toUpperCase().replace(/^TB-?HW-?/i, '').replace(/[^A-Z0-9]/g, '');
+  if (digitsOnlyId) {
+    const expectedDigitsOnly = computeKeyFromCleanString(digitsOnlyId).replace(/[^0-9]/g, '');
+    if (cleanEnteredDigits === expectedDigitsOnly) return true;
+  }
+
+  return false;
 }
 
 /**
@@ -187,44 +229,42 @@ export function formatActivationKeyInput(raw: string): string {
 }
 
 /**
- * Reads current offline license activation state and validates that it matches
- * the CURRENT computer's physical hardware fingerprint.
- * If not activated or if hardware changed, returns isActivated: false.
+ * Purges any legacy license keys from older installations so previously installed systems
+ * cannot bypass the strict V4 hardware lock.
  */
+function purgeLegacyLicenseStorage(): void {
+  try {
+    for (const k of LEGACY_LICENSE_KEYS) {
+      localStorage.removeItem(k);
+    }
+  } catch {
+    // ignore storage errors
+  }
+}
+
 /**
- * Reads current offline license activation state.
- * 1. Checks if the server itself is already activated (Server-Wide Linux License for all IP connections).
- * 2. If not, checks local Windows hardware-locked license.
- * 3. If neither is active, returns isActivated: false.
+ * Reads current offline license activation state and validates that it matches
+ * the CURRENT computer's physical hardware fingerprint AND valid V4 signature.
+ * If not activated or if hardware changed or if key is invalid, returns isActivated: false.
+ * Zero backdoor, zero pre-activation.
  */
 export function loadLicenseStatus(): LicenseStatus {
+  purgeLegacyLicenseStorage();
   const { machineId, hardwareSpecs } = getHardwareMachineId();
   try {
-    // 1. Check Server-Wide License Cache (activated on Linux server for all incoming IP connections)
-    const serverCached = localStorage.getItem(SERVER_LICENSE_CACHE_KEY);
-    if (serverCached) {
-      const parsedServer = JSON.parse(serverCached);
-      if (parsedServer && parsedServer.isActivated === true) {
-        return {
-          machineId: parsedServer.machineId || 'TB-SRV-LINUX-ENTERPRISE',
-          hardwareSpecs,
-          isActivated: true,
-          activatedKey: parsedServer.activatedKey || 'SERVER-ACTIVATED',
-          activatedAt: parsedServer.activatedAt || '1404/08/12',
-          isServerLicensed: true,
-        };
-      }
-    }
-
-    // 2. Check local Windows hardware-bound license
     const raw = localStorage.getItem(LICENSE_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
+      const expectedSeal =
+        parsed && typeof parsed.activatedKey === 'string'
+          ? computeActivationSeal(machineId, parsed.activatedKey)
+          : '';
       if (
         parsed &&
         parsed.isActivated === true &&
         parsed.machineId === machineId &&
         typeof parsed.activatedKey === 'string' &&
+        parsed.seal === expectedSeal &&
         verifyOfflineActivationKey(machineId, parsed.activatedKey)
       ) {
         return {
@@ -248,72 +288,36 @@ export function loadLicenseStatus(): LicenseStatus {
 }
 
 /**
- * Fetches the Linux server-level license file (/server_license.json).
- * When Curen is deployed on a Linux server, activating the server once unlocks
- * all incoming client connections via IP address without requiring client activation.
- */
-export async function fetchServerLicenseStatus(): Promise<LicenseStatus | null> {
-  if (typeof window === 'undefined') return null;
-  try {
-    const res = await fetch(`/server_license.json?_t=${Date.now()}`, {
-      headers: { 'Cache-Control': 'no-cache' },
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (data && data.isActivated === true) {
-        const specs = probeComputerHardwareSpecs();
-        const serverStatus: LicenseStatus = {
-          machineId: data.machineId || 'TB-SRV-LINUX-ENTERPRISE',
-          hardwareSpecs: specs,
-          isActivated: true,
-          activatedKey: data.activatedKey || 'SERVER-WIDE-KEY',
-          activatedAt: data.activatedAt || '1404/08/12',
-          isServerLicensed: true,
-        };
-        try {
-          localStorage.setItem(SERVER_LICENSE_CACHE_KEY, JSON.stringify(serverStatus));
-        } catch {
-          // ignore storage quota error
-        }
-        return serverStatus;
-      } else if (data && data.isActivated === false) {
-        // If server was explicitly deactivated
-        localStorage.removeItem(SERVER_LICENSE_CACHE_KEY);
-      }
-    }
-  } catch {
-    // Static file not reachable or offline
-  }
-  return null;
-}
-
-/**
- * Saves a verified offline license key bound to the current computer or server.
+ * Saves a verified offline license key bound to the current computer.
+ * Strictly verifies before writing to storage.
  */
 export function saveActivatedLicense(
   machineId: string,
   enteredKey: string
 ): LicenseStatus | null {
+  purgeLegacyLicenseStorage();
   if (!verifyOfflineActivationKey(machineId, enteredKey)) {
     return null;
   }
   const { hardwareSpecs } = getHardwareMachineId();
   const formattedKey = formatActivationKeyInput(enteredKey);
-  const isServer = machineId.startsWith('TB-SRV-');
+  const seal = computeActivationSeal(machineId, formattedKey);
   const status: LicenseStatus = {
     machineId,
     hardwareSpecs,
     isActivated: true,
     activatedKey: formattedKey,
-    activatedAt: '1404/08/12',
-    isServerLicensed: isServer,
+    activatedAt: new Date().toLocaleDateString('fa-IR'),
+    isServerLicensed: false,
   };
   try {
-    if (isServer) {
-      localStorage.setItem(SERVER_LICENSE_CACHE_KEY, JSON.stringify(status));
-    } else {
-      localStorage.setItem(LICENSE_STORAGE_KEY, JSON.stringify(status));
-    }
+    localStorage.setItem(
+      LICENSE_STORAGE_KEY,
+      JSON.stringify({
+        ...status,
+        seal,
+      })
+    );
   } catch {
     // ignore
   }
@@ -321,13 +325,13 @@ export function saveActivatedLicense(
 }
 
 /**
- * Locks the application again (removes stored activation key) so the lock screen appears.
+ * Locks the application again (removes stored activation key) so the lock screen appears immediately.
  */
 export function lockApplicationLicense(): LicenseStatus {
+  purgeLegacyLicenseStorage();
   const { machineId, hardwareSpecs } = getHardwareMachineId();
   try {
     localStorage.removeItem(LICENSE_STORAGE_KEY);
-    localStorage.removeItem(SERVER_LICENSE_CACHE_KEY);
   } catch {
     // ignore
   }

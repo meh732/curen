@@ -216,6 +216,20 @@ export interface BotDeliveryLog {
   errorDetail?: string;
 }
 
+/**
+ * Represents a single stage of physical/remittance foreign currency delivery
+ * (تحویل مرحله‌ای ارز در خرید یا فروش ارز)
+ */
+export interface FXDeliverySplit {
+  id: string;
+  date: string;
+  amountForeign: number; // مقدار ارز تحویل‌گرفته‌شده (در خرید) یا تحویل‌داده‌شده (در فروش) در این مرحله
+  vaultBankId?: string; // صندوق یا حساب ارزی که این مرحله به آن وارد یا از آن خارج شده است
+  vaultBankName?: string;
+  trackingNumber: string; // شماره پیگیری فیش / حواله / رسید تحویل
+  notes?: string; // توضیحات کامل خط‌به‌خط این مرحله تحویل
+}
+
 export interface FXDeal {
   id: string;
   dealNumber: string;
@@ -224,16 +238,21 @@ export interface FXDeal {
   contactId: string;
   contactName: string;
   currency: CurrencyCode; // USD, EUR, CNY, AED
-  foreignAmount: number; // مقدار ارز معامله شده
+  foreignAmount: number; // مقدار کل ارز معامله شده (مثلاً 7000 دلار)
   exchangeRate: number; // نرخ معامله به ریال
   totalIRR: number; // مبلغ کل ریالی معامله
   commissionIRR: number; // کارمزد انتقال / صرافی به ریال
   settlementMethod: 'credit_account' | 'bank_transfer' | 'cash_box' | 'multi_split';
   targetForeignBankId?: string; // خزانه یا صندوق ارزی مقصد/مبدأ برای خود ارز معامله‌شده
   targetRialBankId?: string;
-  payments?: PaymentSplitLine[]; // ردیف‌های دریافت / پرداخت ترکیبی از چند بانک و چند صندوق
+  payments?: PaymentSplitLine[]; // ردیف‌های دریافت / پرداخت ترکیبی از چند بانک و چند صندوق بابت وجه ریالی/ارزی
   paidAmountIRR?: number; // مبلغ تسویه‌شده همزمان با معامله
   remainingAmountIRR?: number; // مانده در حساب شخص
+  // فیلدهای تحویل مرحله‌ای ارز (خرید یا فروش چندمرحله‌ای ارز)
+  deliveredForeignAmount?: number; // جمع ارز تحویل‌گرفته‌شده یا تحویل‌داده‌شده تا این لحظه
+  remainingForeignDelivery?: number; // مانده ارز تحویل‌نشده از این معامله
+  deliveryStatus?: 'delivered' | 'partial' | 'pending'; // وضعیت تحویل ارز
+  deliverySplits?: FXDeliverySplit[]; // ریز مراحل تحویل ارز به صورت خط به خط
   trackingNumber: string; // شماره حواله / سوئیفت / پیگیری
   linkedVoucherId?: string;
   notes?: string;

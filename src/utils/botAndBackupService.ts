@@ -45,13 +45,15 @@ export function formatStatementBotMessage(
   mode: 'rial' | 'foreign',
   companyName: string
 ): string {
-  const recentRows = statement.rows.slice(-5);
+  const recentRows = statement.rows.slice(-10);
   const rowsText = recentRows
     .map((r) => {
+      const trkPart = r.trackingNumber ? ` | پیگیری فیش: ${r.trackingNumber}` : '';
+      const descPart = r.description ? `\n   📝 شرح: ${r.description}` : '';
       if (mode === 'rial') {
-        return `• ${r.date} | سند #${r.voucherNumber}: بدهکار ${formatNumber(r.debitIRR)} / بستانکار ${formatNumber(r.creditIRR)} ریال (مانده: ${formatNumber(r.runningBalanceIRR)} ${r.balanceStatusIRR})`;
+        return `• ${r.date} | سند #${r.voucherNumber}${trkPart}: بدهکار ${formatNumber(r.debitIRR)} / بستانکار ${formatNumber(r.creditIRR)} ریال (مانده: ${formatNumber(r.runningBalanceIRR)} ${r.balanceStatusIRR})${descPart}`;
       }
-      return `• ${r.date} | سند #${r.voucherNumber} (${r.currency} - نرخ ${formatNumber(r.exchangeRate)}): بدهکار ${formatNumber(r.debitForeign, 2)} / بستانکار ${formatNumber(r.creditForeign, 2)} ${r.currency}`;
+      return `• ${r.date} | سند #${r.voucherNumber}${trkPart} (${r.currency} - نرخ ${formatNumber(r.exchangeRate)}): بدهکار ${formatNumber(r.debitForeign, 2)} / بستانکار ${formatNumber(r.creditForeign, 2)} ${r.currency}${descPart}`;
     })
     .join('\n');
 

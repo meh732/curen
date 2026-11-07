@@ -337,6 +337,10 @@
       if (keyStatus) keyStatus.textContent = "";
       return;
     }
+    var cleanDigitsCheck = val.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (/^\d{8}$/.test(cleanDigitsCheck)) {
+      val = "TB-HW-" + cleanDigitsCheck.slice(0, 4) + "-" + cleanDigitsCheck.slice(4, 8);
+    }
 
     if (_core_calc) {
       try {

@@ -194,11 +194,15 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
       validSplits.forEach((sp, idx) => {
         const bank = banks.find((b) => b.id === sp.bankId);
         const bankAcc = getAccountHelperForBank(bank);
-        const lineDesc =
-          description.trim() ||
-          (isReceipt
-            ? `دریافت از ${selectedContact.name} و واریز به ${bank?.bankName || 'بانک/صندوق'}`
-            : `پرداخت به ${selectedContact.name} از ${bank?.bankName || 'بانک/صندوق'}`);
+        const baseActionDesc = isReceipt
+          ? `دریافت از ${selectedContact.name} و واریز به ${bank?.bankName || 'بانک/صندوق'}`
+          : `پرداخت به ${selectedContact.name} از ${bank?.bankName || 'بانک/صندوق'}`;
+
+        const extraNotes = [description.trim(), (sp.description || '').trim()]
+          .filter(Boolean)
+          .join(' — ');
+        const lineDesc = extraNotes ? `${baseActionDesc} | توضیحات: ${extraNotes}` : baseActionDesc;
+        const trk = (sp.trackingNumber || '').trim() || `AUTO-${voucherNumber}-${idx + 1}`;
 
         // ردیف بانک / صندوق
         lines.push({
@@ -207,14 +211,14 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
           accountName: bankAcc.name,
           bankId: sp.bankId,
           bankName: bank?.bankName,
-          description: `${lineDesc}${sp.trackingNumber ? ` (پیگیری: ${sp.trackingNumber})` : ''}`,
+          description: `${lineDesc} (شماره پیگیری فیش: ${trk})`,
           currency: sp.currency,
           exchangeRate: sp.exchangeRate,
           debitForeign: isReceipt ? sp.amountForeign : 0,
           creditForeign: isReceipt ? 0 : sp.amountForeign,
           debitIRR: isReceipt ? sp.amountIRR : 0,
           creditIRR: isReceipt ? 0 : sp.amountIRR,
-          trackingNumber: sp.trackingNumber || `AUTO-${voucherNumber}-${idx + 1}`,
+          trackingNumber: trk,
           reconciled: true,
         });
 
@@ -238,7 +242,7 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
           creditForeign: isReceipt ? sp.amountForeign : 0,
           debitIRR: isReceipt ? 0 : sp.amountIRR,
           creditIRR: isReceipt ? sp.amountIRR : 0,
-          trackingNumber: sp.trackingNumber || `AUTO-${voucherNumber}-${idx + 1}`,
+          trackingNumber: trk,
         });
       });
 
