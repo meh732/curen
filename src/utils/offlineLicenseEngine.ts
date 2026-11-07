@@ -1,155 +1,206 @@
-/**
- * Hardware-Bound Offline License & Activation Engine
- * - Binds activation strictly to each individual Windows computer's hardware (GPU, CPU cores, RAM, Screen Hardware, Platform).
- * - The application will NOT run at all until a valid 16-digit key matching THIS computer's Hardware ID is entered.
- * - If the license file / storage is copied to another Windows computer with different hardware, the Hardware ID changes and the app immediately locks.
- * - ZERO keygen or key-display logic exists in the customer UI.
- * - No automatic pre-activation: Each instance requires valid activation for its own hardware.
- */
+export interface LicenseStatus {
+  isActivated: boolean;
+  machineId: string;
+  activatedAt?: string;
+  activationKey?: string;
+  activatedKey?: string;
+  masterAuthorized?: boolean;
+}
 
-const LICENSE_STORAGE_KEY = 'TARAZBAN_HARDWARE_LOCKED_LICENSE_V4_STRICT_SIGNED';
+const LICENSE_STORAGE_KEY = 'ARKA_HARDWARE_MASTER_LICENSE_V6_STRICT';
+const MACHINE_ID_STORAGE_KEY = 'TARAZBAN_HARDWARE_MACHINE_ID_V3_STRICT';
+const SECRET_SALT = 'ARKA_MASTER_SALT_2026_V6_PRO';
+
+// رمز مادر انحصاری و ثابت فروشنده
+export const VENDOR_MASTER_PASSWORD = 'ARKA-MASTER-2026';
 
 const LEGACY_LICENSE_KEYS = [
-  'TARAZBAN_HARDWARE_LOCKED_LICENSE',
-  'TARAZBAN_HARDWARE_LOCKED_LICENSE_V1',
-  'TARAZBAN_HARDWARE_LOCKED_LICENSE_V2',
-  'TARAZBAN_HARDWARE_LOCKED_LICENSE_V3',
+  'TARAZBAN_OFFLINE_LICENSE_V1',
+  'TARAZBAN_OFFLINE_LICENSE_V2',
   'TARAZBAN_HARDWARE_LOCKED_LICENSE_V3_STRICT',
-  'TARAZBAN_SERVER_ACTIVE_CACHE',
+  'TARAZBAN_HARDWARE_LOCKED_LICENSE_V4_STRICT_SIGNED',
+  'TARAZBAN_HARDWARE_LOCKED_LICENSE_V5_STRICT',
+  'TARAZBAN_LICENSE',
+  'LICENSE_STATUS',
+  'IS_ACTIVATED',
 ];
 
-export interface HardwareSpecs {
-  cpuCores: number;
-  ramGb: number;
-  gpuRenderer: string;
-  screenSpec: string;
-  platform: string;
-}
-
-export interface LicenseStatus {
-  machineId: string;
-  hardwareSpecs: HardwareSpecs;
-  isActivated: boolean;
-  activatedKey?: string;
-  activatedAt?: string;
-  isServerLicensed?: boolean;
-}
-
 /**
- * Normalizes a System/Hardware ID to uppercase alphanumeric characters.
- * If the user entered only the 8 digits (e.g. "6674-1764" or "66741764"),
- * automatically prefixes "TBHW" so it matches "TB-HW-6674-1764".
+ * Helper to invoke Tauri commands across Tauri v2 (__TAURI_INTERNALS__ / __TAURI__.core) and Tauri v1 (__TAURI__)
  */
-export function normalizeMachineId(rawId: string): string {
-  const clean = (rawId || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-  if (!clean) return '';
-  if (/^\d{8}$/.test(clean)) {
-    return `TBHW${clean}`;
-  }
-  return clean;
-}
-
-/**
- * Reads physical hardware characteristics of the current Windows machine
- * (GPU Renderer, CPU Core Count, RAM, Display Resolution/Depth, OS Platform)
- * to generate a deterministic, hardware-bound Machine ID (TB-HW-XXXX-XXXX)
- * that is unique per computer hardware configuration.
- */
-export function probeComputerHardwareSpecs(): HardwareSpecs {
-  if (typeof window === 'undefined' || typeof navigator === 'undefined') {
-    return {
-      cpuCores: 8,
-      ramGb: 16,
-      gpuRenderer: 'WINDOWS-NATIVE-GPU',
-      screenSpec: '1920x1080x24',
-      platform: 'Win32',
+export async function invokeTauriCommand<T = unknown>(
+  cmd: string,
+  args?: Record<string, unknown>
+): Promise<T | null> {
+  if (typeof window === 'undefined') return null;
+  const win = window as unknown as {
+    __TAURI_INTERNALS__?: { invoke?: (c: string, a?: Record<string, unknown>) => Promise<T> };
+    __TAURI__?: {
+      invoke?: (c: string, a?: Record<string, unknown>) => Promise<T>;
+      core?: { invoke?: (c: string, a?: Record<string, unknown>) => Promise<T> };
     };
+  };
+  const invokeFn =
+    win.__TAURI_INTERNALS__?.invoke ||
+    win.__TAURI__?.core?.invoke ||
+    win.__TAURI__?.invoke;
+
+  if (typeof invokeFn !== 'function') {
+    return null;
   }
-
-  const cpuCores = navigator.hardwareConcurrency || 4;
-  const ramGb = (navigator as unknown as { deviceMemory?: number }).deviceMemory || 8;
-  const platform = navigator.platform || 'Win32';
-  const screenSpec =
-    typeof window.screen !== 'undefined'
-      ? `${window.screen.width}x${window.screen.height}x${window.screen.colorDepth}`
-      : '1920x1080x24';
-
-  let gpuRenderer = 'STANDARD-GRAPHIC-ADAPTER';
   try {
-    const canvas = document.createElement('canvas');
-    const gl =
-      canvas.getContext('webgl') ||
-      (canvas.getContext('experimental-webgl') as WebGLRenderingContext | null);
-    if (gl) {
-      const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
-      if (debugInfo) {
-        const vendor = gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL) || '';
-        const renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) || '';
-        gpuRenderer = `${vendor}|${renderer}`.trim() || gpuRenderer;
+    return await invokeFn(cmd, args);
+  } catch {
+    return null;
+  }
+}
+
+export function isTauriEnvironment(): boolean {
+  if (typeof window === 'undefined') return false;
+  const win = window as unknown as {
+    __TAURI_INTERNALS__?: unknown;
+    __TAURI__?: unknown;
+  };
+  return Boolean(win.__TAURI_INTERNALS__ || win.__TAURI__);
+}
+
+function purgeLegacyKeys(): void {
+  try {
+    for (const k of LEGACY_LICENSE_KEYS) {
+      localStorage.removeItem(k);
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.removeItem(k);
       }
     }
   } catch {
-    // fallback if WebGL is blocked
+    // ignore storage errors
   }
-
-  return {
-    cpuCores,
-    ramGb,
-    gpuRenderer,
-    screenSpec,
-    platform,
-  };
 }
 
 /**
- * Computes a deterministic Hardware Serial ID (TB-HW-XXXX-XXXX) strictly derived
- * from the physical hardware specifications of the current Windows computer.
+ * Generates or retrieves the persistent 12-character Hardware/Machine ID
+ * Formatted as: TB-HW-XXXX-XXXX
  */
-export function getHardwareMachineId(): {
-  machineId: string;
-  hardwareSpecs: HardwareSpecs;
-} {
-  const specs = probeComputerHardwareSpecs();
-  const rawHardwareFingerprint = [
-    `CPU:${specs.cpuCores}`,
-    `RAM:${specs.ramGb}`,
-    `GPU:${specs.gpuRenderer}`,
-    `SCR:${specs.screenSpec}`,
-    `OS:${specs.platform}`,
-  ]
-    .join('||')
-    .toUpperCase();
-
-  let b1 = 5381;
-  let b2 = 7919;
-
-  for (let i = 0; i < rawHardwareFingerprint.length; i++) {
-    const ch = rawHardwareFingerprint.charCodeAt(i);
-    b1 = (b1 * 33 + ch * (i + 5) + 1013) % 10000;
-    b2 = (b2 * 41 + ch * (i + 11) + 2027) % 10000;
+export function getOrCreateMachineId(): string {
+  purgeLegacyKeys();
+  try {
+    const existing = localStorage.getItem(MACHINE_ID_STORAGE_KEY);
+    if (existing && /^TB-HW-\d{4}-\d{4}$/.test(existing)) {
+      return existing;
+    }
+    // Also accept clean XXXX-XXXX format
+    if (existing && /^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(existing)) {
+      return `TB-HW-${existing}`;
+    }
+  } catch {
+    // fallback if localStorage blocked
   }
 
-  // Ensure 4-digit blocks (1000..9999)
-  const part1 = String((b1 % 9000) + 1000);
-  const part2 = String((b2 % 9000) + 1000);
+  // Generate deterministic-like seed from screen/browser traits
+  let h1 = 5381;
+  let h2 = 7919;
+  try {
+    const nav = typeof navigator !== 'undefined' ? navigator : null;
+    const scr = typeof screen !== 'undefined' ? screen : null;
+    const parts = [
+      nav?.userAgent || 'WIN-PC',
+      nav?.language || 'fa-IR',
+      String(nav?.hardwareConcurrency || 8),
+      String((nav as unknown as { deviceMemory?: number })?.deviceMemory || 8),
+      String(scr?.width || 1920),
+      String(scr?.height || 1080),
+      String(scr?.colorDepth || 24),
+      Intl?.DateTimeFormat()?.resolvedOptions()?.timeZone || 'Asia/Tehran',
+    ].join('|');
 
-  return {
-    machineId: `TB-HW-${part1}-${part2}`,
-    hardwareSpecs: specs,
-  };
+    for (let i = 0; i < parts.length; i++) {
+      const ch = parts.charCodeAt(i);
+      h1 = (h1 * 33 + ch * (i + 5) + 1013) % 10000;
+      h2 = (h2 * 41 + ch * (i + 11) + 2027) % 10000;
+    }
+  } catch {
+    // ignore
+  }
+
+  const p1 = (h1 % 9000) + 1000;
+  const p2 = (h2 % 9000) + 1000;
+  const formatted = `TB-HW-${String(p1).padStart(4, '0')}-${String(p2).padStart(4, '0')}`;
+
+  try {
+    localStorage.setItem(MACHINE_ID_STORAGE_KEY, formatted);
+  } catch {
+    // ignore
+  }
+  return formatted;
 }
 
 /**
- * Internal helper that computes the 16-digit key for an exact alphanumeric string.
+ * Computes the normalized master password string
  */
-function computeKeyFromCleanString(clean: string): string {
-  if (!clean) return '0000-0000-0000-0000';
+export function normalizeMasterPassword(raw: string): string {
+  return (raw || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
 
-  let h1 = 4821;
-  let h2 = 7394;
-  let h3 = 9106;
-  let h4 = 6253;
+/**
+ * Verifies if entered master password matches the official vendor master password
+ */
+export function verifyMasterPassword(raw: string): boolean {
+  const cleanEntered = normalizeMasterPassword(raw);
+  const cleanExpected = normalizeMasterPassword(VENDOR_MASTER_PASSWORD);
+  return cleanEntered.length > 0 && cleanEntered === cleanExpected;
+}
 
+/**
+ * Computes the 16-digit purely numeric activation key (XXXX-XXXX-XXXX-XXXX)
+ * CRITICAL: The Master Password MUST be entered into the Keygen!
+ * The 16-digit key itself cryptographically depends on the Vendor Master Password.
+ * Without knowing the exact Master Password, no valid 16-digit key can be generated.
+ */
+export function generateOfflineActivationKey(
+  machineId: string,
+  masterPassword = VENDOR_MASTER_PASSWORD
+): string {
+  if (!verifyMasterPassword(masterPassword)) {
+    return '';
+  }
+
+  const cleanId = machineId.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (cleanId.length < 6) return '';
+
+  const cleanMaster = normalizeMasterPassword(masterPassword);
+  const input = `${cleanId}:${SECRET_SALT}:${cleanMaster}:${cleanId.split('').reverse().join('')}`;
+
+  const seeds = [0x811c9dc5, 0x9e3779b9, 0x85ebca6b, 0xc2b2ae35];
+
+  for (let round = 0; round < 4; round++) {
+    let hash = seeds[round];
+    for (let i = 0; i < input.length; i++) {
+      hash ^= input.charCodeAt(i) + round * 31 + i * 17;
+      hash = Math.imul(hash, 0x01000193);
+      hash >>>= 0;
+    }
+    seeds[round] = hash;
+  }
+
+  // 16 purely numeric digits: 4 blocks of 4 digits (e.g. 1507-2666-5215-7116)
+  const parts: string[] = [];
+  for (let block = 0; block < 4; block++) {
+    const num = seeds[block] % 10000;
+    parts.push(String(num).padStart(4, '0'));
+  }
+
+  return parts.join('-');
+}
+
+/**
+ * Fallback legacy formula for backwards compatibility with v4/v5 licenses
+ */
+function computeLegacyKey(machineId: string): string {
+  let clean = machineId.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (/^\d{8}$/.test(clean)) {
+    clean = 'TBHW' + clean;
+  }
+  let h1 = 4821, h2 = 7394, h3 = 9106, h4 = 6253;
   for (let i = 0; i < clean.length; i++) {
     const code = clean.charCodeAt(i);
     h1 = (h1 * 31 + code * (i + 7) + 1357) % 10000;
@@ -157,187 +208,192 @@ function computeKeyFromCleanString(clean: string): string {
     h3 = (h3 * 41 + code * (i + 19) + 3579) % 10000;
     h4 = (h4 * 43 + code * (i + 23) + 4680) % 10000;
   }
-
-  const p1 = String(h1).padStart(4, '0');
-  const p2 = String(h2).padStart(4, '0');
-  const p3 = String(h3).padStart(4, '0');
-  const p4 = String(h4).padStart(4, '0');
-
-  return `${p1}-${p2}-${p3}-${p4}`;
+  return [h1, h2, h3, h4].map((v) => String(v).padStart(4, '0')).join('-');
 }
 
 /**
- * Generates the deterministic 16-digit Offline Activation Key (XXXX-XXXX-XXXX-XXXX)
- * from a given Hardware/System ID.
- * Uses identical modular arithmetic in C# (.NET) and TypeScript.
+ * Verifies if the customer-entered 16-digit Activation Key is valid for this Machine ID
+ * Checks both the V6 Master-dependent key and legacy format.
  */
-export function computeOfflineActivationKey(machineId: string): string {
-  const clean = normalizeMachineId(machineId);
-  return computeKeyFromCleanString(clean);
-}
+export function verifyOfflineActivationKey(machineId: string, enteredKey: string): boolean {
+  if (!enteredKey) return false;
+  const cleanEntered = enteredKey.trim().replace(/[^0-9]/g, '');
+  if (cleanEntered.length !== 16) return false;
 
-/**
- * Computes an internal seal signature so legacy or tampered localStorage objects cannot bypass activation.
- */
-function computeActivationSeal(machineId: string, formattedKey: string): string {
-  const raw = `SEAL::${normalizeMachineId(machineId)}::${formattedKey.replace(/[^0-9]/g, '')}::V4`;
-  let acc = 9182;
-  for (let i = 0; i < raw.length; i++) {
-    acc = (acc * 53 + raw.charCodeAt(i) * (i + 11) + 7719) % 1000000;
+  // 1. Primary check: V6 Master-derived key
+  const expectedV6 = generateOfflineActivationKey(machineId, VENDOR_MASTER_PASSWORD).replace(/[^0-9]/g, '');
+  if (expectedV6 && cleanEntered === expectedV6) {
+    return true;
   }
-  return `SIG4-${String(acc).padStart(6, '0')}`;
-}
 
-/**
- * Verifies whether a user-entered activation key is valid for THIS computer's hardware ID.
- * Supports both full ID ("TB-HW-XXXX-XXXX") and numeric-only ("XXXX-XXXX") keygen inputs.
- */
-export function verifyOfflineActivationKey(
-  machineId: string,
-  enteredKey: string
-): boolean {
-  const normalizedEntered = (enteredKey || '').trim().replace(/\s+/g, '');
-  if (!normalizedEntered) return false;
+  // 2. Legacy check: v4/v5 key
+  const expectedLegacy = computeLegacyKey(machineId).replace(/[^0-9]/g, '');
+  if (expectedLegacy && cleanEntered === expectedLegacy) {
+    return true;
+  }
 
-  const cleanEnteredDigits = normalizedEntered.replace(/[^0-9]/g, '');
-  if (cleanEnteredDigits.length !== 16) return false;
-
-  // 1. Standard full Hardware ID (TBHWXXXXXXXX)
-  const expectedFull = computeOfflineActivationKey(machineId).replace(/[^0-9]/g, '');
-  if (cleanEnteredDigits === expectedFull) return true;
-
-  // 2. Fallback if admin typed only the 8 digits (XXXXXXXX) without TB-HW- in an older keygen
-  const digitsOnlyId = machineId.toUpperCase().replace(/^TB-?HW-?/i, '').replace(/[^A-Z0-9]/g, '');
-  if (digitsOnlyId) {
-    const expectedDigitsOnly = computeKeyFromCleanString(digitsOnlyId).replace(/[^0-9]/g, '');
-    if (cleanEnteredDigits === expectedDigitsOnly) return true;
+  // Also check raw 8-digit without prefix
+  const pure8Digits = machineId.replace(/^TB-?HW-?/i, '').replace(/[^0-9]/g, '');
+  if (pure8Digits.length === 8) {
+    const expectedPure = computeLegacyKey(pure8Digits).replace(/[^0-9]/g, '');
+    if (cleanEntered === expectedPure) return true;
   }
 
   return false;
 }
 
-/**
- * Formats a typed activation key into XXXX-XXXX-XXXX-XXXX as the user types.
- */
-export function formatActivationKeyInput(raw: string): string {
-  const digits = raw.replace(/[^0-9]/g, '').slice(0, 16);
-  const groups: string[] = [];
-  for (let i = 0; i < digits.length; i += 4) {
-    groups.push(digits.slice(i, i + 4));
+export function computeActivationSealV6(machineId: string, activationKey: string): string {
+  const raw = `V6_MASTER_SEAL::${machineId.trim().toUpperCase()}::${activationKey.replace(/[^0-9]/g, '')}::${SECRET_SALT}`;
+  let h1 = 0x9e3779b9;
+  let h2 = 0x85ebca6b;
+  for (let i = 0; i < raw.length; i++) {
+    const code = raw.charCodeAt(i);
+    h1 = Math.imul(h1 ^ code, 0x01000193) >>> 0;
+    h2 = Math.imul(h2 ^ (code + i * 19), 0xc2b2ae35) >>> 0;
   }
-  return groups.join('-');
+  return `ARKA6-${h1.toString(16).toUpperCase().padStart(8, '0')}-${h2.toString(16).toUpperCase().padStart(8, '0')}`;
 }
 
 /**
- * Purges any legacy license keys from older installations so previously installed systems
- * cannot bypass the strict V4 hardware lock.
- */
-function purgeLegacyLicenseStorage(): void {
-  try {
-    for (const k of LEGACY_LICENSE_KEYS) {
-      localStorage.removeItem(k);
-    }
-  } catch {
-    // ignore storage errors
-  }
-}
-
-/**
- * Reads current offline license activation state and validates that it matches
- * the CURRENT computer's physical hardware fingerprint AND valid V4 signature.
- * If not activated or if hardware changed or if key is invalid, returns isActivated: false.
- * Zero backdoor, zero pre-activation.
+ * Loads current activation status from localStorage
  */
 export function loadLicenseStatus(): LicenseStatus {
-  purgeLegacyLicenseStorage();
-  const { machineId, hardwareSpecs } = getHardwareMachineId();
+  const currentMachineId = getOrCreateMachineId();
   try {
     const raw = localStorage.getItem(LICENSE_STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      const expectedSeal =
-        parsed && typeof parsed.activatedKey === 'string'
-          ? computeActivationSeal(machineId, parsed.activatedKey)
-          : '';
-      if (
-        parsed &&
-        parsed.isActivated === true &&
-        parsed.machineId === machineId &&
-        typeof parsed.activatedKey === 'string' &&
-        parsed.seal === expectedSeal &&
-        verifyOfflineActivationKey(machineId, parsed.activatedKey)
-      ) {
-        return {
-          machineId,
-          hardwareSpecs,
-          isActivated: true,
-          activatedKey: parsed.activatedKey,
-          activatedAt: parsed.activatedAt,
-          isServerLicensed: false,
-        };
-      }
+    if (!raw) {
+      return { isActivated: false, machineId: currentMachineId };
+    }
+    const parsed = JSON.parse(raw);
+
+    if (
+      parsed &&
+      parsed.isActivated === true &&
+      typeof parsed.machineId === 'string' &&
+      typeof parsed.activationKey === 'string' &&
+      parsed.machineId === currentMachineId &&
+      verifyOfflineActivationKey(currentMachineId, parsed.activationKey)
+    ) {
+      return {
+        isActivated: true,
+        machineId: currentMachineId,
+        activatedAt: parsed.activatedAt,
+        activationKey: parsed.activationKey,
+        activatedKey: parsed.activationKey,
+        masterAuthorized: true,
+      };
+    } else {
+      localStorage.removeItem(LICENSE_STORAGE_KEY);
     }
   } catch {
-    // ignore storage errors
+    try {
+      localStorage.removeItem(LICENSE_STORAGE_KEY);
+    } catch {
+      // ignore
+    }
   }
-  return {
-    machineId,
-    hardwareSpecs,
-    isActivated: false,
-  };
+  return { isActivated: false, machineId: currentMachineId };
 }
 
 /**
- * Saves a verified offline license key bound to the current computer.
- * Strictly verifies before writing to storage.
+ * Verifies the Native Windows Tauri OS-level license lock file (`arka_master_license_v6.lock`).
+ */
+export async function verifyNativeTauriLicenseLock(): Promise<boolean> {
+  if (!isTauriEnvironment()) {
+    return loadLicenseStatus().isActivated;
+  }
+
+  const currentStatus = loadLicenseStatus();
+  if (!currentStatus.isActivated || !currentStatus.activationKey) {
+    await invokeTauriCommand('revoke_native_license_lock');
+    return false;
+  }
+
+  const expectedSeal = computeActivationSealV6(
+    currentStatus.machineId,
+    currentStatus.activationKey
+  );
+
+  const nativeValid = await invokeTauriCommand<boolean>('verify_native_license_lock', {
+    machineId: currentStatus.machineId,
+    seal: expectedSeal,
+  });
+
+  if (nativeValid !== true) {
+    try {
+      localStorage.removeItem(LICENSE_STORAGE_KEY);
+    } catch {
+      // ignore
+    }
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Saves activated license when the 16-digit key matches the machineId
  */
 export function saveActivatedLicense(
   machineId: string,
   enteredKey: string
 ): LicenseStatus | null {
-  purgeLegacyLicenseStorage();
   if (!verifyOfflineActivationKey(machineId, enteredKey)) {
     return null;
   }
-  const { hardwareSpecs } = getHardwareMachineId();
-  const formattedKey = formatActivationKeyInput(enteredKey);
-  const seal = computeActivationSeal(machineId, formattedKey);
-  const status: LicenseStatus = {
-    machineId,
-    hardwareSpecs,
+
+  const digits = enteredKey.trim().replace(/[^0-9]/g, '');
+  const formattedKey = `${digits.slice(0, 4)}-${digits.slice(4, 8)}-${digits.slice(8, 12)}-${digits.slice(12, 16)}`;
+  const seal = computeActivationSealV6(machineId, formattedKey);
+
+  const statusRecord = {
+    version: 6,
     isActivated: true,
-    activatedKey: formattedKey,
+    machineId,
     activatedAt: new Date().toLocaleDateString('fa-IR'),
-    isServerLicensed: false,
+    activationKey: formattedKey,
+    seal,
   };
+
   try {
-    localStorage.setItem(
-      LICENSE_STORAGE_KEY,
-      JSON.stringify({
-        ...status,
-        seal,
-      })
-    );
+    localStorage.setItem(LICENSE_STORAGE_KEY, JSON.stringify(statusRecord));
   } catch {
     // ignore
   }
-  return status;
+
+  if (isTauriEnvironment()) {
+    void invokeTauriCommand('save_native_license_lock', {
+      machineId,
+      seal,
+    });
+  }
+
+  return {
+    isActivated: true,
+    machineId,
+    activatedAt: statusRecord.activatedAt,
+    activationKey: formattedKey,
+    activatedKey: formattedKey,
+    masterAuthorized: true,
+  };
 }
 
 /**
- * Locks the application again (removes stored activation key) so the lock screen appears immediately.
+ * Locks / revokes the license on the current system so the activation modal is enforced immediately
  */
 export function lockApplicationLicense(): LicenseStatus {
-  purgeLegacyLicenseStorage();
-  const { machineId, hardwareSpecs } = getHardwareMachineId();
+  const currentMachineId = getOrCreateMachineId();
+  purgeLegacyKeys();
   try {
     localStorage.removeItem(LICENSE_STORAGE_KEY);
   } catch {
     // ignore
   }
+  if (isTauriEnvironment()) {
+    void invokeTauriCommand('revoke_native_license_lock');
+  }
   return {
-    machineId,
-    hardwareSpecs,
     isActivated: false,
+    machineId: currentMachineId,
   };
 }

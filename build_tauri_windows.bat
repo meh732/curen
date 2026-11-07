@@ -1,10 +1,10 @@
 @echo off
 chcp 65001 >nul
-title ARKA v5.5.0 - Tauri Windows App Builder & In-Place Updater
+title ARKA v6.0.0 - Tauri Windows App Builder & In-Place Updater
 color 0b
 
 echo ====================================================================
-echo    ARKA (v5.5.0) TAURI WINDOWS BUILDER & IN-PLACE UPDATER SCRIPT
+echo    ARKA (v6.0.0) TAURI WINDOWS BUILDER & IN-PLACE UPDATER SCRIPT
 echo ====================================================================
 echo.
 
@@ -60,7 +60,7 @@ if %ERRORLEVEL% NEQ 0 (
 echo.
 
 :: 3. Install NPM packages & build fresh web assets
-echo [3/5] Building fresh production frontend (ARKA v5.5.0)...
+echo [3/5] Building fresh production frontend (ARKA v6.0.0)...
 if exist "dist" rmdir /s /q "dist" >nul 2>&1
 call npm install --legacy-peer-deps
 if %ERRORLEVEL% NEQ 0 (
@@ -80,7 +80,7 @@ echo [OK] Fresh frontend web assets built into dist folder.
 echo.
 
 :: 4. Force Cargo to re-embed the new dist/ assets into the Tauri binary
-echo [4/5] Compiling Native Windows Tauri App & Installer (v5.5.0)...
+echo [4/5] Compiling Native Windows Tauri App & Installer (v6.0.0)...
 if exist "src-tauri\Cargo.toml" (
     pushd src-tauri
     cargo clean -p tarazban-accounting >nul 2>&1
@@ -93,7 +93,7 @@ if %ERRORLEVEL% EQU 0 (
     color 0a
     echo.
     echo ====================================================================
-    echo   SUCCESS! ARKA v5.5.0 Windows Tauri App Built Successfully!
+    echo   SUCCESS! ARKA v6.0.0 Windows Tauri App Built Successfully!
     echo ====================================================================
     echo.
     :: 5. Automatically overwrite existing installed binary in-place if found

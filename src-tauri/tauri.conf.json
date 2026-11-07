@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "TarazBan_Accounting",
-  "version": "5.5.0",
+  "version": "6.0.0",
   "identifier": "com.tarazban.accounting",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -10,6 +10,7 @@
     "frontendDist": "../dist"
   },
   "app": {
+    "withGlobalTauri": true,
     "windows": [
       {
         "title": "آرکا (ARKA) — سیستم جامع حسابداری و صرافی دوارزی",
@@ -36,7 +37,7 @@
       "icons/icon.png"
     ],
     "shortDescription": "ARKA Multi-Currency Exchange & Accounting System",
-    "longDescription": "ARKA high-performance native desktop accounting & currency exchange software for Windows with offline hardware security.",
+    "longDescription": "ARKA high-performance native desktop accounting & currency exchange software for Windows with offline hardware & vendor master password security.",
     "copyright": "ARKA 2026"
   }
 }

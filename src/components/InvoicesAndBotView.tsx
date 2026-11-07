@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   SalesInvoice,
   InvoiceItem,
@@ -53,10 +53,26 @@ export const InvoicesAndBotView: React.FC<InvoicesAndBotViewProps> = ({
 }) => {
   const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null);
   const [invoiceType, setInvoiceType] = useState<'sales' | 'purchase'>('sales');
-  const [invoiceNumber, setInvoiceNumber] = useState(`INV-1404-${102 + invoices.length}`);
+  const getNextInvoiceNum = (list: SalesInvoice[]) => {
+    const maxNum = Math.max(
+      101,
+      ...list.map((inv) => {
+        const tail = inv.invoiceNumber.split('-').pop() || '101';
+        return parseInt(tail.replace(/\D/g, ''), 10) || 101;
+      })
+    );
+    return `INV-1404-${maxNum + 1}`;
+  };
+  const [invoiceNumber, setInvoiceNumber] = useState(() => getNextInvoiceNum(invoices));
   const [date, setDate] = useState('1404/08/12');
   const [contactId, setContactId] = useState(contacts[0]?.id || '');
   const [notes, setNotes] = useState('');
+
+  useEffect(() => {
+    if (contacts.length > 0 && (!contactId || !contacts.some((c) => c.id === contactId))) {
+      setContactId(contacts[0].id);
+    }
+  }, [contacts, contactId]);
 
   // Success Feedback Card State
   const [submittedInvoiceSuccess, setSubmittedInvoiceSuccess] = useState<SalesInvoice | null>(null);
@@ -171,9 +187,11 @@ export const InvoicesAndBotView: React.FC<InvoicesAndBotViewProps> = ({
 
   const handleQuickCreateContact = () => {
     if (!newContactName.trim() || !onAddContact) return;
+    const nextContactCodeNum =
+      Math.max(1000, ...contacts.map((c) => parseInt(c.code.replace(/\D/g, ''), 10) || 1000)) + 1;
     const newC: Contact = {
       id: `cnt-${Date.now()}`,
-      code: `P-${1006 + contacts.length}`,
+      code: `P-${nextContactCodeNum}`,
       name: newContactName.trim(),
       type: invoiceType === 'sales' ? 'customer' : 'supplier',
       phone: newContactPhone.trim(),
@@ -272,33 +290,33 @@ export const InvoicesAndBotView: React.FC<InvoicesAndBotViewProps> = ({
       onIssueInvoice(targetInvoice);
     }
 
-    setSubmittedInvoiceSuccess(targetInvoice);
-    setInvoiceNumber(`INV-1404-${103 + invoices.length}`);
-    setPayments([]);
-    setNotes('');
-  };
+      setSubmittedInvoiceSuccess(targetInvoice);
+      setInvoiceNumber(getNextInvoiceNum([targetInvoice, ...invoices]));
+      setPayments([]);
+      setNotes('');
+    };
 
-  const handleStartEdit = (inv: SalesInvoice) => {
-    setEditingInvoiceId(inv.id);
-    setInvoiceType(inv.type);
-    setInvoiceNumber(inv.invoiceNumber);
-    setDate(inv.date);
-    setContactId(inv.contactId);
-    setItems(inv.items);
-    setPayments(inv.payments || []);
-    setNotes(inv.notes || '');
-    setSubmittedInvoiceSuccess(null);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
+    const handleStartEdit = (inv: SalesInvoice) => {
+      setEditingInvoiceId(inv.id);
+      setInvoiceType(inv.type);
+      setInvoiceNumber(inv.invoiceNumber);
+      setDate(inv.date);
+      setContactId(inv.contactId);
+      setItems(inv.items);
+      setPayments(inv.payments || []);
+      setNotes(inv.notes || '');
+      setSubmittedInvoiceSuccess(null);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
 
-  return (
-    <div className="space-y-6 max-w-full overflow-hidden">
-      {/* Invoice Preview Modal */}
-      <InvoicePreviewModal
-        invoice={previewInvoice}
-        companyName="ترازبان ارزی — حسابداری صرافی"
-        onClose={() => setPreviewInvoice(null)}
-      />
+    return (
+      <div className="space-y-6 max-w-full overflow-hidden">
+        {/* Invoice Preview Modal */}
+        <InvoicePreviewModal
+          invoice={previewInvoice}
+          companyName="آرکا (ARKA) — صرافی و حسابداری ارزی"
+          onClose={() => setPreviewInvoice(null)}
+        />
 
       {/* SUCCESS CONFIRMATION CARD ON SUBMIT */}
       {submittedInvoiceSuccess && (

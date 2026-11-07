@@ -309,20 +309,41 @@ test('reconcileBankTransactions detects matched and unmatched items accurately',
   assert.equal(rec.adjustedStatementBalanceForeign, 574500000);
 });
 
-test('offlineLicenseEngine computes deterministic 16-digit hardware activation key and rejects keys from other hardware IDs', async () => {
-  const { computeOfflineActivationKey, verifyOfflineActivationKey, getHardwareMachineId } =
-    await import('./offlineLicenseEngine');
-  const hw = getHardwareMachineId();
-  assert.match(hw.machineId, /^TB-HW-\d{4}-\d{4}$/);
+test('offlineLicenseEngine enforces V6 Hardware Key derived from Vendor Master Password (ARKA-MASTER-2026)', async () => {
+  const {
+    generateOfflineActivationKey,
+    verifyOfflineActivationKey,
+    getOrCreateMachineId,
+    verifyMasterPassword,
+    saveActivatedLicense,
+    VENDOR_MASTER_PASSWORD,
+  } = await import('./offlineLicenseEngine');
 
-  const generatedKey = computeOfflineActivationKey(hw.machineId);
+  const machineId = getOrCreateMachineId();
+  assert.match(machineId, /^TB-HW-\d{4}-\d{4}$/);
+
+  // Key generated with official master password
+  const generatedKey = generateOfflineActivationKey(machineId, VENDOR_MASTER_PASSWORD);
   assert.match(generatedKey, /^\d{4}-\d{4}-\d{4}-\d{4}$/);
-  assert.equal(verifyOfflineActivationKey(hw.machineId, generatedKey), true);
+  assert.equal(verifyOfflineActivationKey(machineId, generatedKey), true);
+
+  // Master password verification
+  assert.equal(verifyMasterPassword(''), false);
+  assert.equal(verifyMasterPassword('WRONG-PASS-1234'), false);
+  assert.equal(verifyMasterPassword('ARKA-MASTER-2026'), true);
+  assert.equal(verifyMasterPassword('arka-master-2026'), true);
+
+  // Without valid Master Password in keygen, key generation fails or cannot produce valid key
+  assert.equal(generateOfflineActivationKey(machineId, 'WRONG-MASTER'), '');
+  assert.equal(generateOfflineActivationKey(machineId, ''), '');
 
   // A key for a different computer's hardware ID must be rejected
-  const otherComputerKey = computeOfflineActivationKey('TB-HW-1111-2222');
-  assert.equal(verifyOfflineActivationKey(hw.machineId, otherComputerKey), false);
-  assert.equal(verifyOfflineActivationKey(hw.machineId, '9999-8888-7777-6666'), false);
-});
+  const otherComputerKey = generateOfflineActivationKey('TB-HW-1111-2222', VENDOR_MASTER_PASSWORD);
+  assert.equal(verifyOfflineActivationKey(machineId, otherComputerKey), false);
 
+  // Activation succeeds when valid 16-digit key matching the machine ID is provided
+  const activated = saveActivatedLicense(machineId, generatedKey);
+  assert.notEqual(activated, null);
+  assert.equal(activated?.isActivated, true);
+});
 

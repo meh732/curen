@@ -16,6 +16,7 @@ import {
 import {
   downloadNativeWindowsAccountingExePackage,
 } from '../utils/nativeWindowsExeBuilder';
+import { invokeTauriCommand } from '../utils/offlineLicenseEngine';
 import { FormattedNumberInput } from './FormattedNumberInput';
 import {
   DatabaseBackup,
@@ -78,18 +79,11 @@ export const BackupAndWarehouseView: React.FC<BackupAndWarehouseViewProps> = ({
   const fetchSavedBackupsList = async () => {
     setIsLoadingBackups(true);
     try {
-      // Check if Tauri native command is available
-      const tauriInvoke = (window as unknown as { __TAURI__?: { invoke?: (cmd: string) => Promise<string> } }).__TAURI__?.invoke;
-      if (tauriInvoke) {
-        try {
-          const nativeDir = await tauriInvoke('get_backup_folder_path');
-          if (nativeDir) {
-            setBackupDirectoryPath(nativeDir);
-            setLatestBackupFilePath(`${nativeDir}\\TarazBan_Latest_AutoBackup.json`);
-          }
-        } catch {
-          // fallback to API
-        }
+      // Check if Tauri native command is available (Tauri v2 & v1 compatible)
+      const nativeDir = await invokeTauriCommand<string>('get_backup_folder_path');
+      if (nativeDir) {
+        setBackupDirectoryPath(nativeDir);
+        setLatestBackupFilePath(`${nativeDir}\\TarazBan_Latest_AutoBackup.json`);
       }
 
       const res = await fetch('/api/backups-list');
@@ -145,14 +139,18 @@ export const BackupAndWarehouseView: React.FC<BackupAndWarehouseViewProps> = ({
   const handleRestoreFromSavedBackupFile = async (fileName?: string) => {
     try {
       // First check Tauri native restore if no specific server file
-      const tauriInvoke = (window as unknown as { __TAURI__?: { invoke?: (cmd: string) => Promise<string> } }).__TAURI__?.invoke;
-      if (!fileName && tauriInvoke) {
-        try {
-          const rawJson = await tauriInvoke('read_latest_auto_backup');
-          if (rawJson) {
+      if (!fileName) {
+        const rawJson = await invokeTauriCommand<string>('read_latest_auto_backup');
+        if (rawJson) {
+          try {
             const parsed = JSON.parse(rawJson);
             const candidate: AccountingState = parsed.data || parsed.state || parsed;
-            if (candidate && (Array.isArray(candidate.vouchers) || Array.isArray(candidate.contacts) || Array.isArray(candidate.fxDeals))) {
+            if (
+              candidate &&
+              (Array.isArray(candidate.vouchers) ||
+                Array.isArray(candidate.contacts) ||
+                Array.isArray(candidate.fxDeals))
+            ) {
               onRestoreFullBackup(candidate);
               setNotice(
                 `✅ بازگردانی بکاپ از مسیر ${latestBackupFilePath} با موفقیت انجام شد (${
@@ -163,9 +161,9 @@ export const BackupAndWarehouseView: React.FC<BackupAndWarehouseViewProps> = ({
               );
               return;
             }
+          } catch {
+            // continue to server restore
           }
-        } catch {
-          // continue to server restore
         }
       }
 
@@ -196,7 +194,7 @@ export const BackupAndWarehouseView: React.FC<BackupAndWarehouseViewProps> = ({
 
   const handleFullBackupAndBotSend = async (platform: 'bale' | 'telegram' | 'both') => {
     const summaryText =
-      `📦 *بکاپ کامل خودکار سیستم جامع حسابداری دوارزی ترازبان*\n` +
+      `📦 *بکاپ کامل خودکار سیستم جامع حسابداری دوارزی آرکا (ARKA)*\n` +
       `🏢 شرکت: ${state.companyName} (${state.fiscalYear})\n` +
       `📊 محتویات بکاپ کامل:\n` +
       `• تعداد معاملات خرید و فروش ارز: ${state.fxDeals.length} معامله\n` +

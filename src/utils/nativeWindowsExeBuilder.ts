@@ -54,7 +54,8 @@ namespace TarazBanNativeWindows
 
     public static class LicenseManager
     {
-        private static string LicenseFile = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "tarazban_license.dat");
+        private static string LicenseFile = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "arka_master_license_v6.dat");
+        private static string LegacyLicenseFile = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "tarazban_license.dat");
 
         public static string GetHardwareSystemId()
         {
@@ -87,8 +88,8 @@ namespace TarazBanNativeWindows
 
             try
             {
-                string drive = Path.GetPathRoot(Environment.SystemDirectory).Replace(":\\\\", "");
-                using (ManagementObject disk = new ManagementObject("win32_logicaldisk.deviceid=\\"" + drive + ":\\""))
+                string drive = Path.GetPathRoot(Environment.SystemDirectory).Replace(":\\", "");
+                using (ManagementObject disk = new ManagementObject("win32_logicaldisk.deviceid=\"" + drive + ":\""))
                 {
                     disk.Get();
                     if (disk["VolumeSerialNumber"] != null)
@@ -149,12 +150,26 @@ namespace TarazBanNativeWindows
             return enteredDigits.Length == 16 && enteredDigits == expected;
         }
 
+        public static bool VerifyMasterPassword(string enteredMaster)
+        {
+            if (string.IsNullOrWhiteSpace(enteredMaster)) return false;
+            string clean = NormalizeId(enteredMaster);
+            return clean == "ARKAMASTER2026";
+        }
+
         public static bool IsActivated()
         {
             try
             {
+                if (File.Exists(LegacyLicenseFile))
+                {
+                    try { File.Delete(LegacyLicenseFile); } catch { }
+                }
                 if (!File.Exists(LicenseFile)) return false;
-                string savedKey = File.ReadAllText(LicenseFile, Encoding.UTF8).Trim();
+                string savedContent = File.ReadAllText(LicenseFile, Encoding.UTF8).Trim();
+                if (!savedContent.StartsWith("ARKA_V6::") || !savedContent.EndsWith("::MASTER_VERIFIED"))
+                    return false;
+                string savedKey = savedContent.Replace("ARKA_V6::", "").Replace("::MASTER_VERIFIED", "");
                 return VerifyKey(GetHardwareSystemId(), savedKey);
             }
             catch { return false; }
@@ -162,22 +177,23 @@ namespace TarazBanNativeWindows
 
         public static void SaveLicense(string key)
         {
-            File.WriteAllText(LicenseFile, key.Trim(), Encoding.UTF8);
+            File.WriteAllText(LicenseFile, "ARKA_V6::" + key.Trim() + "::MASTER_VERIFIED", Encoding.UTF8);
         }
     }
 
-    // 1. OFFLINE ACTIVATION FORM (NO KEYGEN INSIDE CLIENT APP)
+    // 1. OFFLINE ACTIVATION FORM (REQUIRES 16-DIGIT KEY + VENDOR MASTER PASSWORD)
     public class ActivationForm : Form
     {
         private TextBox txtSystemId;
         private TextBox txtActivationKey;
+        private TextBox txtMasterPassword;
         private string systemId;
 
         public ActivationForm()
         {
             systemId = LicenseManager.GetHardwareSystemId();
-            this.Text = "قفل فعال‌سازی آفلاین — نرم‌افزار ویندوزی ترازبان";
-            this.Size = new Size(520, 360);
+            this.Text = "قفل فعال‌سازی دو مرحله‌ای — نرم‌افزار ویندوزی آرکا (ARKA V6)";
+            this.Size = new Size(520, 445);
             this.StartPosition = FormStartPosition.CenterScreen;
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
             this.MaximizeBox = false;
@@ -188,26 +204,26 @@ namespace TarazBanNativeWindows
 
             Label lblTitle = new Label()
             {
-                Text = "فعال‌سازی آفلاین نسخه دسکتاپ ویندوز (Native .EXE)",
-                Font = new Font("Tahoma", 11f, FontStyle.Bold),
+                Text = "فعال‌سازی رسمی نسخه دسکتاپ ویندوز آرکا (نیازمند رمز مادر فروشنده)",
+                Font = new Font("Tahoma", 10.5f, FontStyle.Bold),
                 ForeColor = Color.FromArgb(15, 23, 42),
                 AutoSize = false,
-                Bounds = new Rectangle(25, 20, 455, 28)
+                Bounds = new Rectangle(25, 18, 455, 28)
             };
 
             Label lblDesc = new Label()
             {
-                Text = "برای باز شدن قفل نرم‌افزار، «کد شناسایی سیستم» زیر را برای مدیر ارسال کرده و رمز فعال‌سازی ۱۶ رقمی آفلاین دریافتی را وارد نمایید:",
+                Text = "برای باز شدن قفل نرم‌افزار، علاوه بر رمز فعال‌سازی ۱۶ رقمی این سیستم، وارد کردن «رمز مادر انحصاری فروشنده» الزامی است:",
                 ForeColor = Color.FromArgb(71, 85, 105),
                 AutoSize = false,
-                Bounds = new Rectangle(25, 52, 455, 42)
+                Bounds = new Rectangle(25, 48, 455, 40)
             };
 
             Label lblSys = new Label()
             {
-                Text = "کد شناسایی سیستم شما (System Hardware ID):",
+                Text = "۱. کد شناسایی سیستم شما (System Hardware ID):",
                 Font = new Font("Tahoma", 9f, FontStyle.Bold),
-                Bounds = new Rectangle(25, 102, 320, 22)
+                Bounds = new Rectangle(25, 95, 320, 22)
             };
 
             txtSystemId = new TextBox()
@@ -219,7 +235,7 @@ namespace TarazBanNativeWindows
                 ForeColor = Color.FromArgb(30, 58, 138),
                 TextAlign = HorizontalAlignment.Center,
                 RightToLeft = RightToLeft.No,
-                Bounds = new Rectangle(135, 128, 345, 32)
+                Bounds = new Rectangle(135, 120, 345, 32)
             };
 
             Button btnCopy = new Button()
@@ -228,7 +244,7 @@ namespace TarazBanNativeWindows
                 BackColor = Color.FromArgb(51, 65, 85),
                 ForeColor = Color.White,
                 FlatStyle = FlatStyle.Flat,
-                Bounds = new Rectangle(25, 128, 102, 32)
+                Bounds = new Rectangle(25, 120, 102, 32)
             };
             btnCopy.Click += (s, e) =>
             {
@@ -238,9 +254,9 @@ namespace TarazBanNativeWindows
 
             Label lblKey = new Label()
             {
-                Text = "رمز فعال‌سازی آفلاین ۱۶ رقمی (XXXX-XXXX-XXXX-XXXX):",
+                Text = "۲. رمز فعال‌سازی آفلاین ۱۶ رقمی (XXXX-XXXX-XXXX-XXXX):",
                 Font = new Font("Tahoma", 9f, FontStyle.Bold),
-                Bounds = new Rectangle(25, 175, 455, 22)
+                Bounds = new Rectangle(25, 165, 455, 22)
             };
 
             txtActivationKey = new TextBox()
@@ -249,22 +265,39 @@ namespace TarazBanNativeWindows
                 TextAlign = HorizontalAlignment.Center,
                 RightToLeft = RightToLeft.No,
                 MaxLength = 19,
-                Bounds = new Rectangle(25, 202, 455, 34)
+                Bounds = new Rectangle(25, 190, 455, 34)
             };
             txtActivationKey.TextChanged += TxtActivationKey_TextChanged;
 
+            Label lblMaster = new Label()
+            {
+                Text = "۳. رمز مادر انحصاری فروشنده (الزامی — بدون رمز مادر کد کار نمی‌کند):",
+                Font = new Font("Tahoma", 9f, FontStyle.Bold),
+                ForeColor = Color.FromArgb(180, 83, 9),
+                Bounds = new Rectangle(25, 238, 455, 22)
+            };
+
+            txtMasterPassword = new TextBox()
+            {
+                Font = new Font("Consolas", 13f, FontStyle.Bold),
+                TextAlign = HorizontalAlignment.Center,
+                RightToLeft = RightToLeft.No,
+                UseSystemPasswordChar = true,
+                Bounds = new Rectangle(25, 263, 455, 34)
+            };
+
             Button btnActivate = new Button()
             {
-                Text = "بررسی رمز و فعال‌سازی دائمی نرم‌افزار",
+                Text = "تأیید رمز مادر و فعال‌سازی دائمی نرم‌افزار",
                 Font = new Font("Tahoma", 10f, FontStyle.Bold),
-                BackColor = Color.FromArgb(29, 78, 216),
+                BackColor = Color.FromArgb(4, 120, 87),
                 ForeColor = Color.White,
                 FlatStyle = FlatStyle.Flat,
-                Bounds = new Rectangle(25, 252, 455, 42)
+                Bounds = new Rectangle(25, 315, 455, 44)
             };
             btnActivate.Click += BtnActivate_Click;
 
-            this.Controls.AddRange(new Control[] { lblTitle, lblDesc, lblSys, txtSystemId, btnCopy, lblKey, txtActivationKey, btnActivate });
+            this.Controls.AddRange(new Control[] { lblTitle, lblDesc, lblSys, txtSystemId, btnCopy, lblKey, txtActivationKey, lblMaster, txtMasterPassword, btnActivate });
         }
 
         private void TxtActivationKey_TextChanged(object sender, EventArgs e)
@@ -286,17 +319,21 @@ namespace TarazBanNativeWindows
 
         private void BtnActivate_Click(object sender, EventArgs e)
         {
-            if (LicenseManager.VerifyKey(systemId, txtActivationKey.Text))
+            if (!LicenseManager.VerifyKey(systemId, txtActivationKey.Text))
             {
-                LicenseManager.SaveLicense(txtActivationKey.Text);
-                MessageBox.Show("نرم‌افزار با موفقیت به صورت دائمی و آفلاین فعال شد!", "فعال‌سازی موفق", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                this.DialogResult = DialogResult.OK;
-                this.Close();
+                MessageBox.Show("رمز فعال‌سازی ۱۶ رقمی وارد شده برای این سیستم معتبر نیست!", "خطای کد ۱۶ رقمی", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
             }
-            else
+            if (!LicenseManager.VerifyMasterPassword(txtMasterPassword.Text))
             {
-                MessageBox.Show("رمز فعال‌سازی وارد شده برای این سیستم معتبر نیست. لطفاً رمز را از نرم‌افزار Keygen مدیر دریافت کنید.", "خطای رمز فعال‌سازی", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("رمز مادر فروشنده وارد نشده یا اشتباه است! بدون رمز مادر فروشنده، کد ۱۶ رقمی به تنهایی فاقد اعتبار است.", "خطای رمز مادر فروشنده", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
             }
+
+            LicenseManager.SaveLicense(txtActivationKey.Text);
+            MessageBox.Show("نرم‌افزار آرکا با تأیید رمز مادر فروشنده به صورت دائمی روی این سیستم فعال شد!", "فعال‌سازی موفق", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            this.DialogResult = DialogResult.OK;
+            this.Close();
         }
     }
 

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   BankAccount,
   BankStatementEntry,
@@ -44,6 +44,12 @@ export const BanksAndReconciliationView: React.FC<BanksAndReconciliationViewProp
   onUpdateCurrencies,
 }) => {
   const [selectedBankId, setSelectedBankId] = useState<string>(banks[0]?.id || '');
+
+  useEffect(() => {
+    if (banks.length > 0 && (!selectedBankId || !banks.some((b) => b.id === selectedBankId))) {
+      setSelectedBankId(banks[0].id);
+    }
+  }, [banks, selectedBankId]);
 
   // فرم تعریف بانک یا صندوق جدید
   const [newBankKind, setNewBankKind] = useState<'bank' | 'cash_box'>('bank');
@@ -159,9 +165,11 @@ export const BanksAndReconciliationView: React.FC<BanksAndReconciliationViewProp
     const moeinCode =
       newCurrency !== 'IRR' ? '1103' : newBankKind === 'cash_box' ? '1101' : '1102';
 
+    const nextBankCodeNum =
+      Math.max(100, ...banks.map((b) => parseInt(b.code.replace(/\D/g, ''), 10) || 100)) + 1;
     const newBankObj: BankAccount = {
       id: `bnk-${Date.now()}`,
-      code: `${newBankKind === 'cash_box' ? 'C' : 'B'}-${105 + banks.length}`,
+      code: `${newBankKind === 'cash_box' ? 'C' : 'B'}-${nextBankCodeNum}`,
       bankName: newBankName.trim(),
       branchName:
         newBranchName.trim() ||

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   FXDeal,
   FXDeliverySplit,
@@ -57,7 +57,7 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
   contacts,
   banks,
   vouchers = [],
-  companyName = 'صرافی و خدمات ارزی ترازبان',
+  companyName = 'آرکا (ARKA) — صرافی و خدمات ارزی',
   fiscalYear = 'سال مالی ۱۴۰۴',
   onExecuteDeal,
   onRecordDealDelivery,
@@ -95,6 +95,22 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
       banks[0]?.id ||
       ''
   );
+
+  useEffect(() => {
+    if (contacts.length > 0 && (!contactId || !contacts.some((c) => c.id === contactId))) {
+      setContactId(contacts[0].id);
+    }
+  }, [contacts, contactId]);
+
+  useEffect(() => {
+    if (banks.length > 0 && (!targetVaultBankId || !banks.some((b) => b.id === targetVaultBankId))) {
+      const match =
+        banks.find((b) => b.currency === currency) ||
+        banks.find((b) => b.currency !== 'IRR') ||
+        banks[0];
+      if (match) setTargetVaultBankId(match.id);
+    }
+  }, [banks, targetVaultBankId, currency]);
 
   // ردیف‌های دریافت یا پرداخت معادل ریالی معامله (چند بانکی / چند صندوقی)
   const [payments, setPayments] = useState<PaymentSplitLine[]>([]);
@@ -205,9 +221,11 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
 
   const handleQuickCreateContact = () => {
     if (!newContactName.trim() || !onAddContact) return;
+    const nextContactCodeNum =
+      Math.max(1000, ...contacts.map((c) => parseInt(c.code.replace(/\D/g, ''), 10) || 1000)) + 1;
     const newC: Contact = {
       id: `cnt-${Date.now()}`,
-      code: `P-${1001 + contacts.length}`,
+      code: `P-${nextContactCodeNum}`,
       name: newContactName.trim(),
       type: 'both',
       phone: newContactPhone.trim(),
@@ -231,7 +249,15 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
     else if (paidSumIRR >= totalIRR) settlementMethod = 'bank_transfer';
     else if (paidSumIRR > 0) settlementMethod = 'multi_split';
 
-    const dealNum = `FX-1404-${1001 + fxDeals.length}`;
+    const nextDealSeq =
+      Math.max(
+        1000,
+        ...fxDeals.map((d) => {
+          const tail = d.dealNumber.split('-').pop() || '1000';
+          return parseInt(tail.replace(/\D/g, ''), 10) || 1000;
+        })
+      ) + 1;
+    const dealNum = `FX-1404-${nextDealSeq}`;
     const trkMain = dealTrackingNumber.trim() || dealNum;
     const vaultBank = banks.find((b) => b.id === targetVaultBankId);
 

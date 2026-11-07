@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Account,
   Contact,
@@ -105,6 +105,43 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
   const [expenseAccountCode, setExpenseAccountCode] = useState<string>('5201');
   const [incomeAccountCode, setIncomeAccountCode] = useState<string>('4101');
 
+  // همگام‌سازی خودکار در صورت تعریف اولین مشتری یا اولین بانک پس از خام‌سازی دیتابیس
+  useEffect(() => {
+    if (contacts.length > 0 && (!selectedContactId || !contacts.some((c) => c.id === selectedContactId))) {
+      setSelectedContactId(contacts[0].id);
+    }
+  }, [contacts, selectedContactId]);
+
+  useEffect(() => {
+    if (banks.length > 0) {
+      if (!sourceBankId || !banks.some((b) => b.id === sourceBankId)) {
+        setSourceBankId(banks[0].id);
+      }
+      if (!destBankId || !banks.some((b) => b.id === destBankId)) {
+        setDestBankId((banks[1] || banks[0]).id);
+      }
+      if (splits.length === 0) {
+        const firstBank = banks[0];
+        const defaultRate =
+          firstBank.currency === 'IRR'
+            ? 1
+            : currencies.find((c) => c.code === firstBank.currency)?.defaultRateToIRR || 1;
+        setSplits([
+          {
+            id: `spl-init-${Date.now()}`,
+            bankId: firstBank.id,
+            bankName: firstBank.bankName,
+            currency: firstBank.currency,
+            amountForeign: 0,
+            exchangeRate: defaultRate,
+            amountIRR: 0,
+            trackingNumber: '',
+          },
+        ]);
+      }
+    }
+  }, [banks, sourceBankId, destBankId, splits.length, currencies]);
+
   // تعریف سریع شخص
   const [showQuickContact, setShowQuickContact] = useState(false);
   const [newContactName, setNewContactName] = useState('');
@@ -146,9 +183,11 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
 
   const handleQuickCreateContact = () => {
     if (!newContactName.trim() || !onAddContact) return;
+    const nextContactCodeNum =
+      Math.max(1000, ...contacts.map((c) => parseInt(c.code.replace(/\D/g, ''), 10) || 1000)) + 1;
     const newC: Contact = {
       id: `cnt-${Date.now()}`,
-      code: `P-${1006 + contacts.length}`,
+      code: `P-${nextContactCodeNum}`,
       name: newContactName.trim(),
       type: 'both',
       phone: newContactPhone.trim(),
@@ -178,7 +217,8 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
 
   const handleAutoSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const voucherNumber = 1004 + vouchers.length;
+    const voucherNumber =
+      Math.max(1003, ...vouchers.map((v) => v.voucherNumber || 0)) + 1;
     const lines: VoucherLine[] = [];
     let autoTitle = '';
 
@@ -529,9 +569,12 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
       };
     });
 
+    const nextManualVoucherNumber =
+      Math.max(1003, ...vouchers.map((v) => v.voucherNumber || 0)) + 1;
+
     onAddVoucher({
       id: `vch-man-${Date.now()}`,
-      voucherNumber: 1004 + vouchers.length,
+      voucherNumber: nextManualVoucherNumber,
       date,
       description: description || 'سند حسابداری',
       status: 'permanent',

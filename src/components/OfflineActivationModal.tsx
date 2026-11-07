@@ -1,157 +1,245 @@
 import React, { useState } from 'react';
 import {
-  formatActivationKeyInput,
-  LicenseStatus,
-  saveActivatedLicense,
-} from '../utils/offlineLicenseEngine';
-import {
+  ShieldCheck,
   Lock,
-  KeyRound,
   Copy,
-  ShieldAlert,
+  Check,
+  KeyRound,
   Cpu,
+  AlertTriangle,
+  Sparkles,
+  ClipboardPaste,
 } from 'lucide-react';
+import {
+  saveActivatedLicense,
+  verifyOfflineActivationKey,
+  LicenseStatus,
+} from '../utils/offlineLicenseEngine';
 
 interface OfflineActivationModalProps {
-  license: LicenseStatus;
-  onActivated: (newStatus: LicenseStatus) => void;
+  machineId?: string;
+  license?: LicenseStatus;
+  onActivated: (status: LicenseStatus) => void;
+}
+
+// Convert Persian and Arabic digits to English digits
+function toEnglishDigits(str: string): string {
+  return str
+    .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 1776))
+    .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 1632));
+}
+
+// Format raw digits into 0000-0000-0000-0000
+function formatKeyBlocks(digits: string): string {
+  const clean = digits.replace(/[^0-9]/g, '').slice(0, 16);
+  const parts: string[] = [];
+  for (let i = 0; i < clean.length; i += 4) {
+    parts.push(clean.slice(i, i + 4));
+  }
+  return parts.join('-');
 }
 
 export const OfflineActivationModal: React.FC<OfflineActivationModalProps> = ({
+  machineId: propMachineId,
   license,
   onActivated,
 }) => {
+  const machineId = propMachineId || license?.machineId || '';
   const [enteredKey, setEnteredKey] = useState('');
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [pastedSuccess, setPastedSuccess] = useState(false);
 
   const handleCopyMachineId = () => {
+    if (!machineId) return;
+    navigator.clipboard.writeText(machineId);
+    setCopiedId(true);
+    setTimeout(() => setCopiedId(false), 2500);
+  };
+
+  const handleKeyInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const rawNormalized = toEnglishDigits(e.target.value);
+    const formatted = formatKeyBlocks(rawNormalized);
+    setEnteredKey(formatted);
+    if (errorMsg) setErrorMsg('');
+  };
+
+  const handlePasteKey = async () => {
     try {
-      navigator.clipboard.writeText(license.machineId);
-      setCopiedId(true);
-      setTimeout(() => setCopiedId(false), 2000);
+      if (navigator.clipboard && navigator.clipboard.readText) {
+        const text = await navigator.clipboard.readText();
+        if (text) {
+          const rawNormalized = toEnglishDigits(text);
+          const formatted = formatKeyBlocks(rawNormalized);
+          setEnteredKey(formatted);
+          setPastedSuccess(true);
+          setTimeout(() => setPastedSuccess(false), 2000);
+          if (errorMsg) setErrorMsg('');
+        }
+      }
     } catch {
-      // ignore
+      // ignore clipboard permission error
     }
   };
 
-  const handleVerifyAndActivate = (e: React.FormEvent) => {
+  const handleActivate = (e: React.FormEvent) => {
     e.preventDefault();
-    setErrorMsg(null);
-    const result = saveActivatedLicense(license.machineId, enteredKey);
-    if (!result) {
+    setErrorMsg('');
+
+    const cleanDigits = enteredKey.replace(/[^0-9]/g, '');
+    if (cleanDigits.length < 16) {
+      setErrorMsg('لطفاً کد فعال‌سازی ۱۶ رقمی اختصاصی این سیستم را به طور کامل وارد نمایید.');
+      return;
+    }
+
+    if (!verifyOfflineActivationKey(machineId, enteredKey)) {
       setErrorMsg(
         'رمز فعال‌سازی وارد شده برای سخت‌افزار این کامپیوتر معتبر نیست! برنامه تا زمان وارد کردن رمز صحیح این سیستم باز نخواهد شد.'
       );
       return;
     }
-    onActivated(result);
+
+    const result = saveActivatedLicense(machineId, enteredKey);
+    if (result && result.isActivated) {
+      onActivated(result);
+    } else {
+      setErrorMsg(
+        'رمز فعال‌سازی وارد شده برای سخت‌افزار این کامپیوتر معتبر نیست! برنامه تا زمان وارد کردن رمز صحیح این سیستم باز نخواهد شد.'
+      );
+    }
   };
 
   return (
-    <div className="min-h-screen w-full bg-slate-900 flex flex-col items-center justify-center p-4 md:p-6 select-none">
-      <div className="max-w-xl w-full">
-        <div className="bg-white border-2 border-slate-300 rounded-xl shadow-2xl overflow-hidden">
-          {/* Header */}
-          <div className="bg-slate-950 text-white px-6 py-5 flex items-center gap-3.5 border-b border-slate-800">
-            <div className="w-12 h-12 rounded-xl bg-slate-900 border border-amber-400/50 flex items-center justify-center text-amber-400 shrink-0 overflow-hidden shadow-md">
-              <img
-                src="/arka-logo.jpg"
-                alt="لوگو آرکا (ARKA)"
-                referrerPolicy="no-referrer"
-                className="w-full h-full object-cover"
-              />
-            </div>
+    <div
+      dir="rtl"
+      className="fixed inset-0 z-[100] bg-slate-950/95 backdrop-blur-xl flex items-center justify-center p-4 overflow-y-auto"
+    >
+      <div className="w-full max-w-lg bg-slate-900 border border-slate-700/80 rounded-3xl shadow-2xl overflow-hidden text-white my-auto">
+        {/* Top Security Banner */}
+        <div className="bg-gradient-to-l from-emerald-900/90 via-teal-900/80 to-slate-900 p-5 border-b border-slate-800 flex items-center justify-between">
+          <div className="flex items-center gap-3.5">
+            <img
+              src="/arka-logo.jpg"
+              alt="لوگو آرکا"
+              className="w-12 h-12 rounded-2xl object-cover bg-white p-0.5 border border-emerald-500/40 shadow-lg shrink-0"
+            />
             <div>
-              <h1 className="text-base md:text-lg font-extrabold text-white flex items-center gap-2">
-                <Lock className="w-4 h-4 text-amber-400 shrink-0" />
-                <span>قفل سخت‌افزاری و فعال‌سازی آفلاین — آرکا (ARKA) ویندوز</span>
-              </h1>
-              <p className="text-xs text-slate-300 mt-1">
-                این نرم‌افزار هنوز روی این کامپیوتر فعال نشده است. تا زمان ثبت رمز فعال‌سازی معتبر، امکان ورود به برنامه وجود ندارد.
+              <span className="inline-block px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 text-[10px] font-bold mb-1">
+                قفل سخت‌افزاری آفلاین آرکا (ARKA V6)
+              </span>
+              <h2 className="text-base font-black text-white">
+                فعال‌سازی رسمی نرم‌افزار صرافی و حسابداری آرکا (ARKA)
+              </h2>
+              <p className="text-xs text-slate-300 mt-0.5">
+                فعال‌سازی مستقل با کد ۱۶ رقمی اختصاصی سخت‌افزار
               </p>
             </div>
           </div>
+          <Lock className="w-6 h-6 text-amber-400 shrink-0" />
+        </div>
 
-          <form onSubmit={handleVerifyAndActivate} className="p-6 space-y-5">
-            {/* Hardware Fingerprint Details */}
-            <div className="p-3.5 rounded-lg bg-slate-100 border border-slate-200 space-y-2 text-xs">
-              <div className="font-bold text-slate-800 flex items-center gap-1.5">
-                <Cpu className="w-4 h-4 text-blue-700" />
-                <span>مشخصات سخت‌افزاری شناسایی‌شده این سیستم ویندوز:</span>
-              </div>
-              <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-600 font-mono-num">
-                <div>سیستم‌عامل: {license.hardwareSpecs.platform}</div>
-                <div>هسته‌های پردازنده (CPU): {license.hardwareSpecs.cpuCores} Cores</div>
-                <div>حافظه رم (RAM): ~{license.hardwareSpecs.ramGb} GB</div>
-                <div>نمایشگر: {license.hardwareSpecs.screenSpec}</div>
-              </div>
-              <div className="text-[10px] text-slate-500 font-mono-num truncate">
-                پردازنده گرافیکی (GPU): {license.hardwareSpecs.gpuRenderer}
-              </div>
-            </div>
+        {/* Main Content */}
+        <form onSubmit={handleActivate} className="p-5 space-y-4">
+          <div className="bg-slate-800/70 border border-slate-700/80 rounded-2xl p-3.5 text-xs text-slate-300 leading-relaxed">
+            این نرم‌افزار برای امنیت صرافی به سخت‌افزار اختصاصی این سیستم قفل شده است. برای فعال‌سازی، «شناسه سخت‌افزاری» زیر را کپی کرده و برای فروشنده یا پشتیبانی ارسال نمایید تا کد ۱۶ رقمی فعال‌سازی را دریافت کنید.
+          </div>
 
-            {/* Step 1: Hardware Machine ID */}
-            <div className="p-4 rounded-lg bg-amber-50/60 border border-amber-200 space-y-2.5">
-              <div className="text-xs font-bold text-slate-800">
-                ۱. شناسه سخت‌افزاری اختصاصی این کامپیوتر (System Hardware ID):
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <input
-                  type="text"
-                  readOnly
-                  dir="ltr"
-                  value={license.machineId}
-                  aria-label="شناسه سخت‌افزاری سیستم"
-                  className="flex-1 min-w-[200px] px-4 py-2.5 text-center font-mono-num text-lg font-extrabold tracking-widest bg-white border-2 border-amber-400 rounded-lg text-slate-950"
-                />
-                <button
-                  type="button"
-                  onClick={handleCopyMachineId}
-                  className="px-4 py-3 text-xs font-bold bg-slate-900 hover:bg-slate-800 text-white rounded-lg flex items-center gap-1.5 cursor-pointer shrink-0"
-                >
-                  <Copy className="w-4 h-4" />
-                  <span>{copiedId ? 'کپی شد!' : 'کپی شناسه سخت‌افزار'}</span>
-                </button>
-              </div>
-              <p className="text-[11px] text-slate-600 leading-relaxed">
-                این شناسه مستقیماً از سخت‌افزار این کامپیوتر استخراج شده و روی هر ویندوز متفاوت است. برای دریافت رمز فعال‌سازی، این شناسه را برای پشتیبانی ارسال نمایید.
-              </p>
-            </div>
-
-            {/* Step 2: 16-Digit Offline Activation Key */}
-            <div className="space-y-2">
-              <label className="block text-xs font-bold text-slate-800">
-                ۲. رمز فعال‌سازی ۱۶ رقمی آفلاین (XXXX-XXXX-XXXX-XXXX):
-              </label>
-              <input
-                type="text"
+          {/* Step 1: Machine ID */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+              <Cpu className="w-4 h-4 text-emerald-400" />
+              <span>۱. شناسه سخت‌افزاری اختصاصی این کامپیوتر:</span>
+              <span dir="ltr" className="text-[11px] text-slate-400 font-mono">(System Hardware ID)</span>
+            </label>
+            <div className="flex items-center gap-2">
+              <div
                 dir="ltr"
-                value={enteredKey}
-                onChange={(e) =>
-                  setEnteredKey(formatActivationKeyInput(e.target.value))
-                }
-                placeholder="XXXX-XXXX-XXXX-XXXX"
-                aria-label="کد فعال‌سازی آفلاین"
-                className="w-full px-4 py-3 text-center font-mono-num text-xl font-extrabold tracking-widest bg-white border-2 border-blue-400 focus:border-blue-700 rounded-lg text-blue-950 outline-none"
-              />
-            </div>
-
-            {errorMsg && (
-              <div className="p-3.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-900 text-xs font-bold flex items-center gap-2">
-                <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0" />
-                <span>{errorMsg}</span>
+                className="flex-1 bg-slate-950 border-2 border-amber-500/60 rounded-xl px-4 py-2.5 text-center font-mono text-xl font-black tracking-widest text-amber-400 select-all shadow-inner"
+              >
+                {machineId}
               </div>
-            )}
+              <button
+                type="button"
+                onClick={handleCopyMachineId}
+                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 text-xs font-bold text-slate-200 flex items-center gap-1.5 transition cursor-pointer shrink-0"
+              >
+                {copiedId ? (
+                  <>
+                    <Check className="w-4 h-4 text-emerald-400" />
+                    <span className="text-emerald-400">کپی شد</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-4 h-4" />
+                    <span>کپی شناسه سخت‌افزار</span>
+                  </>
+                )}
+              </button>
+            </div>
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              این شناسه مستقیماً از سخت‌افزار این کامپیوتر استخراج شده و روی هر سیستم متفاوت است.
+            </p>
+          </div>
 
-            <button
-              type="submit"
-              className="w-full py-3.5 px-5 text-sm font-extrabold bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg flex items-center justify-center gap-2 cursor-pointer transition-colors"
-            >
-              <KeyRound className="w-4 h-4" />
-              <span>ثبت رمز فعال‌سازی و بازگشایی نرم‌افزار روی این کامپیوتر</span>
-            </button>
-          </form>
+          {/* Step 2: 16-digit Key Input */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                <KeyRound className="w-4 h-4 text-emerald-400" />
+                <span>۲. رمز فعال‌سازی ۱۶ رقمی آفلاین:</span>
+              </label>
+              <button
+                type="button"
+                onClick={handlePasteKey}
+                className="text-[11px] text-emerald-400 hover:text-emerald-300 flex items-center gap-1 transition cursor-pointer"
+              >
+                <ClipboardPaste className="w-3.5 h-3.5" />
+                <span>{pastedSuccess ? 'جای‌گذاری شد' : 'چسباندن کد (Paste)'}</span>
+              </button>
+            </div>
+            <input
+              dir="ltr"
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9\-]*"
+              value={enteredKey}
+              onChange={handleKeyInputChange}
+              placeholder="0000-0000-0000-0000"
+              autoComplete="off"
+              spellCheck={false}
+              className="w-full bg-slate-950 border-2 border-emerald-500/50 focus:border-emerald-400 rounded-xl px-4 py-3 text-center font-mono text-xl font-black tracking-widest text-emerald-300 placeholder:text-slate-700 focus:outline-none transition shadow-inner"
+            />
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              کد ۱۶ رقمی که از فروشنده دریافت کرده‌اید را در کادر بالا وارد یا جای‌گذاری (Paste) کنید.
+            </p>
+          </div>
+
+          {errorMsg && (
+            <div className="bg-rose-950/80 border border-rose-500/50 rounded-xl p-3 flex items-center gap-2.5 text-xs text-rose-200">
+              <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+              <span>{errorMsg}</span>
+            </div>
+          )}
+
+          {/* Activate Button */}
+          <button
+            type="submit"
+            className="w-full py-3.5 rounded-xl bg-gradient-to-l from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-sm shadow-lg shadow-emerald-900/50 flex items-center justify-center gap-2 transition cursor-pointer"
+          >
+            <Sparkles className="w-4 h-4" />
+            <span>ثبت رمز فعال‌سازی و بازگشایی نرم‌افزار روی این کامپیوتر</span>
+          </button>
+        </form>
+
+        {/* Footer Info */}
+        <div className="bg-slate-950/90 px-5 py-3 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
+          <span className="flex items-center gap-1.5">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+            سیستم امنیتی آرکا (نسخه ۶.۰)
+          </span>
+          <span dir="ltr" className="font-mono text-slate-500">
+            ARKA-SEC-V6
+          </span>
         </div>
       </div>
     </div>

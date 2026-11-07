@@ -27,6 +27,24 @@ fn resolve_backup_dir() -> PathBuf {
   fallback
 }
 
+fn resolve_license_lock_path() -> PathBuf {
+  #[cfg(target_os = "windows")]
+  {
+    if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
+      let dir = PathBuf::from(local_app_data).join("com.tarazban.accounting");
+      if fs::create_dir_all(&dir).is_ok() {
+        return dir.join("arka_master_license_v6.lock");
+      }
+    }
+  }
+  if let Ok(exe_path) = std::env::current_exe() {
+    if let Some(parent) = exe_path.parent() {
+      return parent.join("arka_master_license_v6.lock");
+    }
+  }
+  PathBuf::from("arka_master_license_v6.lock")
+}
+
 #[tauri::command]
 fn get_backup_folder_path() -> String {
   resolve_backup_dir().to_string_lossy().to_string()
@@ -64,10 +82,47 @@ fn read_latest_auto_backup() -> Result<String, String> {
   fs::read_to_string(&latest_path).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn verify_native_license_lock(machine_id: String, seal: String) -> bool {
+  let lock_path = resolve_license_lock_path();
+  if !lock_path.exists() {
+    return false;
+  }
+  if let Ok(content) = fs::read_to_string(&lock_path) {
+    let expected = format!(
+      "ARKA_V6_LOCK::{}::{}",
+      machine_id.trim().to_uppercase(),
+      seal.trim().to_uppercase()
+    );
+    return content.trim() == expected;
+  }
+  false
+}
+
+#[tauri::command]
+fn save_native_license_lock(machine_id: String, seal: String) -> bool {
+  let lock_path = resolve_license_lock_path();
+  let payload = format!(
+    "ARKA_V6_LOCK::{}::{}",
+    machine_id.trim().to_uppercase(),
+    seal.trim().to_uppercase()
+  );
+  fs::write(&lock_path, payload).is_ok()
+}
+
+#[tauri::command]
+fn revoke_native_license_lock() -> bool {
+  let lock_path = resolve_license_lock_path();
+  if lock_path.exists() {
+    let _ = fs::remove_file(&lock_path);
+  }
+  true
+}
+
 fn purge_stale_webview_cache_on_upgrade() {
   #[cfg(target_os = "windows")]
   {
-    const CURRENT_BUILD_STAMP: &str = "ARKA-5.5.0";
+    const CURRENT_BUILD_STAMP: &str = "ARKA-6.0.0";
     if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
       let base = PathBuf::from(&local_app_data);
       let candidate_roots = [
@@ -82,7 +137,7 @@ fn purge_stale_webview_cache_on_upgrade() {
         let existing_stamp = fs::read_to_string(&stamp_file).unwrap_or_default();
         if existing_stamp.trim() != CURRENT_BUILD_STAMP {
           let eb_default = root.join("EBWebView").join("Default");
-          // Purge only cached assets and Service Workers; NEVER touch Local Storage or IndexedDB!
+          // Purge only cached assets and Service Workers; keep Local Storage accounting data intact!
           let cache_dirs = [
             eb_default.join("Service Worker"),
             eb_default.join("Cache"),
@@ -93,6 +148,16 @@ fn purge_stale_webview_cache_on_upgrade() {
           for dir in cache_dirs.iter() {
             if dir.exists() {
               let _ = fs::remove_dir_all(dir);
+            }
+          }
+          // Remove any legacy pre-V6 license files so V6 Master Password activation is strictly enforced
+          let old_locks = [
+            root.join("tarazban_license.dat"),
+            root.join("arka_license_v5.lock"),
+          ];
+          for f in old_locks.iter() {
+            if f.exists() {
+              let _ = fs::remove_file(f);
             }
           }
           let _ = fs::write(&stamp_file, CURRENT_BUILD_STAMP);
@@ -109,7 +174,10 @@ fn main() {
     .invoke_handler(tauri::generate_handler![
       get_backup_folder_path,
       save_auto_backup,
-      read_latest_auto_backup
+      read_latest_auto_backup,
+      verify_native_license_lock,
+      save_native_license_lock,
+      revoke_native_license_lock
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

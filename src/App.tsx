@@ -36,6 +36,8 @@ import { GlobalReceiptSearchModal } from './components/GlobalReceiptSearchModal'
 import {
   loadLicenseStatus,
   lockApplicationLicense,
+  verifyNativeTauriLicenseLock,
+  invokeTauriCommand,
   LicenseStatus,
 } from './utils/offlineLicenseEngine';
 import { dispatchToMessengerBot } from './utils/botAndBackupService';
@@ -76,6 +78,23 @@ export function App() {
   const [licenseStatus, setLicenseStatus] = useState<LicenseStatus>(() =>
     loadLicenseStatus()
   );
+
+  // بررسی سخت‌گیرانه قفل بومی ویندوز تائوری در بدو ورود (جلوگیری از دور زدن لایسنس با کش قدیمی)
+  useEffect(() => {
+    let active = true;
+    verifyNativeTauriLicenseLock().then((valid) => {
+      if (!active) return;
+      if (!valid) {
+        setLicenseStatus((prev) => ({
+          isActivated: false,
+          machineId: prev.machineId,
+        }));
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const [activeTab, setActiveTab] = useState<NavTab>('dashboard');
 
@@ -320,21 +339,12 @@ export function App() {
     };
 
     try {
-      const tauriInvoke = (
-        window as unknown as {
-          __TAURI__?: { invoke?: (cmd: string, args?: Record<string, unknown>) => Promise<string> };
-        }
-      ).__TAURI__?.invoke;
-
-      if (tauriInvoke) {
-        try {
-          savedPath = await tauriInvoke('save_auto_backup', {
-            jsonContent: JSON.stringify(payloadObj, null, 2),
-            reason,
-          });
-        } catch {
-          // continue to server endpoint
-        }
+      const tauriSaved = await invokeTauriCommand<string>('save_auto_backup', {
+        jsonContent: JSON.stringify(payloadObj, null, 2),
+        reason,
+      });
+      if (tauriSaved) {
+        savedPath = tauriSaved;
       }
 
       const res = await fetch('/api/auto-backup', {
@@ -363,28 +373,20 @@ export function App() {
     const handleBeforeUnloadOrClose = () => {
       try {
         const stateSnapshot = latestStateRef.current;
-        const tauriInvoke = (
-          window as unknown as {
-            __TAURI__?: { invoke?: (cmd: string, args?: Record<string, unknown>) => Promise<string> };
-          }
-        ).__TAURI__?.invoke;
-
-        if (tauriInvoke) {
-          tauriInvoke('save_auto_backup', {
-            jsonContent: JSON.stringify(
-              {
-                app: 'TarazBan Personal & Exchange Multi-Currency Accounting',
-                version: '2.5.0',
-                reason: 'app_close_auto',
-                exportedAtISO: new Date().toISOString(),
-                data: stateSnapshot,
-              },
-              null,
-              2
-            ),
-            reason: 'app_close_auto',
-          }).catch(() => {});
-        }
+        void invokeTauriCommand('save_auto_backup', {
+          jsonContent: JSON.stringify(
+            {
+              app: 'ARKA Personal & Exchange Multi-Currency Accounting',
+              version: '6.0.0',
+              reason: 'app_close_auto',
+              exportedAtISO: new Date().toISOString(),
+              data: stateSnapshot,
+            },
+            null,
+            2
+          ),
+          reason: 'app_close_auto',
+        });
 
         if (navigator.sendBeacon) {
           const blob = new Blob(
@@ -638,9 +640,12 @@ export function App() {
       });
     }
 
+    const nextVoucherNumber =
+      Math.max(1003, ...vouchers.map((v) => v.voucherNumber || 0)) + 1;
+
     const autoVoucher: JournalVoucher = {
       id: vchId,
-      voucherNumber: 1004 + vouchers.length,
+      voucherNumber: nextVoucherNumber,
       date: deal.date,
       description: `سند اتوماتیک ${isBuy ? 'خرید' : 'فروش'} ارز ${deal.dealNumber} (${
         deal.contactName
@@ -706,14 +711,24 @@ export function App() {
           return {
             ...v,
             lines: v.lines.map((ln) => {
-              if (ln.contactId === targetDeal.contactId && ln.trackingNumber === targetDeal.dealNumber) {
+              const isMainDealLine =
+                ln.contactId === targetDeal.contactId &&
+                !ln.description.includes('واریز به') &&
+                !ln.description.includes('پرداخت به شخص از') &&
+                !ln.description.includes('دریافت از شخص و واریز به') &&
+                (ln.trackingNumber === targetDeal.dealNumber ||
+                  ln.trackingNumber === targetDeal.trackingNumber ||
+                  ln.description.includes(targetDeal.dealNumber));
+              if (isMainDealLine) {
                 return {
                   ...ln,
                   description: `${targetDeal.type === 'buy' ? 'خرید' : 'فروش'} ${
                     targetDeal.foreignAmount
                   } ${targetDeal.currency} به نرخ ${targetDeal.exchangeRate} ریال (${
                     targetDeal.dealNumber
-                  })${deliverySummaryText}${userNotePart}`,
+                  }) [شماره فیش/رهگیری: ${
+                    targetDeal.trackingNumber || targetDeal.dealNumber
+                  }]${deliverySummaryText}${userNotePart}`,
                 };
               }
               return ln;
@@ -773,6 +788,10 @@ export function App() {
 
     const lines: VoucherLine[] = [];
 
+    const invCurr = invoice.currency || 'IRR';
+    const invRate = invCurr === 'IRR' ? 1 : invoice.exchangeRate || 1;
+    const invNotePart = invoice.notes ? ` — توضیحات: ${invoice.notes}` : '';
+
     if (isSales) {
       lines.push({
         id: `ln-inv-cust-${Date.now()}-1`,
@@ -780,10 +799,10 @@ export function App() {
         accountName: 'حساب اشخاص و مشتریان (بدهکاران / طلب ما)',
         contactId: invoice.contactId,
         contactName: invoice.contactName,
-        description: `فاکتور فروش شماره ${invoice.invoiceNumber} - ${invoice.contactName}`,
-        currency: 'IRR',
-        exchangeRate: 1,
-        debitForeign: invoice.grandTotalIRR,
+        description: `فاکتور فروش شماره ${invoice.invoiceNumber} - ${invoice.contactName}${invNotePart}`,
+        currency: invCurr,
+        exchangeRate: invRate,
+        debitForeign: invCurr === 'IRR' ? invoice.grandTotalIRR : invoice.grandTotalForeign,
         creditForeign: 0,
         debitIRR: invoice.grandTotalIRR,
         creditIRR: 0,
@@ -791,15 +810,16 @@ export function App() {
       });
 
       const netSalesIRR = invoice.subtotalIRR - invoice.totalDiscountIRR;
+      const netSalesForeign = invoice.subtotalForeign - invoice.totalDiscountForeign;
       lines.push({
         id: `ln-inv-rev-${Date.now()}-2`,
         accountCode: '4101',
         accountName: 'درآمد فروش ریالی',
-        description: `فروش طبق فاکتور ${invoice.invoiceNumber}`,
-        currency: 'IRR',
-        exchangeRate: 1,
+        description: `فروش طبق فاکتور ${invoice.invoiceNumber}${invNotePart}`,
+        currency: invCurr,
+        exchangeRate: invRate,
         debitForeign: 0,
-        creditForeign: netSalesIRR,
+        creditForeign: invCurr === 'IRR' ? netSalesIRR : netSalesForeign,
         debitIRR: 0,
         creditIRR: netSalesIRR,
         trackingNumber: invoice.invoiceNumber,
@@ -811,10 +831,10 @@ export function App() {
           accountCode: '2102',
           accountName: 'اسناد و چک‌های پرداختنی',
           description: `مالیات فاکتور ${invoice.invoiceNumber}`,
-          currency: 'IRR',
-          exchangeRate: 1,
+          currency: invCurr,
+          exchangeRate: invRate,
           debitForeign: 0,
-          creditForeign: invoice.totalTaxIRR,
+          creditForeign: invCurr === 'IRR' ? invoice.totalTaxIRR : invoice.totalTaxForeign,
           debitIRR: 0,
           creditIRR: invoice.totalTaxIRR,
         });
@@ -824,10 +844,10 @@ export function App() {
         id: `ln-inv-pur-${Date.now()}-1`,
         accountCode: '1106',
         accountName: 'موجودی کالا و خرید انبار',
-        description: `خرید کالا/خدمات طبق فاکتور ${invoice.invoiceNumber} از ${invoice.contactName}`,
-        currency: 'IRR',
-        exchangeRate: 1,
-        debitForeign: invoice.grandTotalIRR,
+        description: `خرید کالا/خدمات طبق فاکتور ${invoice.invoiceNumber} از ${invoice.contactName}${invNotePart}`,
+        currency: invCurr,
+        exchangeRate: invRate,
+        debitForeign: invCurr === 'IRR' ? invoice.grandTotalIRR : invoice.grandTotalForeign,
         creditForeign: 0,
         debitIRR: invoice.grandTotalIRR,
         creditIRR: 0,
@@ -840,11 +860,11 @@ export function App() {
         accountName: 'حساب اشخاص و فروشندگان (بستانکاران / بدهی ما)',
         contactId: invoice.contactId,
         contactName: invoice.contactName,
-        description: `فاکتور خرید شماره ${invoice.invoiceNumber} - ${invoice.contactName}`,
-        currency: 'IRR',
-        exchangeRate: 1,
+        description: `فاکتور خرید شماره ${invoice.invoiceNumber} - ${invoice.contactName}${invNotePart}`,
+        currency: invCurr,
+        exchangeRate: invRate,
         debitForeign: 0,
-        creditForeign: invoice.grandTotalIRR,
+        creditForeign: invCurr === 'IRR' ? invoice.grandTotalIRR : invoice.grandTotalForeign,
         debitIRR: 0,
         creditIRR: invoice.grandTotalIRR,
         trackingNumber: invoice.invoiceNumber,
@@ -922,9 +942,11 @@ export function App() {
     }
 
     const vchId = invoice.linkedVoucherId || `vch-inv-${Date.now()}`;
+    const nextInvVoucherNumber =
+      Math.max(1003, ...vouchers.map((v) => v.voucherNumber || 0)) + 1;
     const autoVoucher: JournalVoucher = {
       id: vchId,
-      voucherNumber: 1004 + vouchers.length,
+      voucherNumber: nextInvVoucherNumber,
       date: invoice.date,
       description: `سند اتوماتیک فاکتور ${isSales ? 'فروش' : 'خرید'} ${
         invoice.invoiceNumber
@@ -983,6 +1005,10 @@ export function App() {
               ? 'حساب اشخاص و مشتریان (بدهکاران / طلب ما)'
               : 'حساب اشخاص و فروشندگان (بستانکاران / بدهی ما)';
 
+            const invCurr = updated.currency || 'IRR';
+            const invRate = invCurr === 'IRR' ? 1 : updated.exchangeRate || 1;
+            const invNotePart = updated.notes ? ` — توضیحات: ${updated.notes}` : '';
+
             const lines: VoucherLine[] = [];
             if (isSales) {
               lines.push({
@@ -991,25 +1017,26 @@ export function App() {
                 accountName: 'حساب اشخاص و مشتریان (بدهکاران / طلب ما)',
                 contactId: updated.contactId,
                 contactName: updated.contactName,
-                description: `فاکتور فروش شماره ${updated.invoiceNumber} - ${updated.contactName}`,
-                currency: 'IRR',
-                exchangeRate: 1,
-                debitForeign: updated.grandTotalIRR,
+                description: `فاکتور فروش شماره ${updated.invoiceNumber} - ${updated.contactName}${invNotePart}`,
+                currency: invCurr,
+                exchangeRate: invRate,
+                debitForeign: invCurr === 'IRR' ? updated.grandTotalIRR : updated.grandTotalForeign,
                 creditForeign: 0,
                 debitIRR: updated.grandTotalIRR,
                 creditIRR: 0,
                 trackingNumber: updated.invoiceNumber,
               });
               const netSalesIRR = updated.subtotalIRR - updated.totalDiscountIRR;
+              const netSalesForeign = updated.subtotalForeign - updated.totalDiscountForeign;
               lines.push({
                 id: `ln-inv-rev-${Date.now()}-2`,
                 accountCode: '4101',
                 accountName: 'درآمد فروش ریالی',
-                description: `فروش طبق فاکتور ${updated.invoiceNumber}`,
-                currency: 'IRR',
-                exchangeRate: 1,
+                description: `فروش طبق فاکتور ${updated.invoiceNumber}${invNotePart}`,
+                currency: invCurr,
+                exchangeRate: invRate,
                 debitForeign: 0,
-                creditForeign: netSalesIRR,
+                creditForeign: invCurr === 'IRR' ? netSalesIRR : netSalesForeign,
                 debitIRR: 0,
                 creditIRR: netSalesIRR,
                 trackingNumber: updated.invoiceNumber,
@@ -1020,10 +1047,10 @@ export function App() {
                   accountCode: '2102',
                   accountName: 'اسناد و چک‌های پرداختنی',
                   description: `مالیات فاکتور ${updated.invoiceNumber}`,
-                  currency: 'IRR',
-                  exchangeRate: 1,
+                  currency: invCurr,
+                  exchangeRate: invRate,
                   debitForeign: 0,
-                  creditForeign: updated.totalTaxIRR,
+                  creditForeign: invCurr === 'IRR' ? updated.totalTaxIRR : updated.totalTaxForeign,
                   debitIRR: 0,
                   creditIRR: updated.totalTaxIRR,
                 });
@@ -1033,10 +1060,10 @@ export function App() {
                 id: `ln-inv-pur-${Date.now()}-1`,
                 accountCode: '1106',
                 accountName: 'موجودی کالا و خرید انبار',
-                description: `خرید طبق فاکتور ${updated.invoiceNumber} از ${updated.contactName}`,
-                currency: 'IRR',
-                exchangeRate: 1,
-                debitForeign: updated.grandTotalIRR,
+                description: `خرید طبق فاکتور ${updated.invoiceNumber} از ${updated.contactName}${invNotePart}`,
+                currency: invCurr,
+                exchangeRate: invRate,
+                debitForeign: invCurr === 'IRR' ? updated.grandTotalIRR : updated.grandTotalForeign,
                 creditForeign: 0,
                 debitIRR: updated.grandTotalIRR,
                 creditIRR: 0,
@@ -1048,11 +1075,11 @@ export function App() {
                 accountName: 'حساب اشخاص و فروشندگان (بستانکاران / بدهی ما)',
                 contactId: updated.contactId,
                 contactName: updated.contactName,
-                description: `فاکتور خرید شماره ${updated.invoiceNumber} - ${updated.contactName}`,
-                currency: 'IRR',
-                exchangeRate: 1,
+                description: `فاکتور خرید شماره ${updated.invoiceNumber} - ${updated.contactName}${invNotePart}`,
+                currency: invCurr,
+                exchangeRate: invRate,
                 debitForeign: 0,
-                creditForeign: updated.grandTotalIRR,
+                creditForeign: invCurr === 'IRR' ? updated.grandTotalIRR : updated.grandTotalForeign,
                 debitIRR: 0,
                 creditIRR: updated.grandTotalIRR,
                 trackingNumber: updated.invoiceNumber,
@@ -1161,9 +1188,11 @@ export function App() {
       const vchId = `vch-init-bnk-${Date.now()}`;
       const lineId = `ln-ib-1-${Date.now()}`;
 
+      const nextBankVoucherNumber =
+        Math.max(1003, ...vouchers.map((v) => v.voucherNumber || 0)) + 1;
       const initVoucher: JournalVoucher = {
         id: vchId,
-        voucherNumber: 1004 + vouchers.length,
+        voucherNumber: nextBankVoucherNumber,
         date: '1404/08/12',
         description: `سند موجودی اولیه ${cleanBank.bankName}`,
         status: 'permanent',

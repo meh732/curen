@@ -86,8 +86,13 @@ export const PersonStatementsView: React.FC<PersonStatementsViewProps> = ({
     if (initialContactId) {
       setSelectedContactId(initialContactId);
       setActiveTab('statement');
+    } else if (
+      state.contacts.length > 0 &&
+      (!selectedContactId || !state.contacts.some((c) => c.id === selectedContactId))
+    ) {
+      setSelectedContactId(state.contacts[0].id);
     }
-  }, [initialContactId]);
+  }, [initialContactId, state.contacts, selectedContactId]);
 
   // New Contact Form state
   const [newName, setNewName] = useState('');
@@ -481,9 +486,11 @@ export const PersonStatementsView: React.FC<PersonStatementsViewProps> = ({
   const handleCreateContact = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newName.trim()) return;
+    const nextContactCodeNum =
+      Math.max(1000, ...state.contacts.map((c) => parseInt(c.code.replace(/\D/g, ''), 10) || 1000)) + 1;
     const created: Contact = {
       id: `cnt-${Date.now()}`,
-      code: `P-${1001 + state.contacts.length}`,
+      code: `P-${nextContactCodeNum}`,
       name: newName.trim(),
       type: newType,
       phone: newPhone.trim() || '021-00000000',
