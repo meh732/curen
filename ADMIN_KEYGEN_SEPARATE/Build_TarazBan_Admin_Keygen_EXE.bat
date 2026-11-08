@@ -51,6 +51,6 @@ echo   }
 echo }
 ) > "%TEMP%\tb_kg.cs"
 
-"%CSC%" /target:winexe /out:"%~dp0Arka_Admin_Keygen_V6.exe" /r:System.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll "%TEMP%\tb_kg.cs"
+"%CSC%" /target:winexe /win32icon:"%~dp0..\public\favicon.ico" /out:"%~dp0Arka_Admin_Keygen_V6.exe" /r:System.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll "%TEMP%\tb_kg.cs"
 del "%TEMP%\tb_kg.cs" >nul 2>&1
 start "" "%~dp0Arka_Admin_Keygen_V6.exe"

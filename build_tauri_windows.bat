@@ -13,16 +13,16 @@ echo [0/5] Closing any running instance of the application...
 taskkill /F /IM TarazBan_Accounting.exe >nul 2>&1
 taskkill /F /IM ARKA_Accounting.exe >nul 2>&1
 
-:: Purge stale WebView2 Service Worker & HTTP Cache (while keeping Local Storage database intact!)
-if exist "%LOCALAPPDATA%\com.tarazban.accounting\EBWebView\Default\Service Worker" (
-    echo Cleaning old WebView2 Service Worker cache...
-    rmdir /s /q "%LOCALAPPDATA%\com.tarazban.accounting\EBWebView\Default\Service Worker" >nul 2>&1
+:: Preserve and propagate any existing hardware license lock across ProgramData and LocalAppData
+if not exist "%ProgramData%\ARKA_Accounting" mkdir "%ProgramData%\ARKA_Accounting" >nul 2>&1
+if exist "%LOCALAPPDATA%\com.tarazban.accounting\arka_master_license_v6.lock" (
+    copy /Y "%LOCALAPPDATA%\com.tarazban.accounting\arka_master_license_v6.lock" "%ProgramData%\ARKA_Accounting\arka_master_license_v6.lock" >nul 2>&1
+    if not exist "%LOCALAPPDATA%\com.arka.accounting" mkdir "%LOCALAPPDATA%\com.arka.accounting" >nul 2>&1
+    copy /Y "%LOCALAPPDATA%\com.tarazban.accounting\arka_master_license_v6.lock" "%LOCALAPPDATA%\com.arka.accounting\arka_master_license_v6.lock" >nul 2>&1
 )
-if exist "%LOCALAPPDATA%\com.tarazban.accounting\EBWebView\Default\Cache" (
-    rmdir /s /q "%LOCALAPPDATA%\com.tarazban.accounting\EBWebView\Default\Cache" >nul 2>&1
-)
-if exist "%LOCALAPPDATA%\com.tarazban.accounting\EBWebView\Default\Code Cache" (
-    rmdir /s /q "%LOCALAPPDATA%\com.tarazban.accounting\EBWebView\Default\Code Cache" >nul 2>&1
+if exist "%ProgramData%\ARKA_Accounting\arka_master_license_v6.lock" (
+    if not exist "%LOCALAPPDATA%\com.arka.accounting" mkdir "%LOCALAPPDATA%\com.arka.accounting" >nul 2>&1
+    copy /Y "%ProgramData%\ARKA_Accounting\arka_master_license_v6.lock" "%LOCALAPPDATA%\com.arka.accounting\arka_master_license_v6.lock" >nul 2>&1
 )
 echo [OK] Ready for clean build and in-place upgrade.
 echo.
@@ -83,6 +83,7 @@ echo.
 echo [4/5] Compiling Native Windows Tauri App & Installer (v6.0.0)...
 if exist "src-tauri\Cargo.toml" (
     pushd src-tauri
+    cargo clean -p arka-accounting >nul 2>&1
     cargo clean -p tarazban-accounting >nul 2>&1
     popd
 )
@@ -98,21 +99,32 @@ if %ERRORLEVEL% EQU 0 (
     echo.
     :: 5. Automatically overwrite existing installed binary in-place if found
     echo [5/5] Updating existing installation on this computer in-place...
-    if exist "%LOCALAPPDATA%\Programs\TarazBan_Accounting\TarazBan_Accounting.exe" (
-        copy /Y "src-tauri\target\release\TarazBan_Accounting.exe" "%LOCALAPPDATA%\Programs\TarazBan_Accounting\TarazBan_Accounting.exe" >nul 2>&1
-        echo [UPDATED] Replaced existing binary in %LOCALAPPDATA%\Programs\TarazBan_Accounting\
+    
+    :: Refresh Windows Icon Cache so the new ARKA logo displays immediately in taskbar
+    if exist "%LOCALAPPDATA%\IconCache.db" (
+        attrib -h "%LOCALAPPDATA%\IconCache.db" >nul 2>&1
+        del /f /q "%LOCALAPPDATA%\IconCache.db" >nul 2>&1
     )
-    if exist "%LOCALAPPDATA%\TarazBan_Accounting\TarazBan_Accounting.exe" (
-        copy /Y "src-tauri\target\release\TarazBan_Accounting.exe" "%LOCALAPPDATA%\TarazBan_Accounting\TarazBan_Accounting.exe" >nul 2>&1
-        echo [UPDATED] Replaced existing binary in %LOCALAPPDATA%\TarazBan_Accounting\
+    ie4uinit.exe -show >nul 2>&1
+
+    for %%E in (ARKA_Accounting.exe TarazBan_Accounting.exe) do (
+        if exist "src-tauri\target\release\%%E" (
+            if exist "%LOCALAPPDATA%\Programs\TarazBan_Accounting\" (
+                copy /Y "src-tauri\target\release\%%E" "%LOCALAPPDATA%\Programs\TarazBan_Accounting\%%E" >nul 2>&1
+                copy /Y "src-tauri\target\release\%%E" "%LOCALAPPDATA%\Programs\TarazBan_Accounting\TarazBan_Accounting.exe" >nul 2>&1
+            )
+            if exist "%LOCALAPPDATA%\Programs\ARKA_Accounting\" (
+                copy /Y "src-tauri\target\release\%%E" "%LOCALAPPDATA%\Programs\ARKA_Accounting\%%E" >nul 2>&1
+            )
+            if exist "%LOCALAPPDATA%\TarazBan_Accounting\" (
+                copy /Y "src-tauri\target\release\%%E" "%LOCALAPPDATA%\TarazBan_Accounting\%%E" >nul 2>&1
+            )
+        )
     )
-    if exist "%ProgramFiles%\TarazBan_Accounting\TarazBan_Accounting.exe" (
-        copy /Y "src-tauri\target\release\TarazBan_Accounting.exe" "%ProgramFiles%\TarazBan_Accounting\TarazBan_Accounting.exe" >nul 2>&1
-        echo [UPDATED] Replaced existing binary in %ProgramFiles%\TarazBan_Accounting\
-    )
+
     echo.
     echo Your generated files are located at:
-    echo   - Standalone EXE: src-tauri\target\release\TarazBan_Accounting.exe
+    echo   - Standalone EXE: src-tauri\target\release\ARKA_Accounting.exe
     echo   - NSIS / MSI Upgrader: src-tauri\target\release\bundle\
     echo.
     echo Launching the new installer to complete in-place Windows upgrade...
@@ -122,6 +134,10 @@ if %ERRORLEVEL% EQU 0 (
     )
     for %%f in ("src-tauri\target\release\bundle\msi\*.msi") do (
         start "" msiexec /i "%%~ff"
+        goto :done_launch
+    )
+    if exist "src-tauri\target\release\ARKA_Accounting.exe" (
+        start "" "src-tauri\target\release\ARKA_Accounting.exe"
         goto :done_launch
     )
     if exist "src-tauri\target\release\TarazBan_Accounting.exe" (

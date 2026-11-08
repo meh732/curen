@@ -8,7 +8,12 @@ import {
   Currency,
   PaymentSplitLine,
 } from '../types/accounting';
-import { formatNumber, parseFormattedNumber } from '../utils/accountingEngine';
+import {
+  formatNumber,
+  parseFormattedNumber,
+  getTodayJalaliDate,
+  getCurrentJalaliYear,
+} from '../utils/accountingEngine';
 import { MultiPaymentSplitsEditor } from './MultiPaymentSplitsEditor';
 import { InvoicePreviewModal } from './InvoicePreviewModal';
 import {
@@ -56,16 +61,16 @@ export const InvoicesAndBotView: React.FC<InvoicesAndBotViewProps> = ({
   const [invoiceType, setInvoiceType] = useState<'sales' | 'purchase'>('sales');
   const getNextInvoiceNum = (list: SalesInvoice[]) => {
     const maxNum = Math.max(
-      101,
+      100,
       ...list.map((inv) => {
-        const tail = inv.invoiceNumber.split('-').pop() || '101';
-        return parseInt(tail.replace(/\D/g, ''), 10) || 101;
+        const cleaned = inv.invoiceNumber.replace(/\D/g, '');
+        return parseInt(cleaned, 10) || 100;
       })
     );
-    return `INV-1404-${maxNum + 1}`;
+    return String(maxNum + 1);
   };
   const [invoiceNumber, setInvoiceNumber] = useState(() => getNextInvoiceNum(invoices));
-  const [date, setDate] = useState('1404/08/12');
+  const [date, setDate] = useState(() => getTodayJalaliDate());
   const [contactId, setContactId] = useState(contacts[0]?.id || '');
   const [notes, setNotes] = useState('');
 
@@ -440,16 +445,42 @@ export const InvoicesAndBotView: React.FC<InvoicesAndBotViewProps> = ({
           </div>
         </div>
 
+        {/* Edit mode active banner */}
+        {editingInvoiceId && (
+          <div className="bg-amber-50 border-2 border-amber-400 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-950 font-bold shadow-xs">
+            <span className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse"></span>
+              در حال ویرایش فاکتور شماره {invoiceNumber} (طرف حساب: {selectedContact?.name})
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setEditingInvoiceId(null);
+                setInvoiceNumber(getNextInvoiceNum(invoices));
+                setNotes('');
+                setPayments([]);
+                setItems([createBlankItem()]);
+              }}
+              className="px-3.5 py-1.5 rounded-xl bg-white border border-amber-300 text-rose-700 hover:bg-rose-50 text-xs font-extrabold cursor-pointer transition w-fit"
+            >
+              انصراف از ویرایش
+            </button>
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-5 text-xs">
           {/* Header Controls */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <div>
-              <label className="block font-bold text-slate-700 mb-1">شماره فاکتور:</label>
+              <label className="block font-extrabold text-slate-800 mb-1">
+                شماره فاکتور (عدد چند رقمی):
+              </label>
               <input
                 type="text"
                 value={invoiceNumber}
                 onChange={(e) => setInvoiceNumber(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 font-mono-num font-extrabold focus:bg-white focus:ring-2 focus:ring-teal-500 outline-none"
+                placeholder="مثال: 101"
+                className="w-full bg-slate-50 border-2 border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 font-mono-num font-extrabold focus:bg-white focus:border-teal-500 focus:ring-1 focus:ring-teal-500 outline-none transition"
                 required
               />
             </div>
@@ -692,24 +723,32 @@ export const InvoicesAndBotView: React.FC<InvoicesAndBotViewProps> = ({
           </h3>
         </div>
 
-        {/* نوار جستجوی فاکتورها */}
-        <div className="relative">
-          <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-          <input
-            type="text"
-            value={invoiceSearchQuery}
-            onChange={(e) => setInvoiceSearchQuery(e.target.value)}
-            placeholder="🔍 جستجوی شماره فاکتور، نام مشتری، تاریخ یا عنوان کالا/ارز..."
-            className="w-full pl-9 pr-9 py-2.5 rounded-xl border border-slate-200 text-xs bg-slate-50 focus:bg-white focus:border-teal-500 focus:ring-1 focus:ring-teal-500 outline-none transition"
-          />
+        {/* نوار جستجوی قدرتمند فاکتورها */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+          <div className="relative flex-1">
+            <Search className="w-4 h-4 text-teal-600 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="text"
+              value={invoiceSearchQuery}
+              onChange={(e) => setInvoiceSearchQuery(e.target.value)}
+              placeholder="🔍 جستجوی فاکتور بر اساس شماره فاکتور، نام مشتری/فروشنده، تاریخ یا نام ارز/کالا..."
+              className="w-full pl-9 pr-10 py-3 rounded-2xl border-2 border-teal-300 text-xs sm:text-sm bg-teal-50/40 focus:bg-white focus:border-teal-600 focus:ring-2 focus:ring-teal-500/20 outline-none transition font-semibold text-slate-900 shadow-xs"
+            />
+            {invoiceSearchQuery && (
+              <button
+                type="button"
+                onClick={() => setInvoiceSearchQuery('')}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-1 cursor-pointer"
+                title="پاک کردن جستجو"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
           {invoiceSearchQuery && (
-            <button
-              type="button"
-              onClick={() => setInvoiceSearchQuery('')}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer text-xs"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
+            <span className="text-xs font-bold text-teal-800 bg-teal-50 border border-teal-200 px-3 py-2 rounded-xl shrink-0 text-center">
+              نتایج فیلتر: {formatNumber(filteredInvoices.length)} فاکتور
+            </span>
           )}
         </div>
 

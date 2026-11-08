@@ -11,7 +11,10 @@ import {
   formatCurrencyAmount,
   formatNumber,
 } from '../utils/accountingEngine';
-import { exportOrPrintStandardLedgerPDF } from '../utils/pdfPrintReportService';
+import {
+  exportOrPrintStandardLedgerPDF,
+  exportOrPrintProfitStatementPDF,
+} from '../utils/pdfPrintReportService';
 import { dispatchToMessengerBot } from '../utils/botAndBackupService';
 import {
   Printer,
@@ -419,7 +422,16 @@ export const StandardAccountingReportsView: React.FC<
 
           <button
             type="button"
-            onClick={() => window.print()}
+            onClick={() =>
+              exportOrPrintProfitStatementPDF({
+                monthlyProfitBreakdown,
+                currencyVaultPositions,
+                antiCheatNetWorth,
+                companyName: state.companyName || 'صرافی آرکا',
+                fiscalYear: state.fiscalYear || '۱۴۰۴',
+                mode: 'print',
+              })
+            }
             className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-extrabold flex items-center gap-1.5 cursor-pointer"
           >
             <Printer className="w-4 h-4" />

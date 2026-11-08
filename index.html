@@ -16,12 +16,31 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="آرکا صرافی" />
-    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="icon" type="image/jpeg" href="/arka-logo.jpg" />
+    <link rel="shortcut icon" href="/arka-logo.jpg" />
     <link rel="apple-touch-icon" href="/arka-logo.jpg" />
 
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Vazirmatn:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <script>
+      (function () {
+        try {
+          if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(function (regs) {
+              for (var i = 0; i < regs.length; i++) {
+                regs[i].unregister();
+              }
+            });
+          }
+          if ('caches' in window && localStorage.getItem('arka_cache_purged_v6_2') !== '1') {
+            caches.keys().then(function (keys) {
+              return Promise.all(keys.map(function (k) { return caches.delete(k); }));
+            }).then(function () {
+              localStorage.setItem('arka_cache_purged_v6_2', '1');
+            });
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body class="bg-[#0B0F17] text-slate-100 antialiased selection:bg-teal-500 selection:text-slate-950">
     <div id="root"></div>

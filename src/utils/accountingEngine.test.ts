@@ -347,3 +347,102 @@ test('offlineLicenseEngine enforces V6 Hardware Key derived from Vendor Master P
   assert.equal(activated?.isActivated, true);
 });
 
+test('getTodayJalaliDate and standalone person-based foreign currency delivery track partial/excess currency without duplicating Rial debt', async () => {
+  const { getTodayJalaliDate, getCurrentJalaliYear } = await import('./accountingEngine');
+  const today = getTodayJalaliDate();
+  const year = getCurrentJalaliYear();
+  assert.match(today, /^\d{4}\/\d{2}\/\d{2}$/);
+  assert.match(year, /^\d{4}$/);
+
+  // Scenario: Buy 1,000 USD from Moradi at 685,000 IRR/USD on deferred delivery, then receive 400 USD Day 1 and 600 USD Day 2
+  const vouchers: JournalVoucher[] = [
+    {
+      id: 'fx-buy-1',
+      voucherNumber: 1001,
+      date: today,
+      description: 'خرید 1,000 USD از مرادی به نرخ 685,000 ریال (در حساب شخص)',
+      status: 'permanent',
+      createdAt: today,
+      autoType: 'fx_deal',
+      lines: [
+        {
+          id: 'l1',
+          accountCode: '2101',
+          accountName: 'حساب اشخاص و فروشندگان',
+          contactId: 'c-moradi',
+          contactName: 'مرادی',
+          description: 'خرید 1,000 USD (بدهکار ارزی بابت تحویل ارز، بستانکار ریالی بابت وجه معامله)',
+          currency: 'USD',
+          exchangeRate: 685000,
+          debitForeign: 1000,
+          creditForeign: 0,
+          debitIRR: 0,
+          creditIRR: 685000000,
+          trackingNumber: 'FX-1001',
+        },
+      ],
+    },
+    {
+      id: 'deliv-1',
+      voucherNumber: 1002,
+      date: today,
+      description: 'دریافت 400 USD از مرادی (مرحله اول)',
+      status: 'permanent',
+      createdAt: today,
+      autoType: 'currency_receive_from_person',
+      lines: [
+        {
+          id: 'l2',
+          accountCode: '1104',
+          accountName: 'حساب تحویل و دریافت ارزی اشخاص',
+          contactId: 'c-moradi',
+          contactName: 'مرادی',
+          description: 'تحویل گرفتن 400 USD از مرادی',
+          currency: 'USD',
+          exchangeRate: 1,
+          debitForeign: 0,
+          creditForeign: 400,
+          debitIRR: 0,
+          creditIRR: 0,
+          trackingNumber: 'DLV-101',
+        },
+      ],
+    },
+    {
+      id: 'deliv-2',
+      voucherNumber: 1003,
+      date: today,
+      description: 'دریافت 600 USD از مرادی (مرحله دوم)',
+      status: 'permanent',
+      createdAt: today,
+      autoType: 'currency_receive_from_person',
+      lines: [
+        {
+          id: 'l3',
+          accountCode: '1104',
+          accountName: 'حساب تحویل و دریافت ارزی اشخاص',
+          contactId: 'c-moradi',
+          contactName: 'مرادی',
+          description: 'تحویل گرفتن 600 USD از مرادی',
+          currency: 'USD',
+          exchangeRate: 1,
+          debitForeign: 0,
+          creditForeign: 600,
+          debitIRR: 0,
+          creditIRR: 0,
+          trackingNumber: 'DLV-102',
+        },
+      ],
+    },
+  ];
+
+  const statement = buildPersonStatement(vouchers, 'c-moradi', 'ALL');
+  // Foreign USD balance: +1000 debit - 400 credit - 600 credit = 0 (تسویه ارزی)
+  assert.equal(statement.finalBalanceForeign, 0);
+  assert.equal(statement.finalStatusForeign, 'تسویه');
+  // Rial balance remains strictly 685,000,000 (بستانکار ریالی) — never duplicated by currency delivery!
+  assert.equal(statement.finalBalanceIRR, 685000000);
+  assert.equal(statement.finalStatusIRR, 'بستانکار');
+});
+
+

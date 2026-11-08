@@ -1,6 +1,7 @@
 import React from 'react';
 import { SalesInvoice } from '../types/accounting';
 import { formatNumber, formatCurrencyAmount } from '../utils/accountingEngine';
+import { exportOrPrintOfficialInvoicePDF } from '../utils/pdfPrintReportService';
 import { Printer, Download, X, CheckCircle2, Send, Building2, User, Coins, Landmark } from 'lucide-react';
 
 interface InvoicePreviewModalProps {
@@ -19,7 +20,7 @@ export const InvoicePreviewModal: React.FC<InvoicePreviewModalProps> = ({
   if (!invoice) return null;
 
   const handlePrint = () => {
-    window.print();
+    exportOrPrintOfficialInvoicePDF(invoice, companyName, 'print');
   };
 
   const isSales = invoice.type !== 'purchase';

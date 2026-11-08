@@ -12,7 +12,9 @@ import {
 import {
   buildPersonStatement,
   formatNumber,
+  formatCurrencyAmount,
   parseFormattedNumber,
+  getTodayJalaliDate,
 } from '../utils/accountingEngine';
 import { MultiPaymentSplitsEditor } from './MultiPaymentSplitsEditor';
 import {
@@ -31,9 +33,10 @@ import {
   Sparkles,
   UserPlus,
   X,
-  Eye,
   Search,
   Hash,
+  PackageCheck,
+  Edit3,
 } from 'lucide-react';
 
 interface VoucherEntryViewProps {
@@ -51,6 +54,8 @@ interface VoucherEntryViewProps {
 type AutoFinanceType =
   | 'receive_from_person'
   | 'pay_to_person'
+  | 'currency_receive_from_person'
+  | 'currency_pay_to_person'
   | 'bank_transfer'
   | 'expense'
   | 'income';
@@ -69,7 +74,7 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
   const [editingVoucherId, setEditingVoucherId] = useState<string | null>(null);
   const [entryTab, setEntryTab] = useState<'auto' | 'manual'>('auto');
   const [autoType, setAutoType] = useState<AutoFinanceType>('receive_from_person');
-  const [date, setDate] = useState('1404/08/12');
+  const [date, setDate] = useState(() => getTodayJalaliDate());
   const [description, setDescription] = useState('');
   const [mainTrackingNumber, setMainTrackingNumber] = useState('');
   const [voucherSearchQuery, setVoucherSearchQuery] = useState('');
@@ -96,6 +101,19 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
       : [];
   });
 
+  // برای تحویل ارز (دریافت/پرداخت مستقیم ارزی با شخص) و انتقال بین بانک‌ها/هزینه/درآمد
+  const foreignCurrencies = useMemo(
+    () => currencies.filter((c) => c.code !== 'IRR'),
+    [currencies]
+  );
+  const [fxDeliveryCurrency, setFxDeliveryCurrency] = useState<CurrencyCode>(
+    foreignCurrencies[0]?.code || 'USD'
+  );
+  const [fxDeliveryAmount, setFxDeliveryAmount] = useState<number>(0);
+  const [fxDeliveryBankId, setFxDeliveryBankId] = useState<string>(
+    banks.find((b) => b.currency !== 'IRR')?.id || banks[0]?.id || ''
+  );
+
   // برای انتقال بین دو بانک/صندوق، یا ثبت هزینه و درآمد
   const [sourceBankId, setSourceBankId] = useState<string>(banks[0]?.id || '');
   const [destBankId, setDestBankId] = useState<string>(banks[1]?.id || banks[0]?.id || '');
@@ -120,6 +138,13 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
       if (!destBankId || !banks.some((b) => b.id === destBankId)) {
         setDestBankId((banks[1] || banks[0]).id);
       }
+      if (!fxDeliveryBankId || !banks.some((b) => b.id === fxDeliveryBankId)) {
+        const match =
+          banks.find((b) => b.currency === fxDeliveryCurrency) ||
+          banks.find((b) => b.currency !== 'IRR') ||
+          banks[0];
+        if (match) setFxDeliveryBankId(match.id);
+      }
       if (splits.length === 0) {
         const firstBank = banks[0];
         const defaultRate =
@@ -140,7 +165,7 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
         ]);
       }
     }
-  }, [banks, sourceBankId, destBankId, splits.length, currencies]);
+  }, [banks, sourceBankId, destBankId, fxDeliveryBankId, fxDeliveryCurrency, splits.length, currencies]);
 
   // تعریف سریع شخص
   const [showQuickContact, setShowQuickContact] = useState(false);
@@ -153,8 +178,8 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
 
   // تب سند دستی (پیشرفته)
   const [manualLines, setManualLines] = useState<Partial<VoucherLine>[]>([
-    { id: 'ml-1', accountCode: '1102', currency: 'IRR', exchangeRate: 1, debitIRR: 0, creditIRR: 0 },
-    { id: 'ml-2', accountCode: '1104', currency: 'IRR', exchangeRate: 1, debitIRR: 0, creditIRR: 0 },
+    { id: 'ml-1', accountCode: '1102', currency: 'IRR', exchangeRate: 1, debitIRR: 0, creditIRR: 0, debitForeign: 0, creditForeign: 0 },
+    { id: 'ml-2', accountCode: '1104', currency: 'IRR', exchangeRate: 1, debitIRR: 0, creditIRR: 0, debitForeign: 0, creditForeign: 0 },
   ]);
 
   const selectedContact = contacts.find((c) => c.id === selectedContactId);
@@ -170,9 +195,14 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
     return currencies.find((c) => c.code === code)?.defaultRateToIRR || 1;
   };
 
-  const getAccountHelperForBank = (bank?: BankAccount) => {
-    if (!bank) return { code: '1102', name: 'موجودی بانک‌های ریالی' };
-    if (bank.currency !== 'IRR') {
+  const getAccountHelperForBank = (bank?: BankAccount, fallbackCurrency?: CurrencyCode) => {
+    if (!bank) {
+      if (fallbackCurrency && fallbackCurrency !== 'IRR') {
+        return { code: '1103', name: 'موجودی بانک‌ها و خزانه‌های ارزی' };
+      }
+      return { code: '1102', name: 'موجودی بانک‌های ریالی' };
+    }
+    if (bank.currency !== 'IRR' || (fallbackCurrency && fallbackCurrency !== 'IRR')) {
       return { code: '1103', name: 'موجودی بانک‌ها و خزانه‌های ارزی' };
     }
     if (bank.kind === 'cash_box') {
@@ -215,7 +245,7 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
       ? Math.round(txAmountForeign)
       : Math.round(txAmountForeign * txExchangeRate);
 
-  // تسویه یا تحویل مستقیم مانده ارزی با یک کلیک در بخش دریافت و پرداخت
+  // تحویل یا دریافت مستقیم مانده ارزی شخص با یک کلیک
   const handleSettleCurrencyBalance = (
     curr: string,
     balanceForeign: number,
@@ -223,42 +253,37 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
   ) => {
     if (balanceForeign <= 0 || status === 'تسویه') return;
 
-    // اگر مشتری بستانکار است، یعنی ما باید به او ارز تحویل دهیم (پرداخت به شخص)
-    // اگر مشتری بدهکار است، یعنی او باید به ما ارز تحویل دهد (دریافت از شخص)
-    const newAutoType = status === 'بستانکار' ? 'pay_to_person' : 'receive_from_person';
+    // اگر شخص بستانکار ارزی است، یعنی ما باید به او ارز تحویل دهیم (پرداخت/تحویل ارز به شخص)
+    // اگر شخص بدهکار ارزی است، یعنی او باید به ما ارز تحویل دهد (دریافت ارز از شخص)
+    const newAutoType: AutoFinanceType =
+      status === 'بستانکار' ? 'currency_pay_to_person' : 'currency_receive_from_person';
     setAutoType(newAutoType);
+    setFxDeliveryCurrency(curr as CurrencyCode);
+    setFxDeliveryAmount(balanceForeign);
 
     const matchingBank =
       banks.find((b) => b.currency === curr) ||
       banks.find((b) => b.currency !== 'IRR') ||
       banks[0];
+    if (matchingBank) {
+      setFxDeliveryBankId(matchingBank.id);
+    }
 
-    const rate = getRateForCurrency(curr as CurrencyCode);
-    const splitId = `sp-${Date.now()}`;
-    const newSplit: PaymentSplitLine = {
-      id: splitId,
-      bankId: matchingBank?.id || '',
-      bankName: matchingBank?.bankName || (curr === 'IRR' ? 'حساب ریالی' : `خزانه ارزی (${curr})`),
-      currency: curr as CurrencyCode,
-      amountForeign: balanceForeign,
-      exchangeRate: rate,
-      amountIRR: Math.round(balanceForeign * rate),
-      trackingNumber: `DLV-${Date.now().toString().slice(-4)}`,
-      description: `تحویل و تسویه مانده ارزی به میزان ${formatNumber(balanceForeign)} ${curr}`,
-    };
-
-    setSplits([newSplit]);
-    setMainTrackingNumber(newSplit.trackingNumber || '');
+    setMainTrackingNumber(`DLV-${Date.now().toString().slice(-4)}`);
     setDescription(
-      `تحویل مستقیم ${formatNumber(balanceForeign)} ${curr} ${
-        status === 'بستانکار' ? 'به' : 'از'
-      } ${selectedContact?.name || ''}`
+      `${status === 'بستانکار' ? 'تحویل و پرداخت' : 'دریافت و تحویل گرفتن'} ${formatNumber(
+        balanceForeign
+      )} ${curr} ${status === 'بستانکار' ? 'به' : 'از'} ${selectedContact?.name || ''}`
     );
   };
 
   const handleAutoSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const existingVoucher = editingVoucherId
+      ? vouchers.find((v) => v.id === editingVoucherId)
+      : undefined;
     const voucherNumber =
+      existingVoucher?.voucherNumber ||
       Math.max(1003, ...vouchers.map((v) => v.voucherNumber || 0)) + 1;
     const lines: VoucherLine[] = [];
     let autoTitle = '';
@@ -278,7 +303,7 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
 
       validSplits.forEach((sp, idx) => {
         const bank = banks.find((b) => b.id === sp.bankId);
-        const bankAcc = getAccountHelperForBank(bank);
+        const bankAcc = getAccountHelperForBank(bank, sp.currency);
         const baseActionDesc = isReceipt
           ? `دریافت از ${selectedContact.name} و واریز به ${bank?.bankName || 'بانک/صندوق'}`
           : `پرداخت به ${selectedContact.name} از ${bank?.bankName || 'بانک/صندوق'}`;
@@ -341,6 +366,75 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
         (isReceipt
           ? `سند اتوماتیک دریافت از ${selectedContact.name} (${formatNumber(totalIRR)} ریال)`
           : `سند اتوماتیک پرداخت به ${selectedContact.name} (${formatNumber(totalIRR)} ریال)`);
+    } else if (
+      autoType === 'currency_receive_from_person' ||
+      autoType === 'currency_pay_to_person'
+    ) {
+      if (!selectedContact || fxDeliveryAmount <= 0) return;
+      const isCurrencyReceipt = autoType === 'currency_receive_from_person';
+      const vaultBank = banks.find((b) => b.id === fxDeliveryBankId) || banks[0];
+      const bankAcc = getAccountHelperForBank(vaultBank, fxDeliveryCurrency);
+      const personAccCode = selectedContact.type === 'supplier' ? '2101' : '1104';
+      const personAccName =
+        personAccCode === '2101'
+          ? 'حساب اشخاص و فروشندگان (بستانکاران / بدهی ما)'
+          : 'حساب اشخاص و مشتریان (بدهکاران / طلب ما)';
+
+      const trk = mainTrackingNumber.trim() || `DLV-${voucherNumber}`;
+      const rate = getRateForCurrency(fxDeliveryCurrency);
+
+      const baseDesc = isCurrencyReceipt
+        ? `دریافت ارز (${formatNumber(fxDeliveryAmount)} ${fxDeliveryCurrency}) از ${
+            selectedContact.name
+          } و ورود به ${vaultBank?.bankName || `صندوق ارزی (${fxDeliveryCurrency})`}`
+        : `تحویل / پرداخت ارز (${formatNumber(fxDeliveryAmount)} ${fxDeliveryCurrency}) به ${
+            selectedContact.name
+          } از ${vaultBank?.bankName || `صندوق ارزی (${fxDeliveryCurrency})`}`;
+
+      const fullDesc = description.trim()
+        ? `${baseDesc} | توضیحات: ${description.trim()}`
+        : baseDesc;
+
+      autoTitle =
+        description.trim() ||
+        (isCurrencyReceipt
+          ? `دریافت ارز از ${selectedContact.name} (${formatNumber(fxDeliveryAmount)} ${fxDeliveryCurrency})`
+          : `تحویل / پرداخت ارز به ${selectedContact.name} (${formatNumber(fxDeliveryAmount)} ${fxDeliveryCurrency})`);
+
+      // ردیف اول: صندوق / حساب ارزی
+      lines.push({
+        id: `ln-fx-dlv-b-${Date.now()}`,
+        accountCode: bankAcc.code,
+        accountName: bankAcc.name,
+        bankId: vaultBank?.id,
+        bankName: vaultBank?.bankName || `صندوق ارزی (${fxDeliveryCurrency})`,
+        description: `${fullDesc} [شماره فیش/رهگیری: ${trk}]`,
+        currency: fxDeliveryCurrency,
+        exchangeRate: rate,
+        debitForeign: isCurrencyReceipt ? fxDeliveryAmount : 0,
+        creditForeign: isCurrencyReceipt ? 0 : fxDeliveryAmount,
+        debitIRR: 0,
+        creditIRR: 0,
+        trackingNumber: trk,
+        reconciled: true,
+      });
+
+      // ردیف دوم: صورتحساب ارزی شخص (بدون تغییر مانده ریالی شخص)
+      lines.push({
+        id: `ln-fx-dlv-p-${Date.now()}`,
+        accountCode: personAccCode,
+        accountName: personAccName,
+        contactId: selectedContact.id,
+        contactName: selectedContact.name,
+        description: `${fullDesc} [شماره فیش/رهگیری: ${trk}]`,
+        currency: fxDeliveryCurrency,
+        exchangeRate: rate,
+        debitForeign: isCurrencyReceipt ? 0 : fxDeliveryAmount,
+        creditForeign: isCurrencyReceipt ? fxDeliveryAmount : 0,
+        debitIRR: 0,
+        creditIRR: 0,
+        trackingNumber: trk,
+      });
     } else if (autoType === 'bank_transfer') {
       if (txComputedIRR <= 0 || !sourceBankId || !destBankId) return;
       const srcBank = banks.find((b) => b.id === sourceBankId);
@@ -353,7 +447,6 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
         description.trim() ||
         `انتقال وجه از ${srcBank?.bankName || 'مبدأ'} به ${dstBank?.bankName || 'مقصد'}`;
 
-      // بدهکار شدن بانک مقصد (ورود وجه)
       lines.push({
         id: `ln-tr-in-${Date.now()}`,
         accountCode: dstAcc.code,
@@ -371,7 +464,6 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
         reconciled: true,
       });
 
-      // بستانکار شدن بانک مبدأ (خروج وجه)
       lines.push({
         id: `ln-tr-out-${Date.now()}`,
         accountCode: srcAcc.code,
@@ -482,7 +574,7 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
       `VCH-${voucherNumber}`;
 
     const newVoucher: JournalVoucher = {
-      id: `vch-auto-${Date.now()}`,
+      id: editingVoucherId || `vch-auto-${Date.now()}`,
       voucherNumber,
       date,
       description: autoTitle,
@@ -494,18 +586,13 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
     };
 
     if (editingVoucherId && onUpdateVoucher) {
-      const existing = vouchers.find((v) => v.id === editingVoucherId);
-      onUpdateVoucher({
-        ...newVoucher,
-        id: editingVoucherId,
-        voucherNumber: existing?.voucherNumber || voucherNumber,
-      });
+      onUpdateVoucher(newVoucher);
       setEditingVoucherId(null);
-      setSuccessMsg(`سند شماره ${existing?.voucherNumber || voucherNumber} با موفقیت اصلاح و به‌روز شد.`);
+      setSuccessMsg(`سند شماره ${voucherNumber} با موفقیت ویرایش و به‌روزرسانی شد.`);
     } else {
       onAddVoucher(newVoucher);
       setSuccessMsg(
-        `سند اتوماتیک شماره ${voucherNumber} با موفقیت ثبت شد و موجودی بانک/صندوق و حساب شخص به‌روز گردید.`
+        `سند شماره ${voucherNumber} با موفقیت ثبت شد و موجودی بانک/صندوق و صورتحساب شخص به‌روز گردید.`
       );
     }
 
@@ -513,6 +600,7 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
     setDescription('');
     setMainTrackingNumber('');
     setTxAmountForeign(0);
+    setFxDeliveryAmount(0);
     if (splits.length > 0) {
       setSplits([
         {
@@ -532,25 +620,40 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
     setEditingVoucherId(v.id);
     setDate(v.date);
     setDescription(v.description);
+    setMainTrackingNumber(
+      v.referenceNumber || v.lines.find((l) => l.trackingNumber)?.trackingNumber || ''
+    );
 
-    // If it has autoType, open auto tab
-    if (v.autoType && v.autoType !== 'manual') {
+    const firstContact = v.lines.find((l) => l.contactId);
+    if (firstContact && firstContact.contactId) {
+      setSelectedContactId(firstContact.contactId);
+    }
+
+    // Check if it's a pure foreign currency delivery voucher
+    const isPureCurrencyDelivery =
+      v.autoType === 'currency_receive_from_person' ||
+      v.autoType === 'currency_pay_to_person' ||
+      (v.lines.length === 2 &&
+        v.lines.every((l) => l.debitIRR === 0 && l.creditIRR === 0 && l.currency !== 'IRR'));
+
+    if (isPureCurrencyDelivery) {
       setEntryTab('auto');
-      if (
-        v.autoType === 'receive_from_person' ||
-        v.autoType === 'pay_to_person' ||
-        v.autoType === 'bank_transfer' ||
-        v.autoType === 'expense' ||
-        v.autoType === 'income'
-      ) {
-        setAutoType(v.autoType);
-      }
-      // Populate contact if available
-      const firstContact = v.lines.find((l) => l.contactId);
-      if (firstContact && firstContact.contactId) {
-        setSelectedContactId(firstContact.contactId);
-      }
-      // Populate splits from bank lines
+      const bankLine = v.lines.find((l) => l.bankId) || v.lines[0];
+      const isRec = (bankLine.debitForeign || 0) > 0;
+      setAutoType(isRec ? 'currency_receive_from_person' : 'currency_pay_to_person');
+      setFxDeliveryCurrency(bankLine.currency);
+      setFxDeliveryAmount(bankLine.debitForeign || bankLine.creditForeign || 0);
+      if (bankLine.bankId) setFxDeliveryBankId(bankLine.bankId);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
+    if (
+      v.autoType === 'receive_from_person' ||
+      v.autoType === 'pay_to_person'
+    ) {
+      setEntryTab('auto');
+      setAutoType(v.autoType);
       const bankLines = v.lines.filter((l) => l.bankId);
       if (bankLines.length > 0) {
         const loadedSplits: PaymentSplitLine[] = bankLines.map((bl, i) => ({
@@ -566,8 +669,32 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
         }));
         setSplits(loadedSplits);
       }
+    } else if (
+      v.autoType === 'bank_transfer' ||
+      v.autoType === 'expense' ||
+      v.autoType === 'income'
+    ) {
+      setEntryTab('auto');
+      setAutoType(v.autoType);
+      const bankLines = v.lines.filter((l) => l.bankId);
+      if (v.autoType === 'bank_transfer' && bankLines.length >= 2) {
+        const dst = bankLines.find((l) => l.debitIRR > 0 || l.debitForeign > 0) || bankLines[0];
+        const src = bankLines.find((l) => l.creditIRR > 0 || l.creditForeign > 0) || bankLines[1];
+        if (src?.bankId) setSourceBankId(src.bankId);
+        if (dst?.bankId) setDestBankId(dst.bankId);
+        setTxCurrency(src.currency || 'IRR');
+        setTxExchangeRate(src.exchangeRate || 1);
+        setTxAmountForeign(src.creditForeign || src.creditIRR || 0);
+      } else if (bankLines.length >= 1) {
+        const bl = bankLines[0];
+        if (bl.bankId) setSourceBankId(bl.bankId);
+        setTxCurrency(bl.currency || 'IRR');
+        setTxExchangeRate(bl.exchangeRate || 1);
+        setTxAmountForeign(
+          bl.debitForeign || bl.creditForeign || bl.debitIRR || bl.creditIRR || 0
+        );
+      }
     } else {
-      // Manual entry edit
       setEntryTab('manual');
       setManualLines(v.lines);
     }
@@ -577,23 +704,35 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
   const handleCancelEditVoucher = () => {
     setEditingVoucherId(null);
     setDescription('');
+    setMainTrackingNumber('');
+    setFxDeliveryAmount(0);
+    setTxAmountForeign(0);
   };
 
   // ثبت سند دستی
   const totalManualDebit = manualLines.reduce((s, l) => s + (l.debitIRR || 0), 0);
   const totalManualCredit = manualLines.reduce((s, l) => s + (l.creditIRR || 0), 0);
-  const isManualBalanced = totalManualDebit > 0 && totalManualDebit === totalManualCredit;
+  const totalManualForeignDebit = manualLines.reduce((s, l) => s + (l.debitForeign || 0), 0);
+  const totalManualForeignCredit = manualLines.reduce((s, l) => s + (l.creditForeign || 0), 0);
+  const isManualBalanced =
+    (totalManualDebit > 0 && totalManualDebit === totalManualCredit) ||
+    (totalManualForeignDebit > 0 && totalManualForeignDebit === totalManualForeignCredit);
 
   const handleManualSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!isManualBalanced) return;
 
+    const existingVoucher = editingVoucherId
+      ? vouchers.find((v) => v.id === editingVoucherId)
+      : undefined;
+
     const voucherLines: VoucherLine[] = manualLines.map((ml, i) => {
       const acc = accounts.find((a) => a.code === ml.accountCode);
       const bnk = ml.bankId ? banks.find((b) => b.id === ml.bankId) : undefined;
       const cnt = ml.contactId ? contacts.find((c) => c.id === ml.contactId) : undefined;
+      const curr = (ml.currency as CurrencyCode) || 'IRR';
       return {
-        id: `ml-${Date.now()}-${i}`,
+        id: ml.id || `ml-${Date.now()}-${i}`,
         accountCode: ml.accountCode || '1102',
         accountName: acc?.name || 'حساب',
         contactId: ml.contactId || undefined,
@@ -601,29 +740,42 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
         bankId: ml.bankId || undefined,
         bankName: bnk?.bankName,
         description: ml.description || description || 'ثبت سند',
-        currency: (ml.currency as CurrencyCode) || 'IRR',
+        currency: curr,
         exchangeRate: ml.exchangeRate || 1,
-        debitForeign: ml.debitIRR || 0,
-        creditForeign: ml.creditIRR || 0,
+        debitForeign: curr === 'IRR' ? ml.debitIRR || 0 : ml.debitForeign || 0,
+        creditForeign: curr === 'IRR' ? ml.creditIRR || 0 : ml.creditForeign || 0,
         debitIRR: ml.debitIRR || 0,
         creditIRR: ml.creditIRR || 0,
+        trackingNumber: ml.trackingNumber || mainTrackingNumber.trim() || undefined,
       };
     });
 
     const nextManualVoucherNumber =
+      existingVoucher?.voucherNumber ||
       Math.max(1003, ...vouchers.map((v) => v.voucherNumber || 0)) + 1;
 
-    onAddVoucher({
-      id: `vch-man-${Date.now()}`,
+    const targetVoucher: JournalVoucher = {
+      id: editingVoucherId || `vch-man-${Date.now()}`,
       voucherNumber: nextManualVoucherNumber,
       date,
       description: description || 'سند حسابداری',
+      referenceNumber: mainTrackingNumber.trim() || existingVoucher?.referenceNumber,
       status: 'permanent',
       createdAt: date,
-      autoType: 'manual',
+      autoType: existingVoucher?.autoType || 'manual',
       lines: voucherLines,
-    });
+    };
+
+    if (editingVoucherId && onUpdateVoucher) {
+      onUpdateVoucher(targetVoucher);
+      setEditingVoucherId(null);
+      setSuccessMsg(`سند شماره ${nextManualVoucherNumber} با موفقیت ویرایش و ذخیره شد.`);
+    } else {
+      onAddVoucher(targetVoucher);
+      setSuccessMsg(`سند شماره ${nextManualVoucherNumber} با موفقیت ثبت شد.`);
+    }
     setDescription('');
+    setMainTrackingNumber('');
   };
 
   const moeinAccounts = accounts.filter((a) => a.level === 'moein');
@@ -636,10 +788,10 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
           <div>
             <h2 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
               <Sparkles className="w-5 h-5 text-teal-600" />
-              امور مالی و ثبت اتوماتیک دریافت، پرداخت، انتقال و هزینه
+              دریافت و پرداخت ریالی + تحویل ارز (دریافت و پرداخت ارزی اشخاص)
             </h2>
             <p className="text-xs text-slate-600 mt-1">
-              بدون نیاز به دانش حسابداری، فقط نوع عملیات را انتخاب کنید تا سند بانک، صندوق و حساب شخص به صورت ۱۰۰٪ خودکار صادر شود.
+              شخص را انتخاب کنید و مبلغ ریالی یا ارزی (دلار، یورو، درهم، یوان...) را به هر میزان ثبت کنید تا مستقیماً در صورتحساب شخص و موجودی بانک/صندوق بنشیند.
             </p>
           </div>
 
@@ -672,14 +824,15 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
         </div>
 
         {editingVoucherId && (
-          <div className="mb-4 bg-amber-50 border border-amber-300 rounded-xl p-3 flex items-center justify-between text-xs text-amber-900 font-bold">
-            <span>
-              در حال ویرایش و اصلاح سند شماره: {vouchers.find((v) => v.id === editingVoucherId)?.voucherNumber}
+          <div className="mb-4 bg-amber-50 border-2 border-amber-400 rounded-xl p-3.5 flex items-center justify-between text-xs text-amber-950 font-bold">
+            <span className="flex items-center gap-2">
+              <Edit3 className="w-4 h-4 text-amber-700" />
+              در حال ویرایش و اصلاح سند شماره: #{vouchers.find((v) => v.id === editingVoucherId)?.voucherNumber}
             </span>
             <button
               type="button"
               onClick={handleCancelEditVoucher}
-              className="text-xs text-rose-700 hover:text-rose-800 underline cursor-pointer"
+              className="px-3 py-1 rounded-lg bg-white border border-amber-300 text-xs text-rose-700 hover:bg-rose-50 font-extrabold cursor-pointer"
             >
               انصراف از ویرایش
             </button>
@@ -699,7 +852,7 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
                     سند مالی شماره #{submittedVoucherSuccess.voucherNumber} با موفقیت ثبت شد!
                   </h3>
                   <p className="text-xs text-emerald-800">
-                    مانده حساب بانک، صندوق و طرف حساب در دیتابیس به‌روز گردید.
+                    مانده حساب بانک، صندوق و صورتحساب ریالی/ارزی شخص به‌روز گردید.
                   </p>
                 </div>
               </div>
@@ -725,15 +878,6 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
                 <span className="font-extrabold text-slate-900 text-xs font-sans truncate block">{submittedVoucherSuccess.description}</span>
               </div>
             </div>
-
-            <div className="flex items-center justify-end gap-2 pt-1">
-              <button
-                onClick={() => setSubmittedVoucherSuccess(null)}
-                className="px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-extrabold text-xs cursor-pointer transition shadow-md shadow-teal-600/20"
-              >
-                + ثبت سند جدید
-              </button>
-            </div>
           </div>
         )}
 
@@ -746,28 +890,28 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
 
         {entryTab === 'auto' ? (
           <form onSubmit={handleAutoSubmit} className="space-y-6">
-            {/* ۵ کارت انتخاب نوع عملیات اتوماتیک */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+            {/* کارت‌های انتخاب نوع عملیات: دریافت/پرداخت ریالی + تحویل ارز (دریافت/پرداخت ارزی) + انتقال/هزینه */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               <button
                 type="button"
                 onClick={() => setAutoType('receive_from_person')}
                 className={`p-3.5 rounded-xl border text-right transition flex flex-col justify-between cursor-pointer ${
                   autoType === 'receive_from_person'
-                    ? 'bg-emerald-50 border-emerald-500 text-emerald-950 font-bold shadow-xs'
+                    ? 'bg-emerald-50 border-2 border-emerald-600 text-emerald-950 font-bold shadow-xs'
                     : 'bg-slate-50/70 border-slate-200 text-slate-700 hover:border-slate-300'
                 }`}
               >
                 <div className="flex items-center justify-between mb-2">
                   <ArrowDownLeft className="w-5 h-5 text-emerald-600" />
                   <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold">
-                    ورود پول / ارز
+                    دریافت ریالی
                   </span>
                 </div>
-                <div className="text-xs font-bold text-slate-900">
-                  دریافت از شخص و واریز به بانک/صندوق
+                <div className="text-xs font-extrabold text-slate-900">
+                  ۱. دریافت وجه (ریال) از شخص
                 </div>
                 <p className="text-[11px] text-slate-600 mt-1">
-                  مشتری یا شخص پول/ارز به بانک یا صندوق شما داده است
+                  مشتری یا شخص پول به بانک یا صندوق شما واریز کرده است
                 </p>
               </button>
 
@@ -776,97 +920,130 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
                 onClick={() => setAutoType('pay_to_person')}
                 className={`p-3.5 rounded-xl border text-right transition flex flex-col justify-between cursor-pointer ${
                   autoType === 'pay_to_person'
-                    ? 'bg-rose-50 border-rose-500 text-rose-950 font-bold shadow-xs'
+                    ? 'bg-rose-50 border-2 border-rose-600 text-rose-950 font-bold shadow-xs'
                     : 'bg-slate-50/70 border-slate-200 text-slate-700 hover:border-slate-300'
                 }`}
               >
                 <div className="flex items-center justify-between mb-2">
                   <ArrowUpRight className="w-5 h-5 text-rose-600" />
                   <span className="text-[10px] px-2 py-0.5 rounded bg-rose-100 text-rose-800 font-bold">
-                    خروج پول / ارز
+                    پرداخت ریالی
                   </span>
                 </div>
-                <div className="text-xs font-bold text-slate-900">پرداخت به شخص از بانک/صندوق</div>
+                <div className="text-xs font-extrabold text-slate-900">
+                  ۲. پرداخت وجه (ریال) به شخص
+                </div>
                 <p className="text-[11px] text-slate-600 mt-1">
-                  از بانک یا صندوق خودتان به شخص پول یا ارز پرداخت کرده‌اید
+                  از بانک یا صندوق خودتان به شخص پول پرداخت کرده‌اید
                 </p>
               </button>
 
               <button
                 type="button"
-                onClick={() => setAutoType('bank_transfer')}
+                onClick={() => setAutoType('currency_receive_from_person')}
                 className={`p-3.5 rounded-xl border text-right transition flex flex-col justify-between cursor-pointer ${
-                  autoType === 'bank_transfer'
-                    ? 'bg-sky-50 border-sky-500 text-sky-950 font-bold shadow-xs'
+                  autoType === 'currency_receive_from_person'
+                    ? 'bg-teal-50 border-2 border-teal-600 text-teal-950 font-bold shadow-xs'
                     : 'bg-slate-50/70 border-slate-200 text-slate-700 hover:border-slate-300'
                 }`}
               >
                 <div className="flex items-center justify-between mb-2">
-                  <ArrowLeftRight className="w-5 h-5 text-sky-600" />
-                  <span className="text-[10px] px-2 py-0.5 rounded bg-sky-100 text-sky-800 font-bold">
-                    جابجایی داخلی
-                  </span>
-                </div>
-                <div className="text-xs font-bold text-slate-900">انتقال بین بانک‌ها و صندوق‌ها</div>
-                <p className="text-[11px] text-slate-600 mt-1">
-                  کارت به کارت یا جابجایی پول بین بانک‌ها و صندوق‌های خودتان
-                </p>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setAutoType('expense')}
-                className={`p-3.5 rounded-xl border text-right transition flex flex-col justify-between cursor-pointer ${
-                  autoType === 'expense'
-                    ? 'bg-amber-50 border-amber-500 text-amber-950 font-bold shadow-xs'
-                    : 'bg-slate-50/70 border-slate-200 text-slate-700 hover:border-slate-300'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <Receipt className="w-5 h-5 text-amber-600" />
-                  <span className="text-[10px] px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-bold">
-                    ثبت خرج
-                  </span>
-                </div>
-                <div className="text-xs font-bold text-slate-900">ثبت هزینه شخصی / کاری</div>
-                <p className="text-[11px] text-slate-600 mt-1">
-                  پرداخت اجاره، حقوق، کارمزد یا هزینه‌های شخصی از بانک/صندوق
-                </p>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setAutoType('income')}
-                className={`p-3.5 rounded-xl border text-right transition flex flex-col justify-between cursor-pointer ${
-                  autoType === 'income'
-                    ? 'bg-teal-50 border-teal-500 text-teal-950 font-bold shadow-xs'
-                    : 'bg-slate-50/70 border-slate-200 text-slate-700 hover:border-slate-300'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <TrendingUp className="w-5 h-5 text-teal-600" />
+                  <PackageCheck className="w-5 h-5 text-teal-600" />
                   <span className="text-[10px] px-2 py-0.5 rounded bg-teal-100 text-teal-800 font-bold">
-                    شارژ حساب
+                    ورود ارز به صندوق
                   </span>
                 </div>
-                <div className="text-xs font-bold text-slate-900">درآمد متفرقه / شارژ بانک</div>
+                <div className="text-xs font-extrabold text-slate-900">
+                  ۳. دریافت ارز از شخص (تحویل گرفتن ارز)
+                </div>
                 <p className="text-[11px] text-slate-600 mt-1">
-                  واریز درآمد متفرقه یا افزایش موجودی بانک و صندوق
+                  شخص ارز (دلار، درهم، یورو...) به شما تحویل داده و در صورتحساب ارزی او ثبت می‌شود
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setAutoType('currency_pay_to_person')}
+                className={`p-3.5 rounded-xl border text-right transition flex flex-col justify-between cursor-pointer ${
+                  autoType === 'currency_pay_to_person'
+                    ? 'bg-amber-50 border-2 border-amber-600 text-amber-950 font-bold shadow-xs'
+                    : 'bg-slate-50/70 border-slate-200 text-slate-700 hover:border-slate-300'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <Coins className="w-5 h-5 text-amber-600" />
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-amber-100 text-amber-900 font-bold">
+                    خروج ارز از صندوق
+                  </span>
+                </div>
+                <div className="text-xs font-extrabold text-slate-900">
+                  ۴. پرداخت / تحویل ارز به شخص
+                </div>
+                <p className="text-[11px] text-slate-600 mt-1">
+                  شما ارز (دلار، درهم، یورو...) به شخص تحویل داده‌اید و در صورتحساب ارزی او ثبت می‌شود
                 </p>
               </button>
             </div>
 
-            {/* محتوای فرم بر اساس نوع عملیات انتخابی */}
-            {(autoType === 'receive_from_person' || autoType === 'pay_to_person') && (
+            {/* دکمه‌های عملیات داخلی بانک، هزینه و درآمد */}
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <span className="text-[11px] font-bold text-slate-500">سایر عملیات مالی:</span>
+              <button
+                type="button"
+                onClick={() => setAutoType('bank_transfer')}
+                className={`px-3 py-1.5 rounded-lg border text-xs font-bold flex items-center gap-1.5 cursor-pointer transition ${
+                  autoType === 'bank_transfer'
+                    ? 'bg-sky-600 text-white border-sky-700'
+                    : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <ArrowLeftRight className="w-3.5 h-3.5" />
+                انتقال بین بانک‌ها و صندوق‌ها
+              </button>
+              <button
+                type="button"
+                onClick={() => setAutoType('expense')}
+                className={`px-3 py-1.5 rounded-lg border text-xs font-bold flex items-center gap-1.5 cursor-pointer transition ${
+                  autoType === 'expense'
+                    ? 'bg-amber-600 text-white border-amber-700'
+                    : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <Receipt className="w-3.5 h-3.5" />
+                ثبت هزینه شخصی / کاری
+              </button>
+              <button
+                type="button"
+                onClick={() => setAutoType('income')}
+                className={`px-3 py-1.5 rounded-lg border text-xs font-bold flex items-center gap-1.5 cursor-pointer transition ${
+                  autoType === 'income'
+                    ? 'bg-teal-600 text-white border-teal-700'
+                    : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <TrendingUp className="w-3.5 h-3.5" />
+                درآمد متفرقه / شارژ بانک
+              </button>
+            </div>
+
+            {/* بخش مشترک انتخاب شخص برای عملیات‌های طرف حساب (ریالی و تحویل ارز) */}
+            {(autoType === 'receive_from_person' ||
+              autoType === 'pay_to_person' ||
+              autoType === 'currency_receive_from_person' ||
+              autoType === 'currency_pay_to_person') && (
               <div className="space-y-5 bg-slate-50/70 border border-slate-200 rounded-xl p-5">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
                   <div>
                     <div className="flex items-center justify-between mb-1">
-                      <label className="text-xs font-bold text-slate-800 flex items-center gap-1">
+                      <label className="text-xs font-extrabold text-slate-800 flex items-center gap-1">
                         <User className="w-3.5 h-3.5 text-teal-600" />
                         {autoType === 'receive_from_person'
-                          ? 'دریافت وجه/ارز از کدام شخص؟'
-                          : 'پرداخت وجه/ارز به کدام شخص؟'}
+                          ? 'دریافت وجه ریالی از کدام شخص؟'
+                          : autoType === 'pay_to_person'
+                          ? 'پرداخت وجه ریالی به کدام شخص؟'
+                          : autoType === 'currency_receive_from_person'
+                          ? 'دریافت / تحویل گرفتن ارز از کدام شخص؟'
+                          : 'پرداخت / تحویل دادن ارز به کدام شخص؟'}
                       </label>
                       {onAddContact && (
                         <button
@@ -882,7 +1059,7 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
                     <select
                       value={selectedContactId}
                       onChange={(e) => setSelectedContactId(e.target.value)}
-                      className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2.5 text-sm text-slate-900 focus:border-teal-600 focus:ring-1 focus:ring-teal-600"
+                      className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2.5 text-sm font-bold text-slate-900 focus:border-teal-600 focus:ring-1 focus:ring-teal-600"
                     >
                       {contacts.map((c) => (
                         <option key={c.id} value={c.id}>
@@ -893,12 +1070,12 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">تاریخ عملیات</label>
+                    <label className="block text-xs font-extrabold text-slate-700 mb-1">تاریخ عملیات</label>
                     <input
                       type="text"
                       value={date}
                       onChange={(e) => setDate(e.target.value)}
-                      className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 font-mono-num focus:border-teal-600 focus:ring-1 focus:ring-teal-600"
+                      className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 font-mono-num font-bold focus:border-teal-600 focus:ring-1 focus:ring-teal-600"
                     />
                   </div>
 
@@ -920,8 +1097,8 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
                             ? 'تسویه (۰ ریال)'
                             : `${formatNumber(selectedContactStatement.finalBalanceIRR)} ریال (${
                                 selectedContactStatement.finalStatusIRR === 'بدهکار'
-                                  ? 'طلب ما'
-                                  : 'بدهی ما'
+                                  ? 'طلب ما از شخص'
+                                  : 'بدهی ما به شخص'
                               })`}
                         </span>
                       </div>
@@ -937,7 +1114,13 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
                                 مانده ارزی ({curr}):
                               </span>
                               <span className="font-extrabold text-teal-950">
-                                {formatNumber(b.balanceForeign)} {curr} ({b.status})
+                                {formatCurrencyAmount(b.balanceForeign, curr)} {curr} (
+                                {b.status === 'بدهکار'
+                                  ? 'بدهکار به ما — باید تحویل دهد'
+                                  : b.status === 'بستانکار'
+                                  ? 'طلبکار از ما — باید تحویل دهیم'
+                                  : 'تسویه'}
+                                )
                               </span>
                             </div>
                             {b.balanceForeign > 0 && b.status !== 'تسویه' && (
@@ -947,13 +1130,12 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
                                   handleSettleCurrencyBalance(curr, b.balanceForeign, b.status)
                                 }
                                 className="px-2.5 py-1 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-extrabold text-[11px] flex items-center gap-1 cursor-pointer transition shadow-xs"
-                                title="ثبت مستقیم دریافت یا پرداخت این ارز بدون نیاز به فاکتور جدید"
                               >
                                 <Coins className="w-3.5 h-3.5" />
                                 <span>
                                   {b.status === 'بستانکار'
-                                    ? `⚡ تحویل ارز به شخص (پرداخت ${formatNumber(b.balanceForeign)} ${curr})`
-                                    : `⚡ تحویل گرفتن ارز از شخص (دریافت ${formatNumber(b.balanceForeign)} ${curr})`}
+                                    ? `تحویل ${formatNumber(b.balanceForeign)} ${curr} به شخص`
+                                    : `دریافت ${formatNumber(b.balanceForeign)} ${curr} از شخص`}
                                 </span>
                               </button>
                             )}
@@ -994,29 +1176,121 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
                   </div>
                 )}
 
-                <MultiPaymentSplitsEditor
-                  title={
-                    autoType === 'receive_from_person'
-                      ? `انتخاب بانک یا صندوق مقصد (واریز دریافتی از ${
-                          selectedContact?.name || 'شخص'
-                        })`
-                      : `انتخاب بانک یا صندوق مبدأ (برداشت جهت پرداخت به ${
-                          selectedContact?.name || 'شخص'
-                        })`
-                  }
-                  subtitle="می‌توانید یک یا چند بانک و صندوق را انتخاب کنید. اگر دریافت یا پرداخت شما ارزی (دلار، درهم، یورو، یوان) است، نوع ارز را انتخاب کرده و ارزش ریالی آن را تعیین کنید."
-                  totalTargetIRR={0}
-                  splits={splits}
-                  onChange={setSplits}
-                  banks={banks}
-                  currencies={currencies}
-                  mode={autoType === 'receive_from_person' ? 'receipt' : 'payment'}
-                  contactName={selectedContact?.name}
-                />
+                {/* فرم دریافت/پرداخت ریالی */}
+                {(autoType === 'receive_from_person' || autoType === 'pay_to_person') && (
+                  <MultiPaymentSplitsEditor
+                    title={
+                      autoType === 'receive_from_person'
+                        ? `انتخاب بانک یا صندوق مقصد (واریز دریافتی از ${
+                            selectedContact?.name || 'شخص'
+                          })`
+                        : `انتخاب بانک یا صندوق مبدأ (برداشت جهت پرداخت به ${
+                            selectedContact?.name || 'شخص'
+                          })`
+                    }
+                    subtitle="می‌توانید یک یا چند بانک و صندوق را انتخاب کنید."
+                    totalTargetIRR={0}
+                    splits={splits}
+                    onChange={setSplits}
+                    banks={banks}
+                    currencies={currencies}
+                    mode={autoType === 'receive_from_person' ? 'receipt' : 'payment'}
+                    contactName={selectedContact?.name}
+                  />
+                )}
+
+                {/* فرم مستقیم تحویل ارز (دریافت و پرداخت ارزی با هر شخصی و با هر مبلغی) */}
+                {(autoType === 'currency_receive_from_person' ||
+                  autoType === 'currency_pay_to_person') && (
+                  <div
+                    className={`rounded-2xl border-2 p-4 space-y-4 ${
+                      autoType === 'currency_receive_from_person'
+                        ? 'bg-teal-50/70 border-teal-400'
+                        : 'bg-amber-50/70 border-amber-400'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <h4 className="text-xs sm:text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                        <PackageCheck className="w-4 h-4 text-teal-700" />
+                        {autoType === 'currency_receive_from_person'
+                          ? `دریافت مستقیم ارز از «${selectedContact?.name || 'شخص'}» (ورود ارز به صندوق/حساب ما)`
+                          : `پرداخت / تحویل مستقیم ارز به «${selectedContact?.name || 'شخص'}» (خروج ارز از صندوق/حساب ما)`}
+                      </h4>
+                      <span className="text-[11px] font-bold text-slate-600">
+                        ثبت مستقیم در ستون ارزی صورتحساب شخص (امکان ثبت هر مبلغ کمتر، برابر یا بیشتر)
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-xs font-extrabold text-slate-800 mb-1">
+                          نوع ارز تحویلی / دریافتی:
+                        </label>
+                        <select
+                          value={fxDeliveryCurrency}
+                          onChange={(e) => {
+                            const c = e.target.value as CurrencyCode;
+                            setFxDeliveryCurrency(c);
+                            const matchBank = banks.find((b) => b.currency === c);
+                            if (matchBank) setFxDeliveryBankId(matchBank.id);
+                          }}
+                          className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-sm font-extrabold text-slate-900 focus:border-teal-600 focus:outline-none"
+                        >
+                          {foreignCurrencies.map((c) => (
+                            <option key={c.code} value={c.code}>
+                              {c.name} ({c.code})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-extrabold text-slate-800 mb-1">
+                          مقدار ارز ({fxDeliveryCurrency}) — هر مبلغ دلخواه:
+                        </label>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={fxDeliveryAmount ? formatNumber(fxDeliveryAmount) : ''}
+                          onChange={(e) =>
+                            setFxDeliveryAmount(parseFormattedNumber(e.target.value))
+                          }
+                          placeholder={`مثلاً 500 یا 1,200 ${fxDeliveryCurrency}`}
+                          className="w-full bg-white border-2 border-teal-500 rounded-xl px-3 py-2.5 text-sm font-extrabold font-mono-num text-slate-900 focus:outline-none"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-extrabold text-slate-800 mb-1">
+                          {autoType === 'currency_receive_from_person'
+                            ? 'ورود ارز به کدام صندوق / حساب؟'
+                            : 'خروج ارز از کدام صندوق / حساب؟'}
+                        </label>
+                        <select
+                          value={fxDeliveryBankId}
+                          onChange={(e) => setFxDeliveryBankId(e.target.value)}
+                          className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-900 focus:border-teal-600 focus:outline-none"
+                        >
+                          {banks.length === 0 ? (
+                            <option value="">صندوق ارزی پیش‌فرض ({fxDeliveryCurrency})</option>
+                          ) : (
+                            banks.map((b) => (
+                              <option key={b.id} value={b.id}>
+                                {b.kind === 'cash_box' ? '📦 ' : '🏦 '}
+                                {b.bankName} ({b.currency})
+                              </option>
+                            ))
+                          )}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
-            {/* حالت ۳، ۴ و ۵: انتقال بین بانک‌ها، ثبت هزینه، یا ثبت درآمد */}
+            {/* حالت انتقال بین بانک‌ها، ثبت هزینه، یا ثبت درآمد */}
             {(autoType === 'bank_transfer' ||
               autoType === 'expense' ||
               autoType === 'income') && (
@@ -1177,13 +1451,13 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
               </div>
             )}
 
-            {/* شماره فیش / کد رهگیری + توضیحات کامل (نمایش در صورتحساب و جستجوی سراسری) */}
+            {/* یک فیلد واحد برای شماره فیش / کد رهگیری + توضیحات کامل */}
             <div className="bg-teal-50/70 border-2 border-teal-300 rounded-2xl p-4 space-y-3">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 items-end">
                 <div>
                   <label className="block text-xs font-extrabold text-teal-900 mb-1 flex items-center gap-1">
                     <Hash className="w-3.5 h-3.5 text-teal-700" />
-                    شماره فیش / کد رهگیری / شماره رسید:
+                    شماره فیش / کد رهگیری / شماره رسید (در صورتحساب می‌آید):
                   </label>
                   <input
                     type="text"
@@ -1204,7 +1478,7 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
                         setSplits([{ ...splits[0], trackingNumber: val }]);
                       }
                     }}
-                    placeholder="مثلاً: 8941203 یا PAY-101 (در صورتحساب و جستجو می‌آید)"
+                    placeholder="مثلاً: 8941203 یا DLV-101"
                     className="w-full bg-white border-2 border-teal-400 rounded-xl px-3.5 py-2.5 text-xs font-extrabold font-mono-num text-slate-900 focus:border-teal-600 focus:outline-none"
                   />
                 </div>
@@ -1217,19 +1491,30 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
                     type="text"
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
-                    placeholder="توضیحات یا بابت را اینجا بنویسید (مثلاً: واریز نقدی بابت تسویه ۵۰۰ دلار / حواله پایا)..."
+                    placeholder="توضیحات یا بابت را اینجا بنویسید (مثلاً: تحویل نقدی ۵۰۰ دلار / واریز پایا)..."
                     className="w-full bg-white border-2 border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 focus:border-teal-600 focus:outline-none"
                   />
                 </div>
               </div>
 
-              <div className="flex justify-end pt-1">
+              <div className="flex justify-end gap-2 pt-1">
+                {editingVoucherId && (
+                  <button
+                    type="button"
+                    onClick={handleCancelEditVoucher}
+                    className="px-4 py-3 rounded-xl bg-white border border-slate-300 text-slate-700 font-bold text-xs cursor-pointer"
+                  >
+                    انصراف از ویرایش
+                  </button>
+                )}
                 <button
                   type="submit"
                   className="w-full sm:w-auto px-6 py-3 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-extrabold text-sm flex items-center justify-center gap-2 transition shadow-md shadow-teal-600/20 cursor-pointer"
                 >
                   <CheckCircle2 className="w-4 h-4" />
-                  ثبت اتوماتیک سند مالی و به‌روزرسانی بانک/حساب
+                  {editingVoucherId
+                    ? 'ذخیره تغییرات سند مالی و به‌روزرسانی حساب'
+                    : 'ثبت سند مالی و به‌روزرسانی بانک/صورتحساب شخص'}
                 </button>
               </div>
             </div>
@@ -1262,7 +1547,7 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
             <div className="space-y-2">
               {manualLines.map((line, idx) => (
                 <div
-                  key={line.id}
+                  key={line.id || idx}
                   className="grid grid-cols-1 md:grid-cols-12 gap-2 bg-slate-50 p-2.5 rounded-lg border border-slate-200 items-center"
                 >
                   <div className="md:col-span-3">
@@ -1381,6 +1666,8 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
                       exchangeRate: 1,
                       debitIRR: 0,
                       creditIRR: 0,
+                      debitForeign: 0,
+                      creditForeign: 0,
                     },
                   ])
                 }
@@ -1395,19 +1682,19 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
                 disabled={!isManualBalanced}
                 className="px-5 py-2 rounded-xl bg-teal-600 disabled:bg-slate-200 disabled:text-slate-400 text-white font-extrabold text-xs cursor-pointer shadow-xs"
               >
-                ثبت سند دستی
+                {editingVoucherId ? 'ذخیره تغییرات سند' : 'ثبت سند دستی'}
               </button>
             </div>
           </form>
         )}
       </div>
 
-      {/* فهرست اسناد مالی ثبت‌شده (اتوماتیک و دستی) + جستجوی فوری فیش و کد رهگیری */}
+      {/* فهرست اسناد مالی ثبت‌شده (اتوماتیک و دستی) + جستجو، ویرایش و حذف */}
       <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
             <Landmark className="w-5 h-5 text-teal-600" />
-            تاریخچه اسناد مالی، فیش‌ها و تراکنش‌های ثبت‌شده ({formatNumber(vouchers.length)} سند)
+            تاریخچه اسناد دریافت، پرداخت، تحویل ارز و تراکنش‌های مالی ({formatNumber(vouchers.length)} سند)
           </h3>
 
           <div className="relative w-full sm:w-80">
@@ -1442,11 +1729,17 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
                   (ln.bankName || '').toLowerCase().includes(q) ||
                   (ln.description || '').toLowerCase().includes(q) ||
                   String(ln.debitIRR).includes(q) ||
-                  String(ln.creditIRR).includes(q)
+                  String(ln.creditIRR).includes(q) ||
+                  String(ln.debitForeign).includes(q) ||
+                  String(ln.creditForeign).includes(q)
               );
             })
             .map((v) => {
               const sumIRR = v.lines.reduce((s, l) => s + l.debitIRR, 0);
+              const firstForeignLine = v.lines.find(
+                (l) => l.currency !== 'IRR' && ((l.debitForeign || 0) > 0 || (l.creditForeign || 0) > 0)
+              );
+              const sumForeign = v.lines.reduce((s, l) => s + (l.debitForeign || 0), 0);
               const voucherTrackingNumbers = Array.from(
                 new Set(
                   v.lines
@@ -1478,21 +1771,28 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
                       <span className="text-sm font-bold text-slate-900">{v.description}</span>
                     </div>
 
-                    <div className="flex items-center gap-3">
-                      <span className="text-xs font-extrabold text-emerald-700 font-mono-num">
-                        جمع سند: {formatNumber(sumIRR)} ریال
-                      </span>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {sumIRR > 0 ? (
+                        <span className="text-xs font-extrabold text-emerald-700 font-mono-num">
+                          جمع سند: {formatNumber(sumIRR)} ریال
+                        </span>
+                      ) : firstForeignLine ? (
+                        <span className="text-xs font-extrabold text-teal-800 font-mono-num">
+                          مقدار ارز: {formatNumber(sumForeign)} {firstForeignLine.currency}
+                        </span>
+                      ) : null}
                       {onUpdateVoucher && (
                         <button
                           type="button"
                           onClick={() => handleStartEditVoucher(v)}
-                          className="px-2 py-1 rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 cursor-pointer text-xs flex items-center gap-1 font-bold transition"
+                          className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 cursor-pointer text-xs flex items-center gap-1 font-bold transition"
                           title="ویرایش و اصلاح این سند"
                         >
-                          ویرایش سند
+                          <Edit3 className="w-3.5 h-3.5" />
+                          <span>ویرایش</span>
                         </button>
                       )}
-                      {onDeleteVoucher && v.id !== 'vch-1' && (
+                      {onDeleteVoucher && (
                         <button
                           type="button"
                           onClick={() => {
@@ -1504,7 +1804,7 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
                               onDeleteVoucher(v.id);
                             }
                           }}
-                          className="px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 cursor-pointer text-xs flex items-center gap-1 font-bold transition"
+                          className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 cursor-pointer text-xs flex items-center gap-1 font-bold transition"
                           title="حذف این سند"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -1520,6 +1820,7 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
                       const contactObj = ln.contactId
                         ? contacts.find((c) => c.id === ln.contactId)
                         : undefined;
+                      const isDebit = ln.debitIRR > 0 || (ln.debitIRR === 0 && ln.creditIRR === 0 && ln.debitForeign > 0);
                       return (
                         <div
                           key={ln.id}
@@ -1545,16 +1846,28 @@ export const VoucherEntryView: React.FC<VoucherEntryViewProps> = ({
                             </p>
                           </div>
                           <div className="text-left shrink-0 font-mono-num">
-                            {ln.debitIRR > 0 ? (
-                              <span className="text-emerald-700 font-bold">
-                                بدهکار: {formatNumber(ln.debitIRR)}
-                              </span>
+                            {ln.debitIRR > 0 || ln.creditIRR > 0 ? (
+                              isDebit ? (
+                                <span className="text-emerald-700 font-bold">
+                                  بدهکار: {formatNumber(ln.debitIRR)} ریال
+                                </span>
+                              ) : (
+                                <span className="text-rose-700 font-bold">
+                                  بستانکار: {formatNumber(ln.creditIRR)} ریال
+                                </span>
+                              )
                             ) : (
-                              <span className="text-rose-700 font-bold">
-                                بستانکار: {formatNumber(ln.creditIRR)}
-                              </span>
+                              isDebit ? (
+                                <span className="text-emerald-700 font-bold">
+                                  بدهکار ارزی: {formatNumber(ln.debitForeign)} {ln.currency}
+                                </span>
+                              ) : (
+                                <span className="text-rose-700 font-bold">
+                                  بستانکار ارزی: {formatNumber(ln.creditForeign)} {ln.currency}
+                                </span>
+                              )
                             )}
-                            {ln.currency !== 'IRR' && (
+                            {ln.currency !== 'IRR' && (ln.debitIRR > 0 || ln.creditIRR > 0) && (ln.debitForeign > 0 || ln.creditForeign > 0) && (
                               <div className="text-[10px] text-amber-800 font-semibold">
                                 ({formatNumber(ln.debitForeign || ln.creditForeign)} {ln.currency} ×{' '}
                                 {formatNumber(ln.exchangeRate)})

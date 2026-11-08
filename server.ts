@@ -10,10 +10,47 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 const DB_FILE = path.join(__dirname, 'server_db.json');
+const LICENSE_FILE = path.join(__dirname, 'server_license.json');
+const PUBLIC_LICENSE_FILE = path.join(__dirname, 'public', 'server_license.json');
+const DIST_LICENSE_FILE = path.join(__dirname, 'dist', 'server_license.json');
 const BACKUPS_DIR = path.join(__dirname, 'backups');
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.text({ type: 'text/plain', limit: '50mb' }));
+
+function readServerLicense(): any | null {
+  const candidates = [LICENSE_FILE, DIST_LICENSE_FILE, PUBLIC_LICENSE_FILE];
+  for (const filePath of candidates) {
+    try {
+      if (fs.existsSync(filePath)) {
+        const parsed = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+        if (parsed && typeof parsed === 'object') {
+          return parsed;
+        }
+      }
+    } catch {
+      // ignore invalid file
+    }
+  }
+  return null;
+}
+
+function writeServerLicense(data: any): boolean {
+  try {
+    const json = JSON.stringify(data, null, 2);
+    fs.writeFileSync(LICENSE_FILE, json, 'utf-8');
+    if (fs.existsSync(path.dirname(PUBLIC_LICENSE_FILE))) {
+      fs.writeFileSync(PUBLIC_LICENSE_FILE, json, 'utf-8');
+    }
+    if (fs.existsSync(path.dirname(DIST_LICENSE_FILE))) {
+      fs.writeFileSync(DIST_LICENSE_FILE, json, 'utf-8');
+    }
+    return true;
+  } catch (err) {
+    console.error('Error writing server license:', err);
+    return false;
+  }
+}
 
 function ensureBackupsDir(): string {
   try {
@@ -94,8 +131,51 @@ function writeAutoBackupSnapshot(state: any, reason = 'auto_2h') {
   };
 }
 
+// 0. Server-level License Persistence (Activate once on server -> stays unlocked)
+app.get('/api/license', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  const lic = readServerLicense();
+  if (lic && lic.isActivated) {
+    return res.json({
+      success: true,
+      isActivated: true,
+      license: lic,
+    });
+  }
+  return res.json({
+    success: true,
+    isActivated: false,
+    license: lic || null,
+  });
+});
+
+app.post('/api/license', (req, res) => {
+  const raw = req.body || {};
+  const src = raw.license || raw;
+  const payload = {
+    isActivated: true,
+    machineId: src.machineId || 'TB-SRV-LINUX-ENTERPRISE',
+    activatedKey: src.activatedKey || src.activationKey || '',
+    activatedAt: src.activatedAt || new Date().toISOString(),
+    unlockedForAllIpClients: true,
+  };
+  const ok = writeServerLicense(payload);
+  return res.json({ success: ok, isActivated: true, license: payload });
+});
+
+app.delete('/api/license', (req, res) => {
+  const payload = {
+    isActivated: false,
+    unlockedForAllIpClients: false,
+    deactivatedAt: new Date().toISOString(),
+  };
+  const ok = writeServerLicense(payload);
+  return res.json({ success: ok, isActivated: false });
+});
+
 // 1. Get entire shared database state
 app.get('/api/state', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
   const dbData = readDbFromFile();
   if (dbData) {
     return res.json({
@@ -250,8 +330,21 @@ async function startServer() {
   ensureBackupsDir();
   const distPath = path.join(__dirname, 'dist');
   if (fs.existsSync(distPath) && process.env.NODE_ENV === 'production') {
-    app.use(express.static(distPath));
+    app.use(
+      express.static(distPath, {
+        setHeaders: (res, filePath) => {
+          if (
+            filePath.endsWith('index.html') ||
+            filePath.endsWith('sw.js') ||
+            filePath.endsWith('server_license.json')
+          ) {
+            res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+          }
+        },
+      })
+    );
     app.get('*', (req, res) => {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
       res.sendFile(path.join(distPath, 'index.html'));
     });
   } else {
@@ -263,7 +356,7 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 TarazBan Central Network Server running at http://0.0.0.0:${PORT}`);
+    console.log(`🚀 ARKA Central Network Server running at http://0.0.0.0:${PORT}`);
   });
 }
 

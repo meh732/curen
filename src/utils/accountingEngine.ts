@@ -777,3 +777,30 @@ export function parseFormattedNumber(formatted: string): number {
   const parsed = parseFloat(cleaned);
   return Number.isFinite(parsed) ? parsed : 0;
 }
+
+/**
+ * Returns today's real Solar Hijri (Jalali) date in YYYY/MM/DD format with Latin digits (e.g. "1405/08/17").
+ */
+export function getTodayJalaliDate(): string {
+  try {
+    const parts = new Intl.DateTimeFormat('fa-IR-u-nu-latn', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(new Date());
+    const y = parts.find((p) => p.type === 'year')?.value || '1404';
+    const m = (parts.find((p) => p.type === 'month')?.value || '01').padStart(2, '0');
+    const d = (parts.find((p) => p.type === 'day')?.value || '01').padStart(2, '0');
+    return `${y}/${m}/${d}`;
+  } catch {
+    return '1404/01/01';
+  }
+}
+
+/**
+ * Returns the current Solar Hijri (Jalali) year as a 4-digit string (e.g. "1405").
+ */
+export function getCurrentJalaliYear(): string {
+  return getTodayJalaliDate().split('/')[0] || '1404';
+}
+

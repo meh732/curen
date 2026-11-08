@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
+import arkaLogo from '../assets/arka-logo.jpg';
 import { UserAccount, AccountingState } from '../types/accounting';
 import { BLANK_ACCOUNTING_STATE } from '../data/initialAccountingData';
-import { Sparkles, Building2, UserCheck, Lock, CheckCircle2, ShieldCheck, ArrowRight, KeyRound } from 'lucide-react';
+import { getCurrentJalaliYear, getTodayJalaliDate } from '../utils/accountingEngine';
+import { Building2, UserCheck, ShieldCheck, ArrowRight, Calendar } from 'lucide-react';
 
 interface InitialSetupWizardModalProps {
   isOpen: boolean;
@@ -14,7 +16,11 @@ export const InitialSetupWizardModal: React.FC<InitialSetupWizardModalProps> = (
   onClose,
   onCompleteSetup,
 }) => {
+  const currentJYear = getCurrentJalaliYear();
   const [companyName, setCompanyName] = useState('');
+  const [fiscalYearTitle, setFiscalYearTitle] = useState(`سال مالی ${currentJYear}`);
+  const [fiscalStartDate, setFiscalStartDate] = useState(`${currentJYear}/01/01`);
+  const [fiscalEndDate, setFiscalEndDate] = useState(`${currentJYear}/12/29`);
   const [fullName, setFullName] = useState('');
   const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('');
@@ -29,6 +35,11 @@ export const InitialSetupWizardModal: React.FC<InitialSetupWizardModalProps> = (
 
     if (!companyName.trim()) {
       setError('لطفاً نام صرافی یا شرکت خود را وارد کنید.');
+      return;
+    }
+
+    if (!fiscalStartDate.trim() || !fiscalEndDate.trim()) {
+      setError('لطفاً تاریخ شروع و پایان دوره مالی را وارد کنید.');
       return;
     }
 
@@ -49,7 +60,7 @@ export const InitialSetupWizardModal: React.FC<InitialSetupWizardModalProps> = (
       fullName: fullName.trim(),
       role: 'admin',
       isActive: true,
-      lastLogin: new Date().toLocaleDateString('fa-IR') + ' - ' + new Date().toLocaleTimeString('fa-IR'),
+      lastLogin: getTodayJalaliDate() + ' - ' + new Date().toLocaleTimeString('fa-IR'),
       permissions: {
         canResetDatabase: true,
         canManageUsers: true,
@@ -64,6 +75,9 @@ export const InitialSetupWizardModal: React.FC<InitialSetupWizardModalProps> = (
     const newBlankState: AccountingState = {
       ...BLANK_ACCOUNTING_STATE,
       companyName: companyName.trim(),
+      fiscalYear: fiscalYearTitle.trim() || `سال مالی ${currentJYear}`,
+      fiscalStartDate: fiscalStartDate.trim(),
+      fiscalEndDate: fiscalEndDate.trim(),
       users: [adminUser],
       banks: [], // 100% EMPTY - User defines their own real banks
       contacts: [],
@@ -88,7 +102,7 @@ export const InitialSetupWizardModal: React.FC<InitialSetupWizardModalProps> = (
 
           <div className="w-14 h-14 mx-auto rounded-2xl bg-slate-900 border border-amber-300/40 flex items-center justify-center shadow-lg mb-3 overflow-hidden">
             <img
-              src="/arka-logo.jpg"
+              src={arkaLogo}
               alt="لوگو آرکا (ARKA)"
               referrerPolicy="no-referrer"
               className="w-full h-full object-cover"
@@ -99,7 +113,7 @@ export const InitialSetupWizardModal: React.FC<InitialSetupWizardModalProps> = (
             راه‌اندازی سیستم صرافی آرکا (ARKA) و دیتابیس ۱۰۰٪ خام
           </h3>
           <p className="text-xs text-amber-100/90 mt-1">
-            تنظیم نام مجموعه و تعریف مدیر اصلی سیستم آرکا برای شروع کار واقعی
+            تنظیم نام مجموعه، دوره مالی و تعریف مدیر اصلی سیستم آرکا برای شروع کار واقعی
           </p>
         </div>
 
@@ -122,11 +136,11 @@ export const InitialSetupWizardModal: React.FC<InitialSetupWizardModalProps> = (
             </p>
           </div>
 
-          {/* Section 1: Company / Exchange Name */}
+          {/* Section 1: Company / Exchange Name & Fiscal Period */}
           <div className="space-y-3 pt-1">
             <div className="font-extrabold text-slate-900 flex items-center gap-1.5 text-xs">
               <Building2 className="w-4 h-4 text-amber-600" />
-              ۱. مشخصات صرافی / شرکت:
+              ۱. مشخصات صرافی و دوره مالی افتتاحیه:
             </div>
             <div>
               <label className="font-bold text-slate-700 block mb-1">نام صرافی یا مجموعه شما:</label>
@@ -138,6 +152,51 @@ export const InitialSetupWizardModal: React.FC<InitialSetupWizardModalProps> = (
                 onChange={(e) => setCompanyName(e.target.value)}
                 className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-semibold focus:ring-2 focus:ring-amber-500 focus:bg-white outline-none transition"
               />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+              <div>
+                <label className="font-bold text-slate-700 block mb-1 flex items-center gap-1">
+                  <Calendar className="w-3.5 h-3.5 text-teal-600" />
+                  عنوان سال / دوره مالی:
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={fiscalYearTitle}
+                  onChange={(e) => setFiscalYearTitle(e.target.value)}
+                  placeholder={`سال مالی ${currentJYear}`}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold focus:ring-2 focus:ring-teal-500 focus:bg-white outline-none transition"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">
+                  شروع دوره مالی (از تاریخ):
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={fiscalStartDate}
+                  onChange={(e) => setFiscalStartDate(e.target.value)}
+                  placeholder={`${currentJYear}/01/01`}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono-num font-bold focus:ring-2 focus:ring-teal-500 focus:bg-white outline-none transition"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">
+                  پایان دوره مالی (تا تاریخ):
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={fiscalEndDate}
+                  onChange={(e) => setFiscalEndDate(e.target.value)}
+                  placeholder={`${currentJYear}/12/29`}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono-num font-bold focus:ring-2 focus:ring-teal-500 focus:bg-white outline-none transition"
+                />
+              </div>
             </div>
           </div>
 

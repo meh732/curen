@@ -18,6 +18,7 @@ import {
 import {
   exportOrPrintStandardLedgerPDF,
   exportOrPrintCurrencyDeliveryStatementPDF,
+  exportOrPrintContactSummaryListPDF,
 } from '../utils/pdfPrintReportService';
 import {
   Send,
@@ -823,7 +824,27 @@ export const PersonStatementsView: React.FC<PersonStatementsViewProps> = ({
                 </div>
                 <button
                   type="button"
-                  onClick={() => window.print()}
+                  onClick={() => {
+                    const contactsForPDF = debtorsAndCreditors.map((d) => ({
+                      name: d.contact.name,
+                      phone: d.contact.phone,
+                      balanceIRR: d.statement.finalBalanceIRR,
+                      diagnosisIRR: d.statement.finalStatusIRR,
+                      balancesForeign: Object.entries(d.statement.currencyBreakdown || {})
+                        .filter(([_, b]) => b.balanceForeign > 0)
+                        .map(([curr, b]) => ({
+                          currency: curr,
+                          amount: b.balanceForeign,
+                          diagnosis: b.status,
+                        })),
+                    }));
+                    exportOrPrintContactSummaryListPDF(
+                      contactsForPDF,
+                      state.companyName || 'صرافی آرکا',
+                      state.fiscalYear || '۱۴۰۴',
+                      'print'
+                    );
+                  }}
                   className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer shrink-0"
                 >
                   <Printer className="w-3.5 h-3.5" />

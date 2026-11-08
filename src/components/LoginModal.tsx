@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import arkaLogo from '../assets/arka-logo.jpg';
 import { UserAccount } from '../types/accounting';
 import { LogIn, ShieldCheck, Lock, User, KeyRound, AlertCircle, Coins, Eye, EyeOff } from 'lucide-react';
 
@@ -67,7 +68,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ users, onLoginSuccess })
 
           <div className="w-16 h-16 mx-auto rounded-2xl bg-slate-900 border border-teal-400/40 flex items-center justify-center shadow-lg shadow-teal-500/30 mb-4 relative z-10 overflow-hidden">
             <img
-              src="/arka-logo.jpg"
+              src={arkaLogo}
               alt="لوگو آرکا (ARKA)"
               referrerPolicy="no-referrer"
               className="w-full h-full object-cover"

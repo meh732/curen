@@ -8,14 +8,20 @@ import {
   CurrencyCode,
   PaymentSplitLine,
   JournalVoucher,
+  VoucherLine,
 } from '../types/accounting';
 import {
   formatNumber,
   formatCurrencyAmount,
   parseFormattedNumber,
   buildPersonStatement,
+  getTodayJalaliDate,
+  getCurrentJalaliYear,
 } from '../utils/accountingEngine';
-import { exportOrPrintCurrencyDeliveryStatementPDF } from '../utils/pdfPrintReportService';
+import {
+  exportOrPrintSingleDealReceiptPDF,
+  exportOrPrintFXDealsSummaryPDF,
+} from '../utils/pdfPrintReportService';
 import { MultiPaymentSplitsEditor } from './MultiPaymentSplitsEditor';
 import {
   ArrowDownLeft,
@@ -32,11 +38,9 @@ import {
   UserCheck,
   AlertCircle,
   PackageCheck,
-  PlusCircle,
-  FileDown,
-  Clock,
   Search,
   Edit3,
+  Hash,
 } from 'lucide-react';
 
 interface FXTradingDeskViewProps {
@@ -52,6 +56,9 @@ interface FXTradingDeskViewProps {
   onRecordDealDelivery?: (dealId: string, split: FXDeliverySplit) => void;
   onAddContact?: (contact: Contact) => void;
   onDeleteDeal?: (id: string) => void;
+  onAddVoucher?: (voucher: JournalVoucher) => void;
+  onUpdateVoucher?: (voucher: JournalVoucher) => void;
+  onDeleteVoucher?: (id: string) => void;
 }
 
 export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
@@ -61,12 +68,14 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
   banks,
   vouchers = [],
   companyName = 'آرکا (ARKA) — صرافی و خدمات ارزی',
-  fiscalYear = 'سال مالی ۱۴۰۴',
+  fiscalYear = '۱۴۰۴',
   onExecuteDeal,
   onUpdateDeal,
-  onRecordDealDelivery,
   onAddContact,
   onDeleteDeal,
+  onAddVoucher,
+  onUpdateVoucher,
+  onDeleteVoucher,
 }) => {
   const [subTab, setSubTab] = useState<'trade_form' | 'delivery_statement'>('trade_form');
 
@@ -87,15 +96,12 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
 
   // مقدار ارز و تحویل به صورت پیش‌فرض خام (۰) هستند تا کاربر مقدار دلخواه را وارد کند
   const [foreignAmount, setForeignAmount] = useState<number>(0);
-  const [dealDate, setDealDate] = useState<string>('1404/08/12');
+  const [dealDate, setDealDate] = useState<string>(() => getTodayJalaliDate());
   const [dealNotes, setDealNotes] = useState<string>('');
   const [dealTrackingNumber, setDealTrackingNumber] = useState<string>('');
 
-  // وضعیت تحویل ارز در لحظه ثبت معامله (تحویل یکجا یا تحویل مرحله‌ای)
-  const [isStagedDelivery, setIsStagedDelivery] = useState<boolean>(false);
-  const [initialDeliveredForeign, setInitialDeliveredForeign] = useState<number>(0);
-  const [initialDeliveryTracking, setInitialDeliveryTracking] = useState<string>('');
-  const [initialDeliveryNotes, setInitialDeliveryNotes] = useState<string>('');
+  // آیا ارز در لحظه معامله تحویل صندوق شده یا در حساب ارزی شخص می‌ماند تا بعداً در بخش تحویل ارز ثبت شود؟
+  const [isDeferredDelivery, setIsDeferredDelivery] = useState<boolean>(false);
 
   // فی بر اساس آخرین معامله ارز پیشنهاد می‌شود
   const [dealRate, setDealRate] = useState<number>(() => getSuggestedRateForCurrency('USD'));
@@ -139,28 +145,193 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
   const [lastCreatedDeal, setLastCreatedDeal] = useState<FXDeal | null>(null);
   const [previewDeal, setPreviewDeal] = useState<FXDeal | null>(null);
 
-  // مودال ثبت تحویل مرحله‌ای جدید برای یک معامله باز
-  const [deliveryModalDealId, setDeliveryModalDealId] = useState<string | null>(null);
-  const [stageAmountForeign, setStageAmountForeign] = useState<number>(0);
-  const [stageDate, setStageDate] = useState<string>('1404/08/12');
-  const [stageVaultBankId, setStageVaultBankId] = useState<string>('');
-  const [stageTrackingNumber, setStageTrackingNumber] = useState<string>('');
-  const [stageNotes, setStageNotes] = useState<string>('');
-  const [deliverySuccessToast, setDeliverySuccessToast] = useState<string | null>(null);
-
-  // فیلتر مشتری در تب صورتحساب تحویل ارز
-  const [deliveryFilterContactId, setDeliveryFilterContactId] = useState<string>('ALL');
-
   // جستجوی شماره معامله، فیش، نام شخص یا ارز در فهرست معاملات
   const [dealSearchQuery, setDealSearchQuery] = useState<string>('');
 
   // وضعیت ویرایش معامله
   const [editingDealId, setEditingDealId] = useState<string | null>(null);
 
-  const activeDeliveryDeal = useMemo(
-    () => fxDeals.find((d) => d.id === deliveryModalDealId) || null,
-    [fxDeals, deliveryModalDealId]
+  // =========================================================================
+  // استیت‌های تب دوم: تحویل ارز اشخاص (دریافت و پرداخت ارزی مستقل، دقیقاً مثل دریافت و پرداخت ریالی)
+  // =========================================================================
+  const [dlvEditingVoucherId, setDlvEditingVoucherId] = useState<string | null>(null);
+  const [dlvDirection, setDlvDirection] = useState<'receive' | 'pay'>('receive');
+  const [dlvContactId, setDlvContactId] = useState<string>(contacts[0]?.id || '');
+  const [dlvCurrency, setDlvCurrency] = useState<CurrencyCode>(foreignCurrencies[0]?.code || 'USD');
+  const [dlvAmount, setDlvAmount] = useState<number>(0);
+  const [dlvBankId, setDlvBankId] = useState<string>(
+    banks.find((b) => b.currency !== 'IRR')?.id || banks[0]?.id || ''
   );
+  const [dlvDate, setDlvDate] = useState<string>(() => getTodayJalaliDate());
+  const [dlvTracking, setDlvTracking] = useState<string>('');
+  const [dlvNotes, setDlvNotes] = useState<string>('');
+  const [dlvSearchQuery, setDlvSearchQuery] = useState<string>('');
+  const [dlvSuccessToast, setDlvSuccessToast] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (contacts.length > 0 && (!dlvContactId || !contacts.some((c) => c.id === dlvContactId))) {
+      setDlvContactId(contacts[0].id);
+    }
+  }, [contacts, dlvContactId]);
+
+  useEffect(() => {
+    if (banks.length > 0 && (!dlvBankId || !banks.some((b) => b.id === dlvBankId))) {
+      const match =
+        banks.find((b) => b.currency === dlvCurrency) ||
+        banks.find((b) => b.currency !== 'IRR') ||
+        banks[0];
+      if (match) setDlvBankId(match.id);
+    }
+  }, [banks, dlvBankId, dlvCurrency]);
+
+  const dlvSelectedContact = contacts.find((c) => c.id === dlvContactId) || contacts[0];
+  const dlvContactStatement = useMemo(() => {
+    if (!dlvSelectedContact) return null;
+    return buildPersonStatement(vouchers, dlvSelectedContact.id, 'ALL');
+  }, [vouchers, dlvSelectedContact]);
+
+  // فهرست اسناد تحویل ارز (دریافت و پرداخت ارزی اشخاص)
+  const currencyDeliveryVouchers = useMemo(() => {
+    return vouchers.filter((v) => {
+      const isExplicitCurrencyDlv =
+        v.autoType === 'currency_receive_from_person' ||
+        v.autoType === 'currency_pay_to_person';
+      const isForeignPersonReceiptOrPay =
+        (v.autoType === 'receive_from_person' || v.autoType === 'pay_to_person') &&
+        v.lines.some((l) => l.currency !== 'IRR' && ((l.debitForeign || 0) > 0 || (l.creditForeign || 0) > 0));
+      if (!isExplicitCurrencyDlv && !isForeignPersonReceiptOrPay) return false;
+
+      if (!dlvSearchQuery.trim()) return true;
+      const q = dlvSearchQuery.trim().toLowerCase();
+      return (
+        String(v.voucherNumber).includes(q) ||
+        (v.referenceNumber || '').toLowerCase().includes(q) ||
+        v.description.toLowerCase().includes(q) ||
+        v.date.includes(q) ||
+        v.lines.some(
+          (l) =>
+            (l.contactName || '').toLowerCase().includes(q) ||
+            (l.trackingNumber || '').toLowerCase().includes(q) ||
+            l.currency.toLowerCase().includes(q)
+        )
+      );
+    });
+  }, [vouchers, dlvSearchQuery]);
+
+  const handleSaveCurrencyDelivery = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!dlvSelectedContact || dlvAmount <= 0 || !onAddVoucher) return;
+
+    const existingVch = dlvEditingVoucherId
+      ? vouchers.find((v) => v.id === dlvEditingVoucherId)
+      : undefined;
+    const nextVchNum =
+      existingVch?.voucherNumber ||
+      Math.max(1003, ...vouchers.map((v) => v.voucherNumber || 0)) + 1;
+
+    const isRec = dlvDirection === 'receive';
+    const vaultBank = banks.find((b) => b.id === dlvBankId) || banks[0];
+    const personAccCode = dlvSelectedContact.type === 'supplier' ? '2101' : '1104';
+    const personAccName =
+      personAccCode === '2101'
+        ? 'حساب اشخاص و فروشندگان (بستانکاران / بدهی ما)'
+        : 'حساب اشخاص و مشتریان (بدهکاران / طلب ما)';
+    const trk = dlvTracking.trim() || `DLV-${nextVchNum}`;
+    const rate = 1; // تحویل و دریافت ارز سند خالص ارزی است و بدون فی ریالی ثبت می‌شود
+
+    const baseDesc = isRec
+      ? `دریافت ارز (${formatNumber(dlvAmount)} ${dlvCurrency}) از ${
+          dlvSelectedContact.name
+        } و ورود به ${vaultBank?.bankName || `صندوق ارزی (${dlvCurrency})`}`
+      : `تحویل / پرداخت ارز (${formatNumber(dlvAmount)} ${dlvCurrency}) به ${
+          dlvSelectedContact.name
+        } از ${vaultBank?.bankName || `صندوق ارزی (${dlvCurrency})`}`;
+    const fullDesc = dlvNotes.trim() ? `${baseDesc} | توضیحات: ${dlvNotes.trim()}` : baseDesc;
+
+    const lines: VoucherLine[] = [
+      {
+        id: `ln-dlv-b-${Date.now()}-1`,
+        accountCode: '1103',
+        accountName: 'موجودی بانک‌ها و خزانه‌های ارزی',
+        bankId: vaultBank?.id,
+        bankName: vaultBank?.bankName || `صندوق ارزی (${dlvCurrency})`,
+        description: `${fullDesc} [شماره فیش/رهگیری: ${trk}]`,
+        currency: dlvCurrency,
+        exchangeRate: rate,
+        debitForeign: isRec ? dlvAmount : 0,
+        creditForeign: isRec ? 0 : dlvAmount,
+        debitIRR: 0,
+        creditIRR: 0,
+        trackingNumber: trk,
+        reconciled: true,
+      },
+      {
+        id: `ln-dlv-p-${Date.now()}-2`,
+        accountCode: personAccCode,
+        accountName: personAccName,
+        contactId: dlvSelectedContact.id,
+        contactName: dlvSelectedContact.name,
+        description: `${fullDesc} [شماره فیش/رهگیری: ${trk}]`,
+        currency: dlvCurrency,
+        exchangeRate: rate,
+        debitForeign: isRec ? 0 : dlvAmount,
+        creditForeign: isRec ? dlvAmount : 0,
+        debitIRR: 0,
+        creditIRR: 0,
+        trackingNumber: trk,
+      },
+    ];
+
+    const targetVoucher: JournalVoucher = {
+      id: dlvEditingVoucherId || `vch-dlv-${Date.now()}`,
+      voucherNumber: nextVchNum,
+      date: dlvDate || getTodayJalaliDate(),
+      description: fullDesc,
+      referenceNumber: trk,
+      status: 'permanent',
+      createdAt: dlvDate || getTodayJalaliDate(),
+      autoType: isRec ? 'currency_receive_from_person' : 'currency_pay_to_person',
+      lines,
+    };
+
+    if (dlvEditingVoucherId && onUpdateVoucher) {
+      onUpdateVoucher(targetVoucher);
+      setDlvEditingVoucherId(null);
+      setDlvSuccessToast(
+        `سند تحویل ارز شماره #${nextVchNum} (${formatNumber(dlvAmount)} ${dlvCurrency} - ${dlvSelectedContact.name}) با موفقیت ویرایش شد.`
+      );
+    } else {
+      onAddVoucher(targetVoucher);
+      setDlvSuccessToast(
+        `${isRec ? 'دریافت' : 'تحویل / پرداخت'} ${formatNumber(dlvAmount)} ${dlvCurrency} ${
+          isRec ? 'از' : 'به'
+        } «${dlvSelectedContact.name}» در صورتحساب شخص و موجودی صندوق ثبت شد.`
+      );
+    }
+
+    setDlvAmount(0);
+    setDlvTracking('');
+    setDlvNotes('');
+  };
+
+  const handleStartEditDeliveryVoucher = (v: JournalVoucher) => {
+    setDlvEditingVoucherId(v.id);
+    setDlvDate(v.date);
+    const bankLine = v.lines.find((l) => l.bankId) || v.lines[0];
+    const personLine = v.lines.find((l) => l.contactId) || v.lines[1];
+    const isRec =
+      v.autoType === 'currency_receive_from_person' ||
+      v.autoType === 'receive_from_person' ||
+      (bankLine?.debitForeign || 0) > 0;
+    setDlvDirection(isRec ? 'receive' : 'pay');
+    if (personLine?.contactId) setDlvContactId(personLine.contactId);
+    if (bankLine?.currency && bankLine.currency !== 'IRR') setDlvCurrency(bankLine.currency);
+    setDlvAmount(bankLine?.debitForeign || bankLine?.creditForeign || 0);
+    if (bankLine?.bankId) setDlvBankId(bankLine.bankId);
+    setDlvTracking(v.referenceNumber || bankLine?.trackingNumber || '');
+    setDlvNotes(v.description);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   const filteredDeals = useMemo(() => {
     if (!dealSearchQuery.trim()) return fxDeals;
@@ -188,18 +359,16 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
     setDealNotes(d.notes || '');
     if (d.targetForeignBankId) setTargetVaultBankId(d.targetForeignBankId);
     setPayments(d.payments || []);
-    setIsStagedDelivery(d.deliveryStatus === 'partial' || (d.remainingForeignDelivery ?? 0) > 0);
-    setInitialDeliveredForeign(d.deliveredForeignAmount ?? d.foreignAmount);
+    setIsDeferredDelivery((d.deliveredForeignAmount ?? d.foreignAmount) === 0);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleCancelEdit = () => {
     setEditingDealId(null);
     setForeignAmount(0);
-    setInitialDeliveredForeign(0);
     setDealNotes('');
     setDealTrackingNumber('');
-    setIsStagedDelivery(false);
+    setIsDeferredDelivery(false);
     setPayments([]);
   };
 
@@ -211,28 +380,14 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
     if (vaultForCur) setTargetVaultBankId(vaultForCur.id);
   };
 
-  const handleForeignAmountChange = (val: number) => {
-    setForeignAmount(val);
-    if (!isStagedDelivery) {
-      setInitialDeliveredForeign(val);
-    } else if (initialDeliveredForeign > val) {
-      setInitialDeliveredForeign(val);
-    }
-  };
-
   const baseTotalIRR = Math.round(foreignAmount * dealRate);
   const totalIRR =
     dealType === 'buy'
       ? baseTotalIRR + commissionIRR
       : Math.max(0, baseTotalIRR - commissionIRR);
 
-  const effectiveDeliveredNow = isStagedDelivery
-    ? Math.min(foreignAmount, Math.max(0, initialDeliveredForeign))
-    : foreignAmount;
-  const remainingUndeliveredNow = Math.max(
-    0,
-    Number((foreignAmount - effectiveDeliveredNow).toFixed(2))
-  );
+  const effectiveDeliveredNow = isDeferredDelivery ? 0 : foreignAmount;
+  const remainingUndeliveredNow = isDeferredDelivery ? foreignAmount : 0;
 
   const selectedContact = contacts.find((c) => c.id === contactId) || contacts[0];
 
@@ -296,6 +451,7 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
     };
     onAddContact(newC);
     setContactId(newC.id);
+    setDlvContactId(newC.id);
     setNewContactName('');
     setNewContactPhone('');
     setShowQuickContact(false);
@@ -319,35 +475,9 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
           return parseInt(tail.replace(/\D/g, ''), 10) || 1000;
         })
       ) + 1;
-    const dealNum = `FX-1404-${nextDealSeq}`;
+    const dealNum = `FX-${getCurrentJalaliYear()}-${nextDealSeq}`;
     const trkMain = dealTrackingNumber.trim() || dealNum;
-    const vaultBank = banks.find((b) => b.id === targetVaultBankId);
-
-    const deliverySplits: FXDeliverySplit[] = [];
-    if (effectiveDeliveredNow > 0) {
-      deliverySplits.push({
-        id: `dlv-${Date.now()}-1`,
-        date: dealDate || '1404/08/12',
-        amountForeign: effectiveDeliveredNow,
-        vaultBankId: targetVaultBankId,
-        vaultBankName: vaultBank?.bankName || `خزانه ارزی (${currency})`,
-        trackingNumber: initialDeliveryTracking.trim() || `${trkMain}-DLV1`,
-        notes:
-          initialDeliveryNotes.trim() ||
-          (remainingUndeliveredNow > 0
-            ? `تحویل مرحله اول: ${formatNumber(effectiveDeliveredNow)} ${currency} تحویل شد و ${formatNumber(
-                remainingUndeliveredNow
-              )} ${currency} باقی ماند.`
-            : `تحویل کامل یکجا (${formatNumber(effectiveDeliveredNow)} ${currency})`),
-      });
-    }
-
-    const deliveryStatus: FXDeal['deliveryStatus'] =
-      remainingUndeliveredNow === 0
-        ? 'delivered'
-        : effectiveDeliveredNow > 0
-        ? 'partial'
-        : 'pending';
+    const deliveryStatus: FXDeal['deliveryStatus'] = isDeferredDelivery ? 'pending' : 'delivered';
 
     if (editingDealId && onUpdateDeal) {
       const existing = fxDeals.find((d) => d.id === editingDealId);
@@ -371,10 +501,6 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
           deliveredForeignAmount: effectiveDeliveredNow,
           remainingForeignDelivery: remainingUndeliveredNow,
           deliveryStatus,
-          deliverySplits:
-            existing.deliverySplits && existing.deliverySplits.length > 0
-              ? existing.deliverySplits
-              : deliverySplits,
           trackingNumber: trkMain,
           notes: dealNotes.trim() || undefined,
         };
@@ -385,11 +511,8 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
         setPayments([]);
         setDealNotes('');
         setDealTrackingNumber('');
-        setIsStagedDelivery(false);
+        setIsDeferredDelivery(false);
         setForeignAmount(0);
-        setInitialDeliveredForeign(0);
-        setInitialDeliveryTracking('');
-        setInitialDeliveryNotes('');
         return;
       }
     }
@@ -397,7 +520,7 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
     const newDeal: FXDeal = {
       id: `fx-${Date.now()}`,
       dealNumber: dealNum,
-      date: dealDate || '1404/08/12',
+      date: dealDate || getTodayJalaliDate(),
       type: dealType,
       currency,
       foreignAmount,
@@ -414,7 +537,6 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
       deliveredForeignAmount: effectiveDeliveredNow,
       remainingForeignDelivery: remainingUndeliveredNow,
       deliveryStatus,
-      deliverySplits,
       trackingNumber: trkMain,
       linkedVoucherId: `vch-fx-${Date.now()}`,
       notes: dealNotes.trim() || undefined,
@@ -425,111 +547,13 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
     setPayments([]);
     setDealNotes('');
     setDealTrackingNumber('');
-    setIsStagedDelivery(false);
+    setIsDeferredDelivery(false);
     setForeignAmount(0);
-    setInitialDeliveredForeign(0);
-    setInitialDeliveryTracking('');
-    setInitialDeliveryNotes('');
   };
-
-  const openDeliveryModal = (deal: FXDeal) => {
-    const delivered = deal.deliveredForeignAmount ?? deal.foreignAmount;
-    const rem = deal.remainingForeignDelivery ?? Math.max(0, Number((deal.foreignAmount - delivered).toFixed(2)));
-    setDeliveryModalDealId(deal.id);
-    setStageAmountForeign(rem > 0 ? rem : 0);
-    setStageDate('1404/08/12');
-    const matchingVault =
-      banks.find((b) => b.id === deal.targetForeignBankId) ||
-      banks.find((b) => b.currency === deal.currency) ||
-      banks[0];
-    setStageVaultBankId(matchingVault?.id || '');
-    setStageTrackingNumber(`${deal.dealNumber}-DLV${(deal.deliverySplits?.length || 1) + 1}`);
-    setStageNotes('');
-  };
-
-  const handleSaveDeliveryStage = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!activeDeliveryDeal || !onRecordDealDelivery || stageAmountForeign <= 0) return;
-
-    const vault = banks.find((b) => b.id === stageVaultBankId);
-    const split: FXDeliverySplit = {
-      id: `dlv-${Date.now()}`,
-      date: stageDate || '1404/08/12',
-      amountForeign: stageAmountForeign,
-      vaultBankId: stageVaultBankId,
-      vaultBankName: vault?.bankName || `خزانه ارزی (${activeDeliveryDeal.currency})`,
-      trackingNumber:
-        stageTrackingNumber.trim() ||
-        `${activeDeliveryDeal.dealNumber}-DLV${(activeDeliveryDeal.deliverySplits?.length || 1) + 1}`,
-      notes:
-        stageNotes.trim() ||
-        `تحویل مرحله‌ای ${formatNumber(stageAmountForeign)} ${activeDeliveryDeal.currency} بابت معامله ${
-          activeDeliveryDeal.dealNumber
-        }`,
-    };
-
-    onRecordDealDelivery(activeDeliveryDeal.id, split);
-    setDeliverySuccessToast(
-      `مرحله تحویل جدید به مقدار ${formatNumber(stageAmountForeign)} ${
-        activeDeliveryDeal.currency
-      } برای معامله «${activeDeliveryDeal.dealNumber}» (${activeDeliveryDeal.contactName}) ثبت شد.`
-    );
-    setDeliveryModalDealId(null);
-  };
-
-  // محاسبه خلاصه تحویل ارز برای تب دوم (صورتحساب تحویل ارز مشتریان)
-  const filteredDeliveryDeals = useMemo(() => {
-    if (deliveryFilterContactId === 'ALL') return fxDeals;
-    return fxDeals.filter((d) => d.contactId === deliveryFilterContactId);
-  }, [fxDeals, deliveryFilterContactId]);
-
-  const deliveryCurrencySummary = useMemo(() => {
-    const map: Record<
-      string,
-      {
-        totalBought: number;
-        deliveredBought: number;
-        undeliveredBought: number; // ارزی که خریدیم ولی هنوز از مشتری تحویل نگرفتیم (مشتری باید به ما تحویل دهد)
-        totalSold: number;
-        deliveredSold: number;
-        undeliveredSold: number; // ارزی که فروختیم ولی هنوز به مشتری تحویل ندادیم (ما باید به مشتری تحویل دهیم)
-      }
-    > = {};
-
-    filteredDeliveryDeals.forEach((d) => {
-      const cur = d.currency;
-      if (!map[cur]) {
-        map[cur] = {
-          totalBought: 0,
-          deliveredBought: 0,
-          undeliveredBought: 0,
-          totalSold: 0,
-          deliveredSold: 0,
-          undeliveredSold: 0,
-        };
-      }
-      const delivered = d.deliveredForeignAmount ?? d.foreignAmount;
-      const rem =
-        d.remainingForeignDelivery ??
-        Math.max(0, Number((d.foreignAmount - delivered).toFixed(2)));
-
-      if (d.type === 'buy') {
-        map[cur].totalBought = Number((map[cur].totalBought + d.foreignAmount).toFixed(2));
-        map[cur].deliveredBought = Number((map[cur].deliveredBought + delivered).toFixed(2));
-        map[cur].undeliveredBought = Number((map[cur].undeliveredBought + rem).toFixed(2));
-      } else {
-        map[cur].totalSold = Number((map[cur].totalSold + d.foreignAmount).toFixed(2));
-        map[cur].deliveredSold = Number((map[cur].deliveredSold + delivered).toFixed(2));
-        map[cur].undeliveredSold = Number((map[cur].undeliveredSold + rem).toFixed(2));
-      }
-    });
-
-    return map;
-  }, [filteredDeliveryDeals]);
 
   return (
     <div className="space-y-5 max-w-full overflow-x-hidden">
-      {/* نوار انتخاب بخش: ثبت معامله ارز یا صورتحساب تحویل مرحله‌ای ارز */}
+      {/* نوار انتخاب بخش: ثبت معامله ارز یا تحویل ارز اشخاص (دریافت و پرداخت ارزی) */}
       <div className="bg-white border border-slate-200 rounded-2xl p-3 sm:p-4 shadow-xs">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-slate-100 p-1.5 rounded-xl border border-slate-200">
           <button
@@ -542,7 +566,7 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
             }`}
           >
             <Coins className="w-4 h-4 shrink-0" />
-            <span>۱. ثبت خرید و فروش ارز + فهرست معاملات</span>
+            <span>۱. ثبت فاکتور خرید و فروش ارز + فهرست معاملات</span>
           </button>
 
           <button
@@ -555,20 +579,20 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
             }`}
           >
             <PackageCheck className="w-4 h-4 shrink-0" />
-            <span>۲. تحویل مرحله‌ای ارز و صورتحساب تحویل ارز مشتری</span>
+            <span>۲. تحویل ارز اشخاص (دریافت و پرداخت ارزی مثل ریالی)</span>
           </button>
         </div>
       </div>
 
-      {deliverySuccessToast && (
+      {dlvSuccessToast && (
         <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-950 text-xs font-bold flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>{deliverySuccessToast}</span>
+            <span>{dlvSuccessToast}</span>
           </div>
           <button
             type="button"
-            onClick={() => setDeliverySuccessToast(null)}
+            onClick={() => setDlvSuccessToast(null)}
             className="text-emerald-800 underline cursor-pointer shrink-0"
           >
             بستن
@@ -592,14 +616,14 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
                       <h3 className="text-sm sm:text-base font-extrabold text-emerald-950">
-                        معامله {lastCreatedDeal.type === 'buy' ? 'خرید ارز' : 'فروش ارز'} با موفقیت ثبت شد!
+                        فاکتور {lastCreatedDeal.type === 'buy' ? 'خرید ارز' : 'فروش ارز'} با موفقیت ثبت شد!
                       </h3>
                       <span className="px-2.5 py-0.5 rounded-lg bg-white border border-emerald-300 font-mono-num font-extrabold text-xs text-emerald-900">
                         شماره رسید: {lastCreatedDeal.dealNumber}
                       </span>
                     </div>
                     <p className="text-xs text-emerald-800 mt-0.5 font-medium">
-                      حساب <strong>{lastCreatedDeal.contactName}</strong> و وضعیت تحویل ارز به صورت خودکار بروزرسانی شد.
+                      صورتحساب <strong>{lastCreatedDeal.contactName}</strong> به صورت خودکار بروزرسانی شد.
                     </p>
                   </div>
                 </div>
@@ -612,44 +636,20 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
                 </button>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 bg-white p-3 rounded-xl border border-emerald-200 text-xs">
-                <div>
-                  <span className="text-slate-500 block text-[11px]">مشتری / طرف حساب:</span>
-                  <strong className="text-slate-900 font-extrabold">{lastCreatedDeal.contactName}</strong>
-                </div>
-                <div>
-                  <span className="text-slate-500 block text-[11px]">مقدار کل معامله:</span>
-                  <strong className="text-slate-900 font-mono-num font-extrabold">
-                    {formatNumber(lastCreatedDeal.foreignAmount)} {lastCreatedDeal.currency} (نرخ:{' '}
-                    {formatNumber(lastCreatedDeal.exchangeRate)})
-                  </strong>
-                </div>
-                <div>
-                  <span className="text-slate-500 block text-[11px]">وضعیت تحویل ارز:</span>
-                  <strong className="text-teal-800 font-mono-num font-extrabold">
-                    تحویل‌شده: {formatNumber(lastCreatedDeal.deliveredForeignAmount ?? lastCreatedDeal.foreignAmount)}{' '}
-                    {lastCreatedDeal.currency} | مانده تحویل:{' '}
-                    {formatNumber(lastCreatedDeal.remainingForeignDelivery ?? 0)} {lastCreatedDeal.currency}
-                  </strong>
-                </div>
-                <div>
-                  <span className="text-slate-500 block text-[11px]">مانده ریالی در حساب شخص:</span>
-                  <strong className="text-amber-800 font-mono-num font-extrabold">
-                    {formatNumber(lastCreatedDeal.remainingAmountIRR || 0)} ریال
-                  </strong>
-                </div>
-              </div>
-
               <div className="flex flex-wrap items-center justify-end gap-2">
                 {(lastCreatedDeal.remainingForeignDelivery ?? 0) > 0 && (
                   <button
                     type="button"
-                    onClick={() => openDeliveryModal(lastCreatedDeal)}
-                    className="w-full sm:w-auto px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+                    onClick={() => {
+                      setDlvContactId(lastCreatedDeal.contactId);
+                      setDlvCurrency(lastCreatedDeal.currency);
+                      setDlvDirection(lastCreatedDeal.type === 'buy' ? 'receive' : 'pay');
+                      setSubTab('delivery_statement');
+                    }}
+                    className="w-full sm:w-auto px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
                   >
                     <PackageCheck className="w-4 h-4" />
-                    ثبت مرحله بعدی تحویل ارز ({formatNumber(lastCreatedDeal.remainingForeignDelivery || 0)}{' '}
-                    {lastCreatedDeal.currency})
+                    رفتن به بخش تحویل ارز ({lastCreatedDeal.contactName})
                   </button>
                 )}
                 <button
@@ -658,7 +658,7 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
                   className="w-full sm:w-auto px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
                 >
                   <Eye className="w-4 h-4" />
-                  مشاهده و چاپ رسید معامله ({lastCreatedDeal.dealNumber})
+                  مشاهده و چاپ رسید ({lastCreatedDeal.dealNumber})
                 </button>
               </div>
             </div>
@@ -671,7 +671,7 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
                 <div className="flex items-center gap-2">
                   <Edit3 className="w-4 h-4 text-amber-700 shrink-0" />
                   <span>
-                    در حال ویرایش معامله{' '}
+                    در حال ویرایش فاکتور معامله{' '}
                     <strong className="font-mono-num">
                       {fxDeals.find((d) => d.id === editingDealId)?.dealNumber}
                     </strong>
@@ -691,10 +691,10 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
               <div>
                 <h2 className="text-base sm:text-lg font-extrabold text-slate-900 flex items-center gap-2">
                   <Coins className="w-5 h-5 text-amber-500 shrink-0" />
-                  ثبت خرید و فروش ارز (با قابلیت تحویل یکجا یا چندمرحله‌ای ارز)
+                  ثبت فاکتور خرید و فروش ارز
                 </h2>
                 <p className="text-xs text-slate-500 mt-1">
-                  اگر مثلاً ۷,۰۰۰ دلار می‌خرید یا می‌فروشید ولی در این لحظه فقط بخشی از آن را تحویل گرفته‌اید، گزینه «تحویل مرحله‌ای» را روشن کنید.
+                  اگر ارز را در روزهای آینده در چند مرحله تحویل می‌گیرید یا می‌دهید، گزینه «تحویل ارز بعداً» را انتخاب کنید تا در صورتحساب ارزی شخص ثبت شود.
                 </p>
               </div>
 
@@ -710,7 +710,7 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
                   }`}
                 >
                   <ArrowDownLeft className="w-4 h-4 shrink-0" />
-                  <span>۱. خرید ارز از مشتری</span>
+                  <span>۱. فاکتور خرید ارز از شخص</span>
                 </button>
                 <button
                   type="button"
@@ -722,7 +722,7 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
                   }`}
                 >
                   <ArrowUpRight className="w-4 h-4 shrink-0" />
-                  <span>۲. فروش ارز به مشتری</span>
+                  <span>۲. فاکتور فروش ارز به شخص</span>
                 </button>
               </div>
             </div>
@@ -734,7 +734,7 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="text-xs font-extrabold text-slate-700">
-                      {dealType === 'buy' ? 'فروشنده ارز (مشتری / همکار):' : 'خریدار ارز (مشتری / شخص):'}
+                      {dealType === 'buy' ? 'فروشنده ارز (مشتری / شخص):' : 'خریدار ارز (مشتری / شخص):'}
                     </label>
                     {onAddContact && (
                       <button
@@ -743,7 +743,7 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
                         className="text-[11px] text-teal-700 hover:text-teal-800 font-extrabold flex items-center gap-1 cursor-pointer"
                       >
                         <UserPlus className="w-3.5 h-3.5" />
-                        + مشتری جدید
+                        + شخص جدید
                       </button>
                     )}
                   </div>
@@ -753,7 +753,7 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
                       onClick={() => setShowQuickContact(true)}
                       className="w-full py-2 px-3 rounded-xl border-2 border-dashed border-teal-400 bg-teal-50 text-teal-900 font-bold text-xs cursor-pointer"
                     >
-                      + ابتدا نام اولین مشتری را ثبت کنید
+                      + ابتدا نام اولین شخص را ثبت کنید
                     </button>
                   ) : (
                     <select
@@ -782,7 +782,7 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
                   >
                     {foreignCurrencies.map((c) => (
                       <option key={c.code} value={c.code}>
-                        {c.name} ({c.code}) — نرخ پیش‌فرض: {formatNumber(c.defaultRateToIRR)}
+                        {c.name} ({c.code})
                       </option>
                     ))}
                   </select>
@@ -792,8 +792,8 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
                 <div>
                   <label className="block text-xs font-extrabold text-slate-700 mb-1">
                     {dealType === 'buy'
-                      ? `ورود ${currency} به کدام صندوق/حساب؟`
-                      : `خروج ${currency} از کدام صندوق/حساب؟`}
+                      ? `صندوق/حساب ارزی (${currency}):`
+                      : `صندوق/حساب ارزی (${currency}):`}
                   </label>
                   <select
                     value={targetVaultBankId}
@@ -803,14 +803,12 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
                     {banks.length === 0 ? (
                       <option value="">صندوق ارزی پیش‌فرض صرافی</option>
                     ) : (
-                      banks
-                        .filter((b) => b.currency === currency || b.currency !== 'IRR')
-                        .map((b) => (
-                          <option key={b.id} value={b.id}>
-                            {b.kind === 'cash_box' ? '📦 ' : '🏦 '}
-                            {b.bankName} ({b.currency})
-                          </option>
-                        ))
+                      banks.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.kind === 'cash_box' ? '📦 ' : '🏦 '}
+                          {b.bankName} ({b.currency})
+                        </option>
+                      ))
                     )}
                   </select>
                 </div>
@@ -818,13 +816,12 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
                 {/* تاریخ معامله */}
                 <div>
                   <label className="block text-xs font-extrabold text-slate-700 mb-1">
-                    تاریخ معامله:
+                    تاریخ فاکتور:
                   </label>
                   <input
                     type="text"
                     value={dealDate}
                     onChange={(e) => setDealDate(e.target.value)}
-                    placeholder="1404/08/12"
                     className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs sm:text-sm font-mono-num font-bold text-slate-900 focus:border-teal-600 focus:outline-none"
                   />
                 </div>
@@ -841,7 +838,7 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
                       type="text"
                       value={newContactName}
                       onChange={(e) => setNewContactName(e.target.value)}
-                      placeholder="مثلاً: محمدی - بازار یا صرافی پارسیان"
+                      placeholder="مثلاً: مرادی یا صرافی پارسیان"
                       className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900"
                     />
                   </div>
@@ -861,7 +858,7 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
                       onClick={handleQuickCreateContact}
                       className="flex-1 sm:flex-initial px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-extrabold text-xs cursor-pointer"
                     >
-                      ذخیره و انتخاب مشتری
+                      ذخیره و انتخاب شخص
                     </button>
                     <button
                       type="button"
@@ -880,7 +877,7 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
                   <div className="flex items-center gap-2">
                     <UserCheck className="w-4 h-4 text-teal-600 shrink-0" />
                     <span className="text-slate-600 font-medium">
-                      وضعیت فعلی حساب <strong className="text-slate-900">{selectedContact.name}</strong> قبل از این معامله:
+                      وضعیت فعلی حساب <strong className="text-slate-900">{selectedContact.name}</strong>:
                     </span>
                   </div>
                   <div className="flex flex-wrap items-center gap-2 font-mono-num">
@@ -894,20 +891,20 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
                       }`}
                     >
                       {currentCustomerStatement.finalStatusIRR === 'تسویه'
-                        ? 'حساب ریالی تسویه کامل (۰ ریال)'
+                        ? 'حساب ریالی تسویه (۰ ریال)'
                         : `${formatNumber(currentCustomerStatement.finalBalanceIRR)} ریال (${
                             currentCustomerStatement.finalStatusIRR === 'بدهکار'
-                              ? 'بدهکار به ما / طلب ما'
-                              : 'طلبکار از ما / بدهی ما'
+                              ? 'بدهکار به ما'
+                              : 'طلبکار از ما'
                           })`}
                     </span>
                     {Object.entries(currentCustomerStatement.currencyBreakdown).map(([cur, b]) =>
                       b.balanceForeign > 0 ? (
                         <span
                           key={cur}
-                          className="px-2 py-0.5 rounded-lg bg-white border border-slate-200 text-slate-700 font-bold text-[11px]"
+                          className="px-2 py-0.5 rounded-lg bg-teal-50 border border-teal-200 text-teal-900 font-extrabold text-[11px]"
                         >
-                          {formatCurrencyAmount(b.balanceForeign, cur)} {cur} ({b.status})
+                          مانده ارزی {cur}: {formatCurrencyAmount(b.balanceForeign, cur)} {cur} ({b.status})
                         </span>
                       ) : null
                     )}
@@ -919,14 +916,14 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 bg-slate-50 p-4 rounded-2xl border border-slate-200">
                 <div>
                   <label className="block text-xs font-extrabold text-slate-700 mb-1">
-                    مقدار کل ارز مورد معامله ({currency}):
+                    مقدار ارز ({currency}):
                   </label>
                   <input
                     type="text"
                     inputMode="decimal"
                     value={foreignAmount ? formatNumber(foreignAmount) : ''}
-                    onChange={(e) => handleForeignAmountChange(parseFormattedNumber(e.target.value))}
-                    placeholder={`مقدار ${currency} (مثلاً ۵,۰۰۰)`}
+                    onChange={(e) => setForeignAmount(parseFormattedNumber(e.target.value))}
+                    placeholder={`مقدار ${currency} (مثلاً ۱,۰۰۰)`}
                     className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-sm font-extrabold text-slate-900 font-mono-num focus:border-teal-600 focus:outline-none"
                     required
                   />
@@ -935,11 +932,11 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="text-xs font-extrabold text-slate-700">
-                      نرخ توافقی هر ۱ {currency} (به ریال):
+                      نرخ هر ۱ {currency} (به ریال):
                     </label>
                     {getSuggestedRateForCurrency(currency) > 0 && (
                       <span className="text-[10px] text-teal-700 font-bold bg-teal-50 px-1.5 py-0.5 rounded border border-teal-200">
-                        پیشنهاد آخرین نرخ: {formatNumber(getSuggestedRateForCurrency(currency))}
+                        آخرین فی: {formatNumber(getSuggestedRateForCurrency(currency))}
                       </span>
                     )}
                   </div>
@@ -948,11 +945,7 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
                     inputMode="numeric"
                     value={dealRate ? formatNumber(dealRate) : ''}
                     onChange={(e) => setDealRate(parseFormattedNumber(e.target.value))}
-                    placeholder={
-                      getSuggestedRateForCurrency(currency) > 0
-                        ? `مثلاً ${formatNumber(getSuggestedRateForCurrency(currency))}`
-                        : 'نرخ معامله (ریال)'
-                    }
+                    placeholder="نرخ معامله (ریال)"
                     className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-sm font-extrabold text-slate-900 font-mono-num focus:border-teal-600 focus:outline-none"
                     required
                   />
@@ -960,7 +953,7 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
-                    کارمزد یا هزینه جانبی (ریال - اختیاری):
+                    کارمزد انتقال (ریال - اختیاری):
                   </label>
                   <input
                     type="text"
@@ -979,123 +972,43 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
                 </div>
               </div>
 
-              {/* بخش جدید: وضعیت تحویل خودِ ارز (یکجا یا چند مرحله‌ای) */}
-              <div className="bg-amber-50/70 border-2 border-amber-200 rounded-2xl p-4 space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div>
-                    <h4 className="text-xs sm:text-sm font-extrabold text-amber-950 flex items-center gap-2">
-                      <PackageCheck className="w-4 h-4 text-amber-600 shrink-0" />
-                      <span>
-                        وضعیت تحویل خودِ ارز ({formatNumber(foreignAmount)} {currency}) در این لحظه:
-                      </span>
-                    </h4>
-                    <p className="text-[11px] text-amber-800 mt-0.5">
-                      مثلاً اگر ۷,۰۰۰ دلار معامله کرده‌اید اما الان فقط بخشی از آن را تحویل گرفته‌اید (یا هنوز تحویل نگرفته‌اید)، گزینه دوم را انتخاب کنید.
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 bg-white p-1 rounded-xl border border-amber-300">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsStagedDelivery(false);
-                        setInitialDeliveredForeign(foreignAmount);
-                      }}
-                      className={`px-3 py-2 rounded-lg text-xs font-extrabold transition cursor-pointer ${
-                        !isStagedDelivery
-                          ? 'bg-emerald-600 text-white shadow-xs'
-                          : 'text-slate-700 hover:bg-slate-100'
-                      }`}
-                    >
-                      🟢 تحویل کامل یکجا ({formatNumber(foreignAmount)} {currency})
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsStagedDelivery(true);
-                        if (initialDeliveredForeign >= foreignAmount) {
-                          setInitialDeliveredForeign(0);
-                        }
-                      }}
-                      className={`px-3 py-2 rounded-lg text-xs font-extrabold transition cursor-pointer ${
-                        isStagedDelivery
-                          ? 'bg-amber-600 text-white shadow-xs'
-                          : 'text-slate-700 hover:bg-slate-100'
-                      }`}
-                    >
-                      📦 تحویل مرحله‌ای / ناقص (چند مرحله)
-                    </button>
-                  </div>
+              {/* وضعیت تحویل خودِ ارز (همزمان یا ثبت در حساب ارزی شخص برای تحویل در روزهای بعد) */}
+              <div className="bg-amber-50/70 border border-amber-200 rounded-2xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h4 className="text-xs font-extrabold text-amber-950 flex items-center gap-1.5">
+                    <PackageCheck className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span>وضعیت تحویل خودِ ارز ({currency}):</span>
+                  </h4>
+                  <p className="text-[11px] text-amber-800 mt-0.5">
+                    اگر ارز را فردا یا در چند مرحله تحویل می‌گیرید/می‌دهید، گزینه دوم را بزنید تا در صورتحساب ارزی شخص بماند و هر بار در «تحویل ارز» یا «دریافت/پرداخت» ثبت کنید.
+                  </p>
                 </div>
 
-                {isStagedDelivery && (
-                  <div className="bg-white border border-amber-300 rounded-xl p-3.5 space-y-3">
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <div>
-                        <label className="block text-xs font-extrabold text-slate-800 mb-1">
-                          مقدار {currency} تحویل‌شده در همین لحظه (مرحله ۱):
-                        </label>
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          value={initialDeliveredForeign ? formatNumber(initialDeliveredForeign) : '0'}
-                          onChange={(e) =>
-                            setInitialDeliveredForeign(
-                              Math.min(foreignAmount, Math.max(0, parseFormattedNumber(e.target.value)))
-                            )
-                          }
-                          placeholder={`از ۰ تا ${formatNumber(foreignAmount)}`}
-                          className="w-full bg-amber-50 border-2 border-amber-400 rounded-xl px-3 py-2 text-xs sm:text-sm font-extrabold font-mono-num text-slate-900 focus:outline-none"
-                        />
-                        <span className="text-[10px] text-slate-500 mt-0.5 block">
-                          اگر هنوز هیچ ارزی تحویل نگرفته/نداده‌اید، عدد ۰ بگذارید.
-                        </span>
-                      </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 bg-white p-1 rounded-xl border border-amber-300 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setIsDeferredDelivery(false)}
+                    className={`px-3 py-2 rounded-lg text-xs font-extrabold transition cursor-pointer ${
+                      !isDeferredDelivery
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    🟢 تحویل همزمان ارز در همین لحظه
+                  </button>
 
-                      <div>
-                        <label className="block text-xs font-bold text-slate-700 mb-1">
-                          شماره پیگیری / فیش تحویل مرحله ۱:
-                        </label>
-                        <input
-                          type="text"
-                          value={initialDeliveryTracking}
-                          onChange={(e) => setInitialDeliveryTracking(e.target.value)}
-                          placeholder="مثلاً: DLV-7000-1"
-                          className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono-num text-slate-900"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-bold text-slate-700 mb-1">
-                          توضیحات تحویل مرحله اول:
-                        </label>
-                        <input
-                          type="text"
-                          value={initialDeliveryNotes}
-                          onChange={(e) => setInitialDeliveryNotes(e.target.value)}
-                          placeholder="مثلاً: ۲۰۰۰ دلار نقدی تحویل شد، ۵۰۰۰ دلار فردا..."
-                          className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap items-center justify-between gap-2 bg-amber-100/70 border border-amber-300 rounded-xl px-3.5 py-2 text-xs">
-                      <span className="font-bold text-amber-950">
-                        تحویل‌شده در لحظه ثبت:{' '}
-                        <strong className="font-mono-num text-emerald-800">
-                          {formatNumber(effectiveDeliveredNow)} {currency}
-                        </strong>
-                      </span>
-                      <span className="font-extrabold text-rose-800">
-                        ⚠️ مانده ارز تحویل‌نشده (برای تحویل در مراحل بعدی):{' '}
-                        <strong className="font-mono-num text-sm">
-                          {formatNumber(remainingUndeliveredNow)} {currency}
-                        </strong>
-                      </span>
-                    </div>
-                  </div>
-                )}
+                  <button
+                    type="button"
+                    onClick={() => setIsDeferredDelivery(true)}
+                    className={`px-3 py-2 rounded-lg text-xs font-extrabold transition cursor-pointer ${
+                      isDeferredDelivery
+                        ? 'bg-amber-600 text-white shadow-xs'
+                        : 'text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    ⏳ ارز در حساب شخص بماند (تحویل در مراحل بعد)
+                  </button>
+                </div>
               </div>
 
               {/* انتخاب سریع نحوه تسویه ریالی معامله */}
@@ -1114,7 +1027,7 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
                           : 'bg-white text-amber-800 border border-slate-300 hover:bg-slate-100'
                       }`}
                     >
-                      🟡 نسیه / دفتری (بماند در حساب شخص)
+                      🟡 نسیه ریالی (بماند در حساب شخص)
                     </button>
 
                     <button
@@ -1127,15 +1040,12 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
                             id: `spl-full-${Date.now()}`,
                             bankId: defaultBank.id,
                             bankName: defaultBank.bankName,
-                            currency: defaultBank.currency,
-                            amountForeign:
-                              defaultBank.currency === 'IRR'
-                                ? totalIRR
-                                : Number((totalIRR / dealRate).toFixed(2)),
-                            exchangeRate: defaultBank.currency === 'IRR' ? 1 : dealRate,
+                            currency: 'IRR',
+                            amountForeign: totalIRR,
+                            exchangeRate: 1,
                             amountIRR: totalIRR,
                             trackingNumber: '',
-                            description: `تسویه کامل معامله ${currency}`,
+                            description: `تسویه ریالی معامله ${currency}`,
                           },
                         ]);
                       }}
@@ -1145,20 +1055,20 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
                           : 'bg-white text-emerald-800 border border-slate-300 hover:bg-slate-100'
                       }`}
                     >
-                      🟢 تسویه نقدی/بانکی کامل همین الان
+                      🟢 تسویه نقدی/بانکی ریالی همین الان
                     </button>
                   </div>
                 </div>
               </div>
 
-              {/* بخش دریافت و پرداخت ترکیبی چند بانکی و چند صندوقی برای تسویه این معامله ارز */}
+              {/* بخش دریافت و پرداخت ترکیبی چند بانکی برای تسویه ریالی */}
               <MultiPaymentSplitsEditor
                 title={
                   dealType === 'sell'
-                    ? 'مبلغ دریافتی از مشتری بابت این فروش ارز (اگر بخشی یا کل پول را الان داده است)'
-                    : 'مبلغ پرداختی شما به مشتری بابت این خرید ارز (اگر بخشی یا کل پول را الان داده‌اید)'
+                    ? 'مبلغ دریافتی از مشتری بابت این فروش ارز (اختیاری)'
+                    : 'مبلغ پرداختی شما به مشتری بابت این خرید ارز (اختیاری)'
                 }
-                subtitle="شماره پیگیری هر فیش و توضیحات آن را وارد کنید تا دقیقاً خط به خط در صورتحساب مشتری و جستجوی سراسری فیش‌ها ثبت شود."
+                subtitle="اگر بخشی یا کل وجه ریالی الان پرداخت شده است، بانک/صندوق را انتخاب کنید."
                 totalTargetIRR={totalIRR}
                 splits={payments}
                 onChange={setPayments}
@@ -1168,79 +1078,53 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
                 contactName={selectedContact?.name}
               />
 
-              {/* شماره پیگیری کلی معامله و توضیحات کامل */}
+              {/* یک فیلد واحد برای شماره فیش/حواله و توضیحات کامل */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
                 <div>
                   <label className="block text-xs font-extrabold text-teal-800 mb-1">
-                    شماره پیگیری / حواله معامله (در صورتحساب می‌آید):
+                    شماره فیش / کد رهگیری معامله (در صورتحساب می‌آید):
                   </label>
                   <input
                     type="text"
                     value={dealTrackingNumber}
                     onChange={(e) => setDealTrackingNumber(e.target.value)}
-                    placeholder={`پیش‌فرض: FX-1404-${1001 + fxDeals.length}`}
+                    placeholder={`پیش‌فرض: FX-${getCurrentJalaliYear()}-${1001 + fxDeals.length}`}
                     className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-mono-num text-slate-900 focus:border-teal-600 focus:outline-none"
                   />
                 </div>
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-extrabold text-slate-700 mb-1">
-                    توضیحات کامل معامله (دقیقاً خط به خط در صورتحساب مشتری نمایش داده می‌شود):
+                    توضیحات معامله (در صورتحساب شخص نمایش داده می‌شود):
                   </label>
                   <input
                     type="text"
                     value={dealNotes}
                     onChange={(e) => setDealNotes(e.target.value)}
-                    placeholder="مثلاً: خرید ۷۰۰۰ دلار توافقی — تحویل طی دو مرحله در دفتر مرکزی..."
+                    placeholder="توضیحات اختیاری..."
                     className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-xs text-slate-900 focus:border-teal-600 focus:outline-none"
                   />
                 </div>
               </div>
 
-              {/* باکس خلاصه ضد اشتباه به زبان خودمانی قبل از ثبت */}
+              {/* باکس خلاصه قبل از ثبت */}
               <div className="bg-blue-50/70 border-2 border-blue-200 rounded-2xl p-4 space-y-2.5">
                 <div className="flex items-center gap-2 text-xs font-extrabold text-blue-950">
                   <ShieldCheck className="w-4 h-4 text-blue-700 shrink-0" />
-                  <span>خلاصه ساده این معامله (قبل از ثبت بررسی کنید):</span>
+                  <span>خلاصه ثبت در صورتحساب «{selectedContact?.name || 'مشتری'}»:</span>
                 </div>
-
-                <p className="text-xs text-slate-800 leading-relaxed">
-                  شما در حال{' '}
-                  <strong className={dealType === 'buy' ? 'text-emerald-800' : 'text-amber-800'}>
-                    {dealType === 'buy' ? 'خرید' : 'فروش'} {formatNumber(foreignAmount)} {currency}
-                  </strong>{' '}
-                  با نرخ هر واحد <strong className="font-mono-num">{formatNumber(dealRate)} ریال</strong>{' '}
-                  {dealType === 'buy' ? 'از' : 'به'}{' '}
-                  <strong className="text-slate-950">{selectedContact?.name || 'مشتری'}</strong> هستید.
-                  جمع کل معامله <strong className="font-mono-num">{formatNumber(totalIRR)} ریال</strong> است.
-                  {remainingUndeliveredNow > 0 && (
-                    <span className="text-amber-900 font-bold block mt-1">
-                      📦 توجه تحویل مرحله‌ای: در این لحظه{' '}
-                      <strong>
-                        {formatNumber(effectiveDeliveredNow)} {currency}
-                      </strong>{' '}
-                      تحویل شده و{' '}
-                      <strong className="text-rose-700">
-                        {formatNumber(remainingUndeliveredNow)} {currency}
-                      </strong>{' '}
-                      به عنوان «مانده ارز تحویل‌نشده» در صورتحساب تحویل ارز مشتری ثبت می‌گردد.
-                    </span>
-                  )}
-                </p>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1 text-xs">
                   <div className="bg-white p-2.5 rounded-xl border border-blue-200">
-                    <span className="text-[11px] text-slate-500 block">
-                      {dealType === 'sell' ? 'دریافتی ریالی فعلی شما:' : 'پرداختی ریالی فعلی شما:'}
-                    </span>
-                    <strong className="font-mono-num text-emerald-700 font-extrabold">
-                      {formatNumber(paidSumIRR)} ریال
+                    <span className="text-[11px] text-slate-500 block">وضعیت تحویل ارز ({currency}):</span>
+                    <strong className="font-mono-num text-teal-900 font-extrabold">
+                      {isDeferredDelivery
+                        ? `${formatNumber(foreignAmount)} ${currency} در حساب ارزی شخص می‌ماند`
+                        : `${formatNumber(foreignAmount)} ${currency} تحویل صندوق شد (تسویه ارزی)`}
                     </strong>
                   </div>
 
                   <div className="bg-white p-2.5 rounded-xl border border-blue-200">
-                    <span className="text-[11px] text-slate-500 block">
-                      مانده ریالی این معامله (نسیه):
-                    </span>
+                    <span className="text-[11px] text-slate-500 block">مانده ریالی این فاکتور:</span>
                     <strong className="font-mono-num text-amber-800 font-extrabold">
                       {formatNumber(remainingIRR)} ریال
                     </strong>
@@ -1248,7 +1132,7 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
 
                   <div className="bg-white p-2.5 rounded-xl border border-blue-200">
                     <span className="text-[11px] text-slate-500 block">
-                      وضعیت نهایی ریالی {selectedContact?.name || 'مشتری'} بعد از ثبت:
+                      مانده نهایی ریالی {selectedContact?.name || 'مشتری'}:
                     </span>
                     <strong className="font-mono-num text-slate-900 font-extrabold block">
                       {formatNumber(projectedBalanceInfo.absBalance)} ریال
@@ -1265,7 +1149,7 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
               {contacts.length === 0 && (
                 <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-center gap-2 font-bold">
                   <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-                  <span>لطفاً ابتدا با دکمه «+ مشتری جدید» در بالای فرم، نام طرف حساب را وارد کنید.</span>
+                  <span>لطفاً ابتدا با دکمه «+ شخص جدید» در بالای فرم، نام طرف حساب را وارد کنید.</span>
                 </div>
               )}
 
@@ -1285,7 +1169,7 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
                       className="flex-1 sm:flex-none px-6 py-3 rounded-xl font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-700 text-white shadow-md shadow-amber-600/20 cursor-pointer disabled:opacity-50 transition"
                     >
                       <CheckCircle2 className="w-4 h-4 shrink-0" />
-                      ذخیره تغییرات معامله
+                      ذخیره تغییرات فاکتور معامله
                     </button>
                   </div>
                 ) : (
@@ -1300,15 +1184,15 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
                   >
                     <CheckCircle2 className="w-4 h-4 shrink-0" />
                     {dealType === 'buy'
-                      ? `ثبت قطعی خرید ${formatNumber(foreignAmount)} ${currency} و صدور رسید`
-                      : `ثبت قطعی فروش ${formatNumber(foreignAmount)} ${currency} و صدور رسید`}
+                      ? `ثبت قطعی فاکتور خرید ${formatNumber(foreignAmount)} ${currency}`
+                      : `ثبت قطعی فاکتور فروش ${formatNumber(foreignAmount)} ${currency}`}
                   </button>
                 )}
               </div>
             </form>
           </div>
 
-          {/* تاریخچه معاملات ارزی ثبت شده */}
+          {/* تاریخچه معاملات ارزی ثبت شده با جستجو، ویرایش و حذف */}
           <div
             id="fx-deals-print"
             className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-xs"
@@ -1317,24 +1201,31 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
               <div>
                 <h3 className="text-sm sm:text-base font-extrabold text-slate-900 flex items-center gap-2">
                   <Coins className="w-5 h-5 text-teal-600 shrink-0" />
-                  فهرست معاملات خرید و فروش ارز ({formatNumber(fxDeals.length)})
+                  فهرست فاکتورهای خرید و فروش ارز ({formatNumber(fxDeals.length)})
                 </h3>
                 <p className="text-[11px] text-slate-500 mt-0.5">
-                  برای معاملاتی که ارز آن‌ها در چند مرحله تحویل می‌شود، روی دکمه «ثبت تحویل مرحله‌ای ارز» کلیک کنید.
+                  امکان جستجوی فوری بر اساس شماره فاکتور/فیش، ویرایش مبالغ و حذف فاکتور
                 </p>
               </div>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setSubTab('delivery_statement')}
-                  className="px-3.5 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-xs font-extrabold text-amber-900 border border-amber-300 flex items-center gap-1.5 transition cursor-pointer"
+                  className="px-3.5 py-2 rounded-xl bg-teal-50 hover:bg-teal-100 text-xs font-extrabold text-teal-900 border border-teal-300 flex items-center gap-1.5 transition cursor-pointer"
                 >
-                  <PackageCheck className="w-4 h-4 text-amber-600" />
-                  مشاهده صورتحساب تحویل ارز مشتریان
+                  <PackageCheck className="w-4 h-4 text-teal-600" />
+                  ثبت تحویل ارز (دریافت/پرداخت ارزی اشخاص)
                 </button>
                 <button
                   type="button"
-                  onClick={() => window.print()}
+                  onClick={() =>
+                    exportOrPrintFXDealsSummaryPDF(
+                      filteredDeals,
+                      companyName || 'صرافی آرکا',
+                      fiscalYear || '۱۴۰۴',
+                      'print'
+                    )
+                  }
                   className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-800 border border-slate-200 flex items-center gap-1.5 transition cursor-pointer"
                 >
                   <Printer className="w-4 h-4 text-teal-600" />
@@ -1343,14 +1234,14 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
               </div>
             </div>
 
-            {/* نوار جستجوی پیشرفته معاملات بر اساس شماره معامله، کد رهگیری، مشتری و ارز */}
+            {/* نوار جستجوی پیشرفته معاملات */}
             <div className="relative mb-3.5">
               <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="text"
                 value={dealSearchQuery}
                 onChange={(e) => setDealSearchQuery(e.target.value)}
-                placeholder="🔍 جستجوی شماره معامله (مثلاً FX-1404-1002)، کد پیگیری، نام شخص یا نوع ارز..."
+                placeholder="🔍 جستجوی شماره فاکتور (مثلاً FX-1001)، کد پیگیری، نام شخص یا نوع ارز..."
                 className="w-full pl-9 pr-9 py-2.5 rounded-xl border border-slate-200 text-xs bg-slate-50 focus:bg-white focus:border-teal-500 focus:ring-1 focus:ring-teal-500 outline-none transition"
               />
               {dealSearchQuery && (
@@ -1368,18 +1259,15 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
               {filteredDeals.length === 0 ? (
                 <div className="p-8 text-center bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-500">
                   {dealSearchQuery.trim()
-                    ? `معامله‌ای منطبق با عبارت «${dealSearchQuery}» پیدا نشد.`
-                    : 'هنوز هیچ معامله خرید یا فروش ارزی ثبت نشده است.'}
+                    ? `فاکتوری منطبق با عبارت «${dealSearchQuery}» پیدا نشد.`
+                    : 'هنوز هیچ فاکتور خرید یا فروش ارزی ثبت نشده است.'}
                 </div>
               ) : (
                 filteredDeals.map((d) => {
                   const paid =
                     d.paidAmountIRR ?? (d.settlementMethod !== 'credit_account' ? d.totalIRR : 0);
                   const rem = d.remainingAmountIRR ?? Math.max(0, d.totalIRR - paid);
-                  const deliveredFor = d.deliveredForeignAmount ?? d.foreignAmount;
-                  const remFor =
-                    d.remainingForeignDelivery ??
-                    Math.max(0, Number((d.foreignAmount - deliveredFor).toFixed(2)));
+                  const isDeferred = (d.deliveredForeignAmount ?? d.foreignAmount) === 0;
 
                   return (
                     <div
@@ -1393,7 +1281,7 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
                           </span>
                           {d.trackingNumber && d.trackingNumber !== d.dealNumber && (
                             <span className="font-mono-num font-bold text-slate-700 text-[11px] bg-white px-2 py-0.5 rounded border border-slate-200">
-                              پیگیری: {d.trackingNumber}
+                              فیش/پیگیری: {d.trackingNumber}
                             </span>
                           )}
                           <span
@@ -1403,7 +1291,7 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
                                 : 'bg-amber-100 text-amber-800 border border-amber-200'
                             }`}
                           >
-                            {d.type === 'buy' ? 'خرید ارز از شخص' : 'فروش ارز به شخص'}
+                            {d.type === 'buy' ? 'فاکتور خرید ارز' : 'فاکتور فروش ارز'}
                           </span>
                           <span className="font-extrabold text-slate-900 text-xs sm:text-sm font-mono-num">
                             {formatNumber(d.foreignAmount)} {d.currency}
@@ -1422,32 +1310,19 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
                             جمع: {formatNumber(d.totalIRR)} ریال
                           </span>
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            {remFor > 0 && onRecordDealDelivery && (
-                              <button
-                                type="button"
-                                onClick={() => openDeliveryModal(d)}
-                                className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-extrabold flex items-center gap-1 cursor-pointer shadow-xs"
-                              >
-                                <PlusCircle className="w-3.5 h-3.5" />
-                                <span>
-                                  ثبت تحویل مرحله‌ای ({formatNumber(remFor)} {d.currency} مانده)
-                                </span>
-                              </button>
-                            )}
                             <button
                               type="button"
                               onClick={() => setPreviewDeal(d)}
                               className="px-2.5 py-1 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold flex items-center gap-1 cursor-pointer"
                             >
                               <Eye className="w-3.5 h-3.5" />
-                              <span>مشاهده رسید</span>
+                              <span>رسید</span>
                             </button>
                             {onUpdateDeal && (
                               <button
                                 type="button"
                                 onClick={() => handleStartEditDeal(d)}
                                 className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 text-xs font-bold flex items-center gap-1 cursor-pointer"
-                                title="ویرایش این معامله و مبالغ آن"
                               >
                                 <Edit3 className="w-3.5 h-3.5" />
                                 <span>ویرایش</span>
@@ -1459,70 +1334,22 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
                                 onClick={() => {
                                   if (
                                     window.confirm(
-                                      `آیا از حذف معامله ${d.dealNumber} (طرف حساب: ${d.contactName}) و سند مالی پیوسته آن اطمینان دارید؟`
+                                      `آیا از حذف فاکتور ${d.dealNumber} (طرف حساب: ${d.contactName}) و سند مالی آن اطمینان دارید؟`
                                     )
                                   ) {
                                     onDeleteDeal(d.id);
                                   }
                                 }}
-                                className="text-rose-600 hover:text-rose-700 p-1.5 rounded-lg hover:bg-rose-50 border border-transparent hover:border-rose-200 cursor-pointer"
-                                title="حذف معامله و سند مربوطه"
+                                className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold flex items-center gap-1 cursor-pointer"
                               >
-                                <Trash2 className="w-4 h-4" />
+                                <Trash2 className="w-3.5 h-3.5" />
+                                <span>حذف</span>
                               </button>
                             )}
                           </div>
                         </div>
                       </div>
 
-                      {/* نوار وضعیت تحویل ارز (تحویل شده و مانده تحویل‌نشده) */}
-                      <div
-                        className={`flex flex-wrap items-center justify-between gap-2 text-xs px-3 py-2 rounded-xl border ${
-                          remFor > 0
-                            ? 'bg-amber-50/90 border-amber-300 text-amber-950'
-                            : 'bg-emerald-50/70 border-emerald-200 text-emerald-950'
-                        }`}
-                      >
-                        <div className="flex flex-wrap items-center gap-2">
-                          <PackageCheck className="w-4 h-4 text-teal-700 shrink-0" />
-                          <span>
-                            وضعیت تحویل خودِ ارز ({d.currency}):{' '}
-                            <strong className="font-mono-num text-emerald-800">
-                              {formatNumber(deliveredFor)} {d.currency} تحویل شده
-                            </strong>
-                          </span>
-                          <span className="text-slate-300">|</span>
-                          {remFor > 0 ? (
-                            <span className="font-extrabold text-rose-700">
-                              ⚠️ مانده تحویل‌نشده: {formatNumber(remFor)} {d.currency} (
-                              {d.type === 'buy'
-                                ? 'مشتری هنوز به شما تحویل نداده'
-                                : 'شما هنوز به مشتری تحویل نداده‌اید'}
-                              )
-                            </span>
-                          ) : (
-                            <span className="font-bold text-emerald-800">
-                              ✓ تحویل کامل انجام شده است
-                            </span>
-                          )}
-                        </div>
-
-                        {d.deliverySplits && d.deliverySplits.length > 0 && (
-                          <div className="flex flex-wrap items-center gap-1">
-                            {d.deliverySplits.map((sp, i) => (
-                              <span
-                                key={sp.id}
-                                className="px-2 py-0.5 rounded bg-white border border-slate-200 text-[11px] font-mono-num text-slate-700"
-                              >
-                                مرحله {i + 1}: {formatNumber(sp.amountForeign)} {d.currency} ({sp.date} — پیگیری:{' '}
-                                {sp.trackingNumber})
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* نمایش ریز پرداخت یا دریافت ترکیبی ریالی */}
                       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-700 bg-white px-3 py-2 rounded-xl border border-slate-200">
                         <div className="flex flex-wrap items-center gap-2">
                           <Landmark className="w-3.5 h-3.5 text-teal-600 shrink-0" />
@@ -1534,38 +1361,22 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
                           </span>
                           <span className="text-slate-300">|</span>
                           <span>
-                            مانده نسیه ریالی در حساب {d.contactName}:{' '}
+                            مانده ریالی:{' '}
                             <strong className="text-amber-800 font-mono-num">
                               {formatNumber(rem)} ریال
                             </strong>
                           </span>
+                          <span className="text-slate-300">|</span>
+                          <span>
+                            وضعیت ارز:{' '}
+                            <strong className={isDeferred ? 'text-amber-700' : 'text-emerald-700'}>
+                              {isDeferred
+                                ? `در حساب ارزی ${d.contactName} (تحویل از بخش تحویل ارز)`
+                                : 'تحویل همزمان به صندوق'}
+                            </strong>
+                          </span>
                         </div>
-
-                        {d.payments && d.payments.length > 0 && (
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            {d.payments.map((p) => (
-                              <span
-                                key={p.id}
-                                className="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-[11px] font-mono-num"
-                              >
-                                {p.bankName}:{' '}
-                                {p.currency === 'IRR'
-                                  ? `${formatNumber(p.amountIRR)} ریال`
-                                  : `${formatNumber(p.amountForeign)} ${p.currency} (نرخ ${formatNumber(
-                                      p.exchangeRate
-                                    )})`}
-                                {p.trackingNumber ? ` | فیش: ${p.trackingNumber}` : ''}
-                              </span>
-                            ))}
-                          </div>
-                        )}
                       </div>
-
-                      {d.notes && (
-                        <div className="text-xs text-slate-700 bg-white px-3 py-1.5 rounded-lg border border-slate-200">
-                          <strong className="text-slate-900">📝 توضیحات معامله:</strong> {d.notes}
-                        </div>
-                      )}
                     </div>
                   );
                 })
@@ -1576,434 +1387,366 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
       )}
 
       {/* ===================================================================== */}
-      {/* تب دوم: تحویل مرحله‌ای ارز و صورتحساب اختصاصی تحویل ارز مشتریان */}
+      {/* تب دوم: تحویل ارز اشخاص (دریافت و پرداخت ارزی مثل دریافت و پرداخت ریالی) */}
       {/* ===================================================================== */}
       {subTab === 'delivery_statement' && (
-        <div className="space-y-4">
-          <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-4">
+        <div className="space-y-5">
+          <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-xs space-y-5">
+            {dlvEditingVoucherId && (
+              <div className="p-3.5 bg-amber-50 border-2 border-amber-400 rounded-xl flex items-center justify-between text-xs text-amber-950 font-bold">
+                <span className="flex items-center gap-2">
+                  <Edit3 className="w-4 h-4 text-amber-700" />
+                  در حال ویرایش سند تحویل ارز شماره: #
+                  {vouchers.find((v) => v.id === dlvEditingVoucherId)?.voucherNumber}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDlvEditingVoucherId(null);
+                    setDlvAmount(0);
+                    setDlvTracking('');
+                    setDlvNotes('');
+                  }}
+                  className="px-3 py-1 rounded-lg bg-white border border-amber-300 text-rose-700 font-extrabold cursor-pointer"
+                >
+                  انصراف از ویرایش
+                </button>
+              </div>
+            )}
+
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
               <div>
-                <h2 className="text-sm sm:text-lg font-extrabold text-slate-900 flex items-center gap-2">
+                <h2 className="text-base sm:text-lg font-extrabold text-slate-900 flex items-center gap-2">
                   <PackageCheck className="w-5 h-5 text-teal-600 shrink-0" />
-                  صورتحساب اختصاصی تحویل مرحله‌ای ارز مشتریان (تحویل گرفته شده و تحویل نشده)
+                  تحویل ارز اشخاص (دریافت و پرداخت مستقیم ارزی)
                 </h2>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  در این بخش به تفکیک هر مشتری می‌بینید چقدر ارز معامله شده، در چه مراحلی تحویل گرفته یا داده شده، و چقدر ارز تحویل‌نشده باقی مانده است.
+                <p className="text-xs text-slate-500 mt-1">
+                  شخص را انتخاب کنید و هر مقدار ارز (کمتر، برابر یا بیشتر از مانده) که تحویل گرفته‌اید یا تحویل داده‌اید را ثبت کنید تا مستقیماً در صورتحساب ارزی آن شخص بنشیند.
                 </p>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
-                <select
-                  value={deliveryFilterContactId}
-                  onChange={(e) => setDeliveryFilterContactId(e.target.value)}
-                  className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-extrabold text-slate-900 focus:border-teal-600 focus:outline-none"
-                >
-                  <option value="ALL">همه مشتریان ({fxDeals.length} معامله)</option>
-                  {contacts.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      فقط صورتحساب تحویل ارز: {c.name} ({c.code})
-                    </option>
-                  ))}
-                </select>
-
+              <div className="grid grid-cols-2 bg-slate-100 p-1 rounded-xl border border-slate-200 w-full sm:w-auto gap-1">
                 <button
                   type="button"
-                  onClick={() => {
-                    const targetName =
-                      deliveryFilterContactId === 'ALL'
-                        ? 'کل مشتریان صرافی'
-                        : contacts.find((c) => c.id === deliveryFilterContactId)?.name || 'مشتری';
-                    exportOrPrintCurrencyDeliveryStatementPDF({
-                      contactName: targetName,
-                      deals: filteredDeliveryDeals,
-                      companyName,
-                      fiscalYear,
-                      mode: 'print',
-                    });
-                  }}
-                  className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-extrabold flex items-center gap-1.5 cursor-pointer shadow-xs"
+                  onClick={() => setDlvDirection('receive')}
+                  className={`px-4 py-2.5 rounded-lg text-xs font-extrabold flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                    dlvDirection === 'receive'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
                 >
-                  <Printer className="w-4 h-4" />
-                  چاپ A4 صورتحساب تحویل ارز
+                  <ArrowDownLeft className="w-4 h-4 shrink-0" />
+                  <span>۱. دریافت ارز از شخص (ورود به صندوق)</span>
                 </button>
-
                 <button
                   type="button"
-                  onClick={() => {
-                    const targetName =
-                      deliveryFilterContactId === 'ALL'
-                        ? 'کل مشتریان صرافی'
-                        : contacts.find((c) => c.id === deliveryFilterContactId)?.name || 'مشتری';
-                    exportOrPrintCurrencyDeliveryStatementPDF({
-                      contactName: targetName,
-                      deals: filteredDeliveryDeals,
-                      companyName,
-                      fiscalYear,
-                      mode: 'download_pdf_html',
-                    });
-                  }}
-                  className="px-3.5 py-2 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-extrabold flex items-center gap-1.5 cursor-pointer shadow-xs"
+                  onClick={() => setDlvDirection('pay')}
+                  className={`px-4 py-2.5 rounded-lg text-xs font-extrabold flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                    dlvDirection === 'pay'
+                      ? 'bg-amber-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
                 >
-                  <FileDown className="w-4 h-4" />
-                  دانلود PDF تحویل ارز
+                  <ArrowUpRight className="w-4 h-4 shrink-0" />
+                  <span>۲. پرداخت / تحویل ارز به شخص (خروج از صندوق)</span>
                 </button>
               </div>
             </div>
 
-            {/* کارت‌های خلاصه تحویل ارز به تفکیک هر ارز */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-              {Object.entries(deliveryCurrencySummary).map(([cur, s]) => (
-                <div
-                  key={cur}
-                  className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5 text-xs"
-                >
-                  <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-                    <span className="font-extrabold text-slate-900 text-sm">
-                      وضعیت تحویل ارز {cur}
-                    </span>
-                    <span className="px-2.5 py-0.5 rounded-lg bg-teal-100 text-teal-900 font-mono font-extrabold">
-                      {cur}
-                    </span>
+            <form onSubmit={handleSaveCurrencyDelivery} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
+                {/* انتخاب شخص */}
+                <div className="lg:col-span-2">
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-extrabold text-slate-800">
+                      {dlvDirection === 'receive'
+                        ? 'دریافت ارز از کدام شخص؟'
+                        : 'تحویل / پرداخت ارز به کدام شخص؟'}
+                    </label>
+                    {onAddContact && (
+                      <button
+                        type="button"
+                        onClick={() => setShowQuickContact(!showQuickContact)}
+                        className="text-[11px] text-teal-700 font-extrabold cursor-pointer"
+                      >
+                        + شخص جدید
+                      </button>
+                    )}
                   </div>
+                  <select
+                    value={dlvSelectedContact?.id || ''}
+                    onChange={(e) => setDlvContactId(e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-900 focus:border-teal-600 focus:outline-none"
+                  >
+                    {contacts.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} ({c.phone || c.code})
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-                  <div className="grid grid-cols-3 gap-2 bg-white p-2.5 rounded-xl border border-slate-200 font-mono-num">
-                    <div>
-                      <span className="text-[10px] text-slate-500 block font-sans">کل خرید ما از مشتری</span>
-                      <strong className="text-slate-900 font-extrabold">
-                        {formatNumber(s.totalBought)} {cur}
-                      </strong>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-emerald-700 block font-sans">تحویل گرفته شده</span>
-                      <strong className="text-emerald-700 font-extrabold">
-                        {formatNumber(s.deliveredBought)} {cur}
-                      </strong>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-rose-700 block font-sans">
-                        مانده تحویل‌نشده به ما
-                      </span>
-                      <strong className="text-rose-700 font-extrabold">
-                        {formatNumber(s.undeliveredBought)} {cur}
-                      </strong>
-                    </div>
-                  </div>
+                {/* انتخاب نوع ارز */}
+                <div>
+                  <label className="block text-xs font-extrabold text-slate-800 mb-1">
+                    نوع ارز:
+                  </label>
+                  <select
+                    value={dlvCurrency}
+                    onChange={(e) => {
+                      const c = e.target.value as CurrencyCode;
+                      setDlvCurrency(c);
+                      const match = banks.find((b) => b.currency === c);
+                      if (match) setDlvBankId(match.id);
+                    }}
+                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-sm font-extrabold text-slate-900 focus:border-teal-600 focus:outline-none"
+                  >
+                    {foreignCurrencies.map((c) => (
+                      <option key={c.code} value={c.code}>
+                        {c.name} ({c.code})
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-                  <div className="grid grid-cols-3 gap-2 bg-white p-2.5 rounded-xl border border-slate-200 font-mono-num">
-                    <div>
-                      <span className="text-[10px] text-slate-500 block font-sans">کل فروش ما به مشتری</span>
-                      <strong className="text-slate-900 font-extrabold">
-                        {formatNumber(s.totalSold)} {cur}
-                      </strong>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-emerald-700 block font-sans">تحویل داده شده</span>
-                      <strong className="text-emerald-700 font-extrabold">
-                        {formatNumber(s.deliveredSold)} {cur}
-                      </strong>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-amber-800 block font-sans">
-                        مانده تعهد تحویل ما
-                      </span>
-                      <strong className="text-amber-800 font-extrabold">
-                        {formatNumber(s.undeliveredSold)} {cur}
-                      </strong>
-                    </div>
+                {/* مبلغ ارز */}
+                <div>
+                  <label className="block text-xs font-extrabold text-slate-800 mb-1">
+                    مبلغ ارز ({dlvCurrency}):
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    required
+                    value={dlvAmount ? formatNumber(dlvAmount) : ''}
+                    onChange={(e) => setDlvAmount(parseFormattedNumber(e.target.value))}
+                    placeholder={`مثلاً 500 ${dlvCurrency}`}
+                    className="w-full bg-white border-2 border-teal-500 rounded-xl px-3 py-2 text-sm font-extrabold font-mono-num text-slate-900 focus:outline-none"
+                  />
+                </div>
+
+                {/* صندوق یا بانک ارزی */}
+                <div>
+                  <label className="block text-xs font-extrabold text-slate-800 mb-1">
+                    {dlvDirection === 'receive' ? 'صندوق/بانک مقصد:' : 'صندوق/بانک مبدأ:'}
+                  </label>
+                  <select
+                    value={dlvBankId}
+                    onChange={(e) => setDlvBankId(e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-900 focus:border-teal-600 focus:outline-none"
+                  >
+                    {banks.length === 0 ? (
+                      <option value="">صندوق ارزی ({dlvCurrency})</option>
+                    ) : (
+                      banks.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.kind === 'cash_box' ? '📦 ' : '🏦 '}
+                          {b.bankName} ({b.currency})
+                        </option>
+                      ))
+                    )}
+                  </select>
+                </div>
+              </div>
+
+              {/* نمایش وضعیت ارزی فعلی شخص انتخاب‌شده */}
+              {dlvSelectedContact && dlvContactStatement && (
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <span className="font-bold text-slate-700">
+                    مانده‌های فعلی در صورتحساب «{dlvSelectedContact.name}»:
+                  </span>
+                  <div className="flex flex-wrap items-center gap-2 font-mono-num">
+                    <span className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 font-bold text-slate-800">
+                      مانده ریالی:{' '}
+                      {dlvContactStatement.finalStatusIRR === 'تسویه'
+                        ? '۰ ریال (تسویه)'
+                        : `${formatNumber(dlvContactStatement.finalBalanceIRR)} ریال (${dlvContactStatement.finalStatusIRR})`}
+                    </span>
+                    {Object.entries(dlvContactStatement.currencyBreakdown)
+                      .filter(([c]) => c !== 'IRR')
+                      .map(([cur, b]) => (
+                        <span
+                          key={cur}
+                          className="px-2.5 py-1 rounded-lg bg-teal-50 border border-teal-200 font-extrabold text-teal-900"
+                        >
+                          مانده {cur}: {formatCurrencyAmount(b.balanceForeign, cur)} {cur} (
+                          {b.status === 'بدهکار'
+                            ? 'بدهکار به ما — باید تحویل دهد'
+                            : b.status === 'بستانکار'
+                            ? 'طلبکار از ما — باید تحویل دهیم'
+                            : 'تسویه'}
+                          )
+                        </span>
+                      ))}
                   </div>
                 </div>
-              ))}
+              )}
+
+              {/* تاریخ، شماره فیش واحد و توضیحات */}
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3.5 items-end">
+                <div>
+                  <label className="block text-xs font-extrabold text-slate-700 mb-1">تاریخ:</label>
+                  <input
+                    type="text"
+                    value={dlvDate}
+                    onChange={(e) => setDlvDate(e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono-num font-bold text-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-extrabold text-teal-800 mb-1">
+                    شماره فیش / کد رهگیری:
+                  </label>
+                  <input
+                    type="text"
+                    value={dlvTracking}
+                    onChange={(e) => setDlvTracking(e.target.value)}
+                    placeholder="مثلاً: DLV-201"
+                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono-num font-bold text-slate-900"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-extrabold text-slate-700 mb-1">
+                    توضیحات (در صورتحساب شخص ثبت می‌شود):
+                  </label>
+                  <input
+                    type="text"
+                    value={dlvNotes}
+                    onChange={(e) => setDlvNotes(e.target.value)}
+                    placeholder="مثلاً: تحویل مرحله اول ارز به نماینده شخص..."
+                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end">
+                <button
+                  type="submit"
+                  disabled={!dlvSelectedContact || dlvAmount <= 0}
+                  className={`w-full sm:w-auto px-6 py-3 rounded-xl font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 text-white shadow-md cursor-pointer disabled:opacity-50 transition ${
+                    dlvDirection === 'receive'
+                      ? 'bg-emerald-600 hover:bg-emerald-700'
+                      : 'bg-amber-600 hover:bg-amber-700'
+                  }`}
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  {dlvEditingVoucherId
+                    ? 'ذخیره تغییرات سند تحویل ارز'
+                    : dlvDirection === 'receive'
+                    ? `ثبت دریافت ${formatNumber(dlvAmount)} ${dlvCurrency} از ${
+                        dlvSelectedContact?.name || 'شخص'
+                      }`
+                    : `ثبت تحویل / پرداخت ${formatNumber(dlvAmount)} ${dlvCurrency} به ${
+                        dlvSelectedContact?.name || 'شخص'
+                      }`}
+                </button>
+              </div>
+            </form>
+          </div>
+
+          {/* فهرست تحویل ارزهای ثبت شده با جستجو، ویرایش و حذف */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <h3 className="text-sm sm:text-base font-extrabold text-slate-900 flex items-center gap-2">
+                <PackageCheck className="w-5 h-5 text-teal-600" />
+                تاریخچه اسناد تحویل ارز — دریافت و پرداخت‌های ارزی ({formatNumber(currencyDeliveryVouchers.length)})
+              </h3>
+              <div className="relative w-full sm:w-80">
+                <Search className="w-4 h-4 text-slate-400 absolute right-3 top-2.5" />
+                <input
+                  type="text"
+                  value={dlvSearchQuery}
+                  onChange={(e) => setDlvSearchQuery(e.target.value)}
+                  placeholder="🔍 جستجوی نام شخص، شماره فیش، ارز یا تاریخ..."
+                  className="w-full pr-9 pl-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:border-teal-600 outline-none font-bold"
+                />
+              </div>
             </div>
 
-            {/* لیست خط به خط معاملات و مراحل تحویل هر معامله */}
-            <div className="space-y-4">
-              {filteredDeliveryDeals.length === 0 ? (
+            <div className="space-y-2.5">
+              {currencyDeliveryVouchers.length === 0 ? (
                 <div className="p-8 text-center text-xs text-slate-500 bg-slate-50 rounded-2xl border border-slate-200">
-                  هیچ معامله ارزی برای این فیلتر ثبت نشده است.
+                  هنوز هیچ سند تحویل ارزی ثبت نشده است.
                 </div>
               ) : (
-                filteredDeliveryDeals.map((d) => {
-                  const deliveredFor = d.deliveredForeignAmount ?? d.foreignAmount;
-                  const remFor =
-                    d.remainingForeignDelivery ??
-                    Math.max(0, Number((d.foreignAmount - deliveredFor).toFixed(2)));
-                  const splits = d.deliverySplits || [];
+                currencyDeliveryVouchers.map((v) => {
+                  const bankLine = v.lines.find((l) => l.bankId) || v.lines[0];
+                  const personLine = v.lines.find((l) => l.contactId) || v.lines[1];
+                  const isRec = (bankLine?.debitForeign || 0) > 0;
+                  const amt = bankLine?.debitForeign || bankLine?.creditForeign || 0;
+                  const cur = bankLine?.currency || 'USD';
 
                   return (
                     <div
-                      key={d.id}
-                      className="border-2 border-slate-200 rounded-2xl overflow-hidden bg-white shadow-xs"
+                      key={v.id}
+                      className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 flex flex-wrap items-center justify-between gap-3"
                     >
-                      <div className="bg-slate-100 px-4 py-3 flex flex-wrap items-center justify-between gap-2 border-b border-slate-200">
+                      <div className="space-y-1">
                         <div className="flex flex-wrap items-center gap-2 text-xs">
-                          <span className="font-mono-num font-extrabold text-teal-800 bg-white px-2.5 py-1 rounded-lg border border-teal-200">
-                            {d.dealNumber}
+                          <span className="px-2 py-0.5 rounded bg-teal-100 text-teal-800 font-mono-num font-extrabold">
+                            سند #{v.voucherNumber}
                           </span>
-                          <span className="font-extrabold text-slate-900">👤 {d.contactName}</span>
                           <span
-                            className={`px-2 py-0.5 rounded font-bold text-[11px] ${
-                              d.type === 'buy'
+                            className={`px-2 py-0.5 rounded font-extrabold text-[11px] ${
+                              isRec
                                 ? 'bg-emerald-100 text-emerald-800'
                                 : 'bg-amber-100 text-amber-800'
                             }`}
                           >
-                            {d.type === 'buy'
-                              ? 'خرید ارز (مشتری باید ارز تحویل دهد)'
-                              : 'فروش ارز (ما باید ارز تحویل دهیم)'}
+                            {isRec ? 'دریافت ارز از شخص' : 'تحویل / پرداخت ارز به شخص'}
                           </span>
-                          <span className="font-mono-num text-slate-600">تاریخ معامله: {d.date}</span>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          {remFor > 0 && onRecordDealDelivery && (
-                            <button
-                              type="button"
-                              onClick={() => openDeliveryModal(d)}
-                              className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-extrabold flex items-center gap-1.5 cursor-pointer shadow-xs"
-                            >
-                              <PlusCircle className="w-4 h-4" />
-                              ثبت مرحله جدید تحویل ({formatNumber(remFor)} {d.currency} مانده)
-                            </button>
+                          <span className="font-extrabold text-slate-900">
+                            👤 {personLine?.contactName || 'شخص'}
+                          </span>
+                          <span className="font-mono-num font-extrabold text-teal-900 text-sm">
+                            {formatCurrencyAmount(amt, cur)} {cur}
+                          </span>
+                          {v.referenceNumber && (
+                            <span className="px-2 py-0.5 rounded bg-white border border-slate-200 font-mono-num text-[11px] text-slate-700 flex items-center gap-1">
+                              <Hash className="w-3 h-3" />
+                              {v.referenceNumber}
+                            </span>
                           )}
+                          <span className="font-mono-num text-slate-500">{v.date}</span>
                         </div>
+                        <p className="text-[11px] text-slate-600">{v.description}</p>
                       </div>
 
-                      <div className="p-4 space-y-3">
-                        {/* خلاصه مقادیر این معامله */}
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
-                          <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
-                            <span className="text-slate-600 font-bold">کل ارز معامله‌شده:</span>
-                            <strong className="font-mono-num text-sm font-extrabold text-slate-900">
-                              {formatCurrencyAmount(d.foreignAmount, d.currency)} {d.currency}
-                            </strong>
-                          </div>
-                          <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-between">
-                            <span className="text-emerald-900 font-bold">جمع تحویل‌شده تا این لحظه:</span>
-                            <strong className="font-mono-num text-sm font-extrabold text-emerald-800">
-                              {formatCurrencyAmount(deliveredFor, d.currency)} {d.currency}
-                            </strong>
-                          </div>
-                          <div
-                            className={`p-2.5 rounded-xl border flex items-center justify-between ${
-                              remFor > 0
-                                ? 'bg-rose-50 border-rose-300 text-rose-900'
-                                : 'bg-teal-50 border-teal-200 text-teal-900'
-                            }`}
+                      <div className="flex items-center gap-1.5">
+                        {onUpdateVoucher && (
+                          <button
+                            type="button"
+                            onClick={() => handleStartEditDeliveryVoucher(v)}
+                            className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 text-xs font-bold flex items-center gap-1 cursor-pointer"
                           >
-                            <span className="font-bold">مانده ارز تحویل‌نشده:</span>
-                            <strong className="font-mono-num text-sm font-extrabold">
-                              {remFor > 0
-                                ? `${formatCurrencyAmount(remFor, d.currency)} ${d.currency}`
-                                : '۰ (تسویه و تحویل کامل)'}
-                            </strong>
-                          </div>
-                        </div>
-
-                        {d.notes && (
-                          <div className="p-2.5 rounded-xl bg-amber-50/70 border border-amber-200 text-xs text-amber-950">
-                            <strong>توضیحات کلی معامله:</strong> {d.notes}
-                          </div>
+                            <Edit3 className="w-3.5 h-3.5" />
+                            <span>ویرایش</span>
+                          </button>
                         )}
-
-                        {/* جدول ریز مراحل تحویل خط به خط */}
-                        <div className="overflow-x-auto border border-slate-200 rounded-xl">
-                          <table className="w-full text-right border-collapse text-xs">
-                            <thead>
-                              <tr className="bg-slate-100 border-b border-slate-200 font-extrabold text-slate-700">
-                                <th className="py-2.5 px-3">مرحله</th>
-                                <th className="py-2.5 px-3">تاریخ تحویل</th>
-                                <th className="py-2.5 px-3">شماره پیگیری / فیش تحویل</th>
-                                <th className="py-2.5 px-3">صندوق / حساب ارزی</th>
-                                <th className="py-2.5 px-3 text-left">مقدار تحویل‌شده</th>
-                                <th className="py-2.5 px-3">توضیحات خط به خط این مرحله</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-200">
-                              {splits.length === 0 ? (
-                                <tr>
-                                  <td colSpan={6} className="py-3 px-3 text-center text-slate-500">
-                                    {deliveredFor > 0
-                                      ? `تحویل یکجا در تاریخ ${d.date} به مقدار ${formatCurrencyAmount(
-                                          deliveredFor,
-                                          d.currency
-                                        )} ${d.currency} (شماره پیگیری: ${d.trackingNumber})`
-                                      : 'هنوز هیچ مرحله تحویلی برای این معامله ثبت نشده است.'}
-                                  </td>
-                                </tr>
-                              ) : (
-                                splits.map((sp, sIdx) => (
-                                  <tr key={sp.id} className="hover:bg-slate-50">
-                                    <td className="py-2 px-3 font-mono font-bold text-slate-600">
-                                      مرحله #{sIdx + 1}
-                                    </td>
-                                    <td className="py-2 px-3 font-mono text-slate-700">{sp.date}</td>
-                                    <td className="py-2 px-3 font-mono font-extrabold text-teal-800">
-                                      {sp.trackingNumber || '—'}
-                                    </td>
-                                    <td className="py-2 px-3 font-bold text-slate-800">
-                                      {sp.vaultBankName || 'خزانه ارزی'}
-                                    </td>
-                                    <td className="py-2 px-3 font-mono font-extrabold text-emerald-700 text-left">
-                                      {formatCurrencyAmount(sp.amountForeign, d.currency)} {d.currency}
-                                    </td>
-                                    <td className="py-2 px-3 text-slate-800 font-medium">
-                                      {sp.notes || '—'}
-                                    </td>
-                                  </tr>
-                                ))
-                              )}
-                            </tbody>
-                          </table>
-                        </div>
+                        {onDeleteVoucher && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (
+                                window.confirm(
+                                  `آیا از حذف سند تحویل ارز شماره #${v.voucherNumber} اطمینان دارید؟`
+                                )
+                              ) {
+                                onDeleteVoucher(v.id);
+                              }
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold flex items-center gap-1 cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>حذف</span>
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
                 })
               )}
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* ===================================================================== */}
-      {/* مودال ثبت تحویل مرحله‌ای جدید برای یک معامله */}
-      {/* ===================================================================== */}
-      {activeDeliveryDeal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
-          <div className="bg-white border-2 border-amber-300 rounded-2xl max-w-lg w-full p-5 sm:p-6 shadow-2xl space-y-4 my-auto">
-            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-              <div className="flex items-center gap-2">
-                <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center font-bold">
-                  <PackageCheck className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-sm sm:text-base font-extrabold text-slate-900">
-                    ثبت مرحله جدید تحویل ارز ({activeDeliveryDeal.dealNumber})
-                  </h3>
-                  <p className="text-[11px] text-slate-500">
-                    مشتری: <strong>{activeDeliveryDeal.contactName}</strong> | کل معامله:{' '}
-                    {formatNumber(activeDeliveryDeal.foreignAmount)} {activeDeliveryDeal.currency}
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setDeliveryModalDealId(null)}
-                className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs flex items-center justify-between">
-              <span className="font-bold text-amber-950 flex items-center gap-1.5">
-                <Clock className="w-4 h-4 text-amber-700" />
-                مانده ارز تحویل‌نشده از این معامله:
-              </span>
-              <strong className="font-mono-num text-sm font-extrabold text-rose-700">
-                {formatNumber(
-                  activeDeliveryDeal.remainingForeignDelivery ??
-                    Math.max(
-                      0,
-                      activeDeliveryDeal.foreignAmount -
-                        (activeDeliveryDeal.deliveredForeignAmount ?? activeDeliveryDeal.foreignAmount)
-                    )
-                )}{' '}
-                {activeDeliveryDeal.currency}
-              </strong>
-            </div>
-
-            <form onSubmit={handleSaveDeliveryStage} className="space-y-3.5 text-xs">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-extrabold text-slate-800 mb-1">
-                    مقدار تحویل در این مرحله ({activeDeliveryDeal.currency}) *
-                  </label>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    required
-                    value={stageAmountForeign ? formatNumber(stageAmountForeign) : ''}
-                    onChange={(e) => setStageAmountForeign(parseFormattedNumber(e.target.value))}
-                    className="w-full bg-white border-2 border-teal-500 rounded-xl px-3 py-2 text-sm font-extrabold font-mono-num text-slate-900"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-extrabold text-slate-800 mb-1">تاریخ این تحویل *</label>
-                  <input
-                    type="text"
-                    required
-                    value={stageDate}
-                    onChange={(e) => setStageDate(e.target.value)}
-                    placeholder="1404/08/13"
-                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs sm:text-sm font-mono-num font-bold text-slate-900"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    صندوق / حساب ارزی {activeDeliveryDeal.type === 'buy' ? 'مقصد ورود' : 'مبدأ خروج'}:
-                  </label>
-                  <select
-                    value={stageVaultBankId}
-                    onChange={(e) => setStageVaultBankId(e.target.value)}
-                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900"
-                  >
-                    {banks.map((b) => (
-                      <option key={b.id} value={b.id}>
-                        {b.bankName} ({b.currency})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block font-bold text-teal-800 mb-1">
-                    شماره پیگیری فیش / رسید تحویل:
-                  </label>
-                  <input
-                    type="text"
-                    value={stageTrackingNumber}
-                    onChange={(e) => setStageTrackingNumber(e.target.value)}
-                    placeholder="مثلاً: DLV-202"
-                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono-num text-slate-900"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">
-                  توضیحات خط به خط این مرحله تحویل (در صورتحساب می‌آید):
-                </label>
-                <input
-                  type="text"
-                  value={stageNotes}
-                  onChange={(e) => setStageNotes(e.target.value)}
-                  placeholder="مثلاً: تحویل مرحله دوم به نماینده مشتری در صرافی..."
-                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
-                <button
-                  type="button"
-                  onClick={() => setDeliveryModalDealId(null)}
-                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
-                >
-                  انصراف
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold flex items-center gap-1.5 cursor-pointer shadow-xs"
-                >
-                  <CheckCircle2 className="w-4 h-4" />
-                  ثبت قطعی این مرحله تحویل ارز
-                </button>
-              </div>
-            </form>
           </div>
         </div>
       )}
@@ -2016,7 +1759,7 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
               <div>
                 <span className="text-[11px] font-bold text-teal-700 block">{companyName}</span>
                 <h3 className="text-base sm:text-lg font-extrabold text-slate-900">
-                  رسید رسمی معامله {previewDeal.type === 'buy' ? 'خرید ارز' : 'فروش ارز'}
+                  رسید رسمی فاکتور {previewDeal.type === 'buy' ? 'خرید ارز' : 'فروش ارز'}
                 </h3>
               </div>
               <button
@@ -2030,7 +1773,7 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
 
             <div className="grid grid-cols-2 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200 text-xs">
               <div>
-                <span className="text-slate-500 block">شماره رسید معامله:</span>
+                <span className="text-slate-500 block">شماره فاکتور:</span>
                 <strong className="font-mono-num text-sm text-teal-800 font-extrabold">
                   {previewDeal.dealNumber}
                 </strong>
@@ -2060,28 +1803,11 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
             </div>
 
             <div className="border border-slate-200 rounded-2xl overflow-hidden text-xs">
-              <div className="bg-slate-100 px-4 py-2.5 font-extrabold text-slate-800 flex justify-between">
-                <span>شرح ارز مورد معامله و وضعیت تحویل</span>
-                <span>مقدار و نرخ</span>
-              </div>
               <div className="p-4 space-y-2.5 divide-y divide-slate-100">
                 <div className="flex justify-between items-center pb-2">
                   <span className="text-slate-600 font-medium">مقدار کل ارز ({previewDeal.currency}):</span>
                   <strong className="font-mono-num text-sm font-extrabold text-slate-900">
                     {formatNumber(previewDeal.foreignAmount)} {previewDeal.currency}
-                  </strong>
-                </div>
-                <div className="flex justify-between items-center pt-2 pb-2">
-                  <span className="text-slate-600 font-medium">مقدار تحویل‌شده تا این لحظه:</span>
-                  <strong className="font-mono-num text-sm font-extrabold text-emerald-700">
-                    {formatNumber(previewDeal.deliveredForeignAmount ?? previewDeal.foreignAmount)}{' '}
-                    {previewDeal.currency}
-                  </strong>
-                </div>
-                <div className="flex justify-between items-center pt-2 pb-2">
-                  <span className="text-slate-600 font-medium">مانده ارز تحویل‌نشده:</span>
-                  <strong className="font-mono-num text-sm font-extrabold text-rose-700">
-                    {formatNumber(previewDeal.remainingForeignDelivery ?? 0)} {previewDeal.currency}
                   </strong>
                 </div>
                 <div className="flex justify-between items-center pt-2 pb-2">
@@ -2099,48 +1825,17 @@ export const FXTradingDeskView: React.FC<FXTradingDeskViewProps> = ({
               </div>
             </div>
 
-            {previewDeal.deliverySplits && previewDeal.deliverySplits.length > 0 && (
-              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs space-y-1.5">
-                <strong className="text-amber-950 block">ریز مراحل تحویل ارز:</strong>
-                {previewDeal.deliverySplits.map((sp, i) => (
-                  <div key={sp.id} className="flex justify-between text-slate-800 border-b border-amber-200/60 pb-1">
-                    <span>
-                      مرحله {i + 1} ({sp.date}) — پیگیری: <strong className="font-mono">{sp.trackingNumber}</strong>
-                      {sp.notes ? ` — ${sp.notes}` : ''}
-                    </span>
-                    <strong className="font-mono-num text-emerald-800">
-                      {formatNumber(sp.amountForeign)} {previewDeal.currency}
-                    </strong>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div className="grid grid-cols-2 gap-3 text-xs">
-              <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200">
-                <span className="text-emerald-800 block text-[11px] font-bold">مبلغ تسویه‌شده (نقد/بانک):</span>
-                <strong className="font-mono-num text-sm font-extrabold text-emerald-950 mt-0.5 block">
-                  {formatNumber(previewDeal.paidAmountIRR ?? 0)} ریال
-                </strong>
-              </div>
-              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200">
-                <span className="text-amber-800 block text-[11px] font-bold">مانده در حساب شخص (نسیه):</span>
-                <strong className="font-mono-num text-sm font-extrabold text-amber-950 mt-0.5 block">
-                  {formatNumber(previewDeal.remainingAmountIRR ?? 0)} ریال
-                </strong>
-              </div>
-            </div>
-
-            {previewDeal.notes && (
-              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700">
-                <strong>توضیحات کامل:</strong> {previewDeal.notes}
-              </div>
-            )}
-
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200">
               <button
                 type="button"
-                onClick={() => window.print()}
+                onClick={() =>
+                  previewDeal &&
+                  exportOrPrintSingleDealReceiptPDF(
+                    previewDeal,
+                    companyName || 'صرافی آرکا',
+                    'print'
+                  )
+                }
                 className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-extrabold flex items-center gap-1.5 cursor-pointer"
               >
                 <Printer className="w-4 h-4" />

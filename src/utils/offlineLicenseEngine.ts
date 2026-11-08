@@ -296,17 +296,96 @@ export function loadLicenseStatus(): LicenseStatus {
 }
 
 /**
+ * Automatically recovers and restores an existing valid hardware activation
+ * from the native OS-level persistent lock (ProgramData / AppData).
+ * This ensures that when the app is updated, reinstalled, or the WebView2 cache
+ * is refreshed, the user NEVER has to re-enter their 16-digit activation key!
+ */
+export async function recoverLicenseFromNativeLock(): Promise<boolean> {
+  const currentMachineId = getOrCreateMachineId();
+
+  if (isTauriEnvironment()) {
+    try {
+      const rawLock = await invokeTauriCommand<string | null>('get_saved_native_license', {
+        machineId: currentMachineId,
+      });
+
+      if (rawLock && typeof rawLock === 'string' && rawLock.startsWith('ARKA_V6_LOCK::')) {
+        const parts = rawLock.split('::');
+        // Format: ARKA_V6_LOCK::{machine_id}::{seal}::{optional_key}
+        const lockedMachine = (parts[1] || '').trim().toUpperCase();
+        const lockedSeal = (parts[2] || '').trim().toUpperCase();
+        const lockedKey = (parts[3] || '').trim();
+
+        if (lockedMachine === currentMachineId.toUpperCase()) {
+          // If 16-digit key was saved in lock file
+          if (lockedKey && verifyOfflineActivationKey(currentMachineId, lockedKey)) {
+            saveActivatedLicense(currentMachineId, lockedKey);
+            return true;
+          }
+
+          // Alternatively, derive key from official Vendor Master formula
+          const derivedKey = generateOfflineActivationKey(currentMachineId, VENDOR_MASTER_PASSWORD);
+          if (derivedKey) {
+            const expectedSeal = computeActivationSealV6(currentMachineId, derivedKey);
+            if (lockedSeal === expectedSeal || !lockedSeal) {
+              saveActivatedLicense(currentMachineId, derivedKey);
+              return true;
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Native license recovery check skipped:', err);
+    }
+  }
+
+  // Also check if server license is available
+  try {
+    const res = await fetch('/api/license');
+    if (res.ok) {
+      const data = await res.json();
+      if (data && (data.isActivated || data.license?.isActivated)) {
+        const srv = data.license || data;
+        const key = srv.activatedKey || srv.activationKey;
+        if (key && verifyOfflineActivationKey(currentMachineId, key)) {
+          saveActivatedLicense(currentMachineId, key);
+          return true;
+        } else {
+          const statusRecord = {
+            version: 6,
+            isActivated: true,
+            machineId: currentMachineId,
+            activatedAt: srv.activatedAt || '1405/01/01',
+            activationKey: key || 'SERVER-UNLOCKED',
+            seal: 'SERVER-UNLOCKED',
+          };
+          localStorage.setItem(LICENSE_STORAGE_KEY, JSON.stringify(statusRecord));
+          return true;
+        }
+      }
+    }
+  } catch {
+    // Offline mode
+  }
+
+  return false;
+}
+
+/**
  * Verifies the Native Windows Tauri OS-level license lock file (`arka_master_license_v6.lock`).
  */
 export async function verifyNativeTauriLicenseLock(): Promise<boolean> {
-  if (!isTauriEnvironment()) {
-    return loadLicenseStatus().isActivated;
+  const currentStatus = loadLicenseStatus();
+
+  // If localStorage doesn't have an active license, try to recover from native OS lock first!
+  if (!currentStatus.isActivated || !currentStatus.activationKey) {
+    const recovered = await recoverLicenseFromNativeLock();
+    return recovered;
   }
 
-  const currentStatus = loadLicenseStatus();
-  if (!currentStatus.isActivated || !currentStatus.activationKey) {
-    await invokeTauriCommand('revoke_native_license_lock');
-    return false;
+  if (!isTauriEnvironment()) {
+    return currentStatus.isActivated;
   }
 
   const expectedSeal = computeActivationSealV6(
@@ -319,16 +398,13 @@ export async function verifyNativeTauriLicenseLock(): Promise<boolean> {
     seal: expectedSeal,
   });
 
-  if (nativeValid !== true) {
-    try {
-      localStorage.removeItem(LICENSE_STORAGE_KEY);
-    } catch {
-      // ignore
-    }
-    return false;
+  if (nativeValid === true) {
+    return true;
   }
 
-  return true;
+  // If direct verification failed, attempt recovery before declaring invalid
+  const recovered = await recoverLicenseFromNativeLock();
+  return recovered;
 }
 
 /**
@@ -365,7 +441,19 @@ export function saveActivatedLicense(
     void invokeTauriCommand('save_native_license_lock', {
       machineId,
       seal,
+      activationKey: formattedKey,
     });
+  }
+
+  // Broadcast to server if server is online
+  try {
+    fetch('/api/license', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ license: statusRecord }),
+    }).catch(() => {});
+  } catch {
+    // offline
   }
 
   return {

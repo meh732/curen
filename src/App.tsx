@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import arkaLogo from './assets/arka-logo.jpg';
 import { INITIAL_ACCOUNTING_STATE, BLANK_ACCOUNTING_STATE, INITIAL_USERS } from './data/initialAccountingData';
 import {
   AccountingState,
@@ -19,7 +20,7 @@ import {
   UserAccount,
 } from './types/accounting';
 import { DashboardOverview } from './components/DashboardOverview';
-import { formatNumber } from './utils/accountingEngine';
+import { formatNumber, getTodayJalaliDate } from './utils/accountingEngine';
 import { FXTradingDeskView } from './components/FXTradingDeskView';
 import { VoucherEntryView } from './components/VoucherEntryView';
 import { PersonStatementsView } from './components/PersonStatementsView';
@@ -38,6 +39,7 @@ import {
   loadLicenseStatus,
   lockApplicationLicense,
   verifyNativeTauriLicenseLock,
+  recoverLicenseFromNativeLock,
   invokeTauriCommand,
   LicenseStatus,
 } from './utils/offlineLicenseEngine';
@@ -51,11 +53,9 @@ import {
   ShoppingBag,
   Landmark,
   FileSpreadsheet,
-  RotateCcw,
   WifiOff,
   RefreshCw,
   Server,
-  Database,
   Settings,
   LogOut,
   UserCheck,
@@ -80,18 +80,58 @@ export function App() {
     loadLicenseStatus()
   );
 
-  // بررسی سخت‌گیرانه قفل بومی ویندوز تائوری در بدو ورود (جلوگیری از دور زدن لایسنس با کش قدیمی)
+  // بررسی قفل بومی تائوری و همگام‌سازی لایسنس سرور لینوکس/شبکه تا پس از یک‌بار فعال‌سازی روی سرور، قفل مجدد نخواهد
   useEffect(() => {
     let active = true;
-    verifyNativeTauriLicenseLock().then((valid) => {
+
+    async function syncLicense() {
+      try {
+        const res = await fetch('/api/license');
+        if (res.ok) {
+          const data = await res.json();
+          if (!active) return;
+          if (data && (data.isActivated || data.license?.isActivated)) {
+            const srvLic = data.license || data;
+            const unlockedStatus: LicenseStatus = {
+              isActivated: true,
+              machineId: srvLic.machineId || licenseStatus.machineId,
+              activatedAt: srvLic.activatedAt || '1405/01/01',
+              activationKey: srvLic.activatedKey || srvLic.activationKey || 'SERVER-UNLOCKED',
+              activatedKey: srvLic.activatedKey || srvLic.activationKey || 'SERVER-UNLOCKED',
+              masterAuthorized: true,
+            };
+            setLicenseStatus(unlockedStatus);
+            return;
+          } else if (licenseStatus.isActivated) {
+            fetch('/api/license', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ license: licenseStatus }),
+            }).catch(() => {});
+            return;
+          }
+        }
+      } catch {
+        // Offline or Tauri standalone mode
+      }
+
+      const valid = await verifyNativeTauriLicenseLock();
       if (!active) return;
-      if (!valid) {
+      if (valid) {
+        const fresh = loadLicenseStatus();
+        if (fresh.isActivated) {
+          setLicenseStatus(fresh);
+        }
+      } else {
         setLicenseStatus((prev) => ({
           isActivated: false,
           machineId: prev.machineId,
         }));
       }
-    });
+    }
+
+    void syncLicense();
+
     return () => {
       active = false;
     };
@@ -481,9 +521,7 @@ export function App() {
     return { code: '1102', name: 'موجودی بانک‌های ریالی' };
   };
 
-  const handleExecuteFXDeal = (deal: FXDeal) => {
-    setFxDeals([deal, ...fxDeals]);
-
+  const buildFXDealVoucherLines = (deal: FXDeal) => {
     const isBuy = deal.type === 'buy';
     const vaultBank =
       banks.find((b) => b.id === deal.targetForeignBankId) ||
@@ -495,23 +533,21 @@ export function App() {
       ? 'حساب اشخاص و فروشندگان (بستانکاران / بدهی ما)'
       : 'حساب اشخاص و مشتریان (بدهکاران / طلب ما)';
 
-    const vchId = deal.linkedVoucherId || `vch-fx-${Date.now()}`;
-    const vaultLineId = `ln-fx-vault-${Date.now()}-1`;
-
-    const deliveryNote =
-      deal.deliveryStatus && deal.deliveryStatus !== 'delivered'
-        ? ` [تحویل مرحله‌ای ارز: تحویل‌شده ${deal.deliveredForeignAmount ?? 0} ${
-            deal.currency
-          } | مانده تحویل‌نشده: ${
-            deal.remainingForeignDelivery ?? deal.foreignAmount
-          } ${deal.currency}]`
-        : ' [تحویل کامل ارز]';
+    const isDeferred = (deal.deliveredForeignAmount ?? deal.foreignAmount) === 0;
+    const deliveryNote = isDeferred
+      ? ` [تحویل ارز در مراحل بعد — ثبت در مانده ارزی شخص]`
+      : ` [تحویل همزمان ارز به صندوق]`;
 
     const userNotePart = deal.notes ? ` — توضیحات: ${deal.notes}` : '';
     const mainTracking = (deal.trackingNumber || '').trim() || deal.dealNumber;
 
-    const lines: VoucherLine[] = [
-      {
+    const lines: VoucherLine[] = [];
+    const newBankStatements: BankStatementEntry[] = [];
+
+    if (!isDeferred) {
+      // تحویل همزمان ارز در لحظه فاکتور: ورود/خروج ارز در صندوق ارزی + ثبت معادل ریالی در حساب شخص (مانده ارزی شخص = 0)
+      const vaultLineId = `ln-fx-vault-${Date.now()}-1`;
+      lines.push({
         id: vaultLineId,
         accountCode: vaultAcc.code,
         accountName: vaultAcc.name,
@@ -528,42 +564,77 @@ export function App() {
         creditIRR: isBuy ? 0 : deal.totalIRR,
         trackingNumber: mainTracking,
         reconciled: true,
-      },
-      {
+      });
+
+      lines.push({
         id: `ln-fx-person-${Date.now()}-2`,
         accountCode: personAccCode,
         accountName: personAccName,
         contactId: deal.contactId,
         contactName: deal.contactName,
-        description: `${isBuy ? 'خرید' : 'فروش'} ${deal.foreignAmount} ${
+        description: `فاکتور ${isBuy ? 'خرید' : 'فروش'} ${deal.foreignAmount} ${
           deal.currency
         } به نرخ ${deal.exchangeRate} ریال (${deal.dealNumber}) [شماره فیش/رهگیری: ${mainTracking}]${deliveryNote}${userNotePart}`,
-        currency: deal.currency,
-        exchangeRate: deal.exchangeRate,
-        debitForeign: isBuy ? 0 : deal.foreignAmount,
-        creditForeign: isBuy ? deal.foreignAmount : 0,
+        currency: 'IRR',
+        exchangeRate: 1,
+        debitForeign: 0,
+        creditForeign: 0,
         debitIRR: isBuy ? 0 : deal.totalIRR,
         creditIRR: isBuy ? deal.totalIRR : 0,
         trackingNumber: mainTracking,
-      },
-    ];
+      });
 
-    const newBankStatements: BankStatementEntry[] = [];
-    if (vaultBank) {
-      newBankStatements.push({
-        id: `bs-fx-v-${Date.now()}`,
-        bankId: vaultBank.id,
-        date: deal.date,
-        trackingNumber: mainTracking,
-        description: `${isBuy ? 'ورود ارز خریداری‌شده' : 'خروج ارز فروخته‌شده'} (${
-          deal.contactName
-        }) [فیش: ${mainTracking}]${deliveryNote}${userNotePart}`,
+      if (vaultBank) {
+        newBankStatements.push({
+          id: `bs-fx-v-${Date.now()}`,
+          bankId: vaultBank.id,
+          date: deal.date,
+          trackingNumber: mainTracking,
+          description: `${isBuy ? 'ورود ارز خریداری‌شده' : 'خروج ارز فروخته‌شده'} (${
+            deal.contactName
+          }) [فیش: ${mainTracking}]`,
+          currency: deal.currency,
+          depositForeign: isBuy ? deal.foreignAmount : 0,
+          withdrawalForeign: isBuy ? 0 : deal.foreignAmount,
+          depositIRR: isBuy ? deal.totalIRR : 0,
+          withdrawalIRR: isBuy ? 0 : deal.totalIRR,
+          matchedVoucherLineId: vaultLineId,
+        });
+      }
+    } else {
+      // ارز در حساب ارزی شخص می‌ماند تا بعداً در بخش «تحویل ارز / دریافت و پرداخت» دریافت یا پرداخت شود:
+      // در خرید ارز: شخص بابت ریال بستانکار می‌شود (creditIRR) و بابت خودِ ارز بدهکار ارزی می‌شود (debitForeign) تا بعداً تحویل دهد.
+      // در فروش ارز: شخص بابت ریال بدهکار می‌شود (debitIRR) و بابت خودِ ارز بستانکار ارزی می‌شود (creditForeign) تا بعداً به او تحویل دهیم.
+      lines.push({
+        id: `ln-fx-unsettled-v-${Date.now()}-1`,
+        accountCode: '1103',
+        accountName: 'موجودی بانک‌ها و خزانه‌های ارزی',
+        description: `تعهد ${isBuy ? 'خرید' : 'فروش'} ارز (${deal.foreignAmount} ${deal.currency}) در انتظار تحویل — ${deal.dealNumber}`,
         currency: deal.currency,
-        depositForeign: isBuy ? deal.foreignAmount : 0,
-        withdrawalForeign: isBuy ? 0 : deal.foreignAmount,
-        depositIRR: isBuy ? deal.totalIRR : 0,
-        withdrawalIRR: isBuy ? 0 : deal.totalIRR,
-        matchedVoucherLineId: vaultLineId,
+        exchangeRate: deal.exchangeRate,
+        debitForeign: 0,
+        creditForeign: 0,
+        debitIRR: isBuy ? deal.totalIRR : 0,
+        creditIRR: isBuy ? 0 : deal.totalIRR,
+        trackingNumber: mainTracking,
+      });
+
+      lines.push({
+        id: `ln-fx-person-${Date.now()}-2`,
+        accountCode: personAccCode,
+        accountName: personAccName,
+        contactId: deal.contactId,
+        contactName: deal.contactName,
+        description: `فاکتور ${isBuy ? 'خرید' : 'فروش'} ${deal.foreignAmount} ${
+          deal.currency
+        } به نرخ ${deal.exchangeRate} ریال (${deal.dealNumber}) [فیش/رهگیری: ${mainTracking}]${deliveryNote}${userNotePart}`,
+        currency: deal.currency,
+        exchangeRate: deal.exchangeRate,
+        debitForeign: isBuy ? deal.foreignAmount : 0,
+        creditForeign: isBuy ? 0 : deal.foreignAmount,
+        debitIRR: isBuy ? 0 : deal.totalIRR,
+        creditIRR: isBuy ? deal.totalIRR : 0,
+        trackingNumber: mainTracking,
       });
     }
 
@@ -640,6 +711,16 @@ export function App() {
         });
       });
     }
+
+    return { lines, newBankStatements, mainTracking, userNotePart };
+  };
+
+  const handleExecuteFXDeal = (deal: FXDeal) => {
+    setFxDeals([deal, ...fxDeals]);
+
+    const isBuy = deal.type === 'buy';
+    const vchId = deal.linkedVoucherId || `vch-fx-${Date.now()}`;
+    const { lines, newBankStatements, mainTracking, userNotePart } = buildFXDealVoucherLines(deal);
 
     const nextVoucherNumber =
       Math.max(1003, ...vouchers.map((v) => v.voucherNumber || 0)) + 1;
@@ -971,7 +1052,7 @@ export function App() {
 
     const newStatements: BankStatementEntry[] = [];
     v.lines.forEach((ln, idx) => {
-      if (ln.bankId && (ln.debitIRR > 0 || ln.creditIRR > 0)) {
+      if (ln.bankId && (ln.debitIRR > 0 || ln.creditIRR > 0 || ln.debitForeign > 0 || ln.creditForeign > 0)) {
         newStatements.push({
           id: `bs-vch-${Date.now()}-${idx}`,
           bankId: ln.bankId,
@@ -1122,7 +1203,7 @@ export function App() {
                   debitForeign: isSales ? 0 : sp.amountForeign,
                   creditForeign: isSales ? sp.amountForeign : 0,
                   debitIRR: isSales ? 0 : sp.amountIRR,
-                  creditIRR: isSales ? 0 : sp.amountIRR,
+                  creditIRR: isSales ? sp.amountIRR : 0,
                   trackingNumber: trk,
                 });
               });
@@ -1149,7 +1230,7 @@ export function App() {
       const filtered = prev.filter((bs) => !bs.matchedVoucherLineId || !lineIds.has(bs.matchedVoucherLineId));
       const newEntries: BankStatementEntry[] = [];
       updated.lines.forEach((ln, idx) => {
-        if (ln.bankId && (ln.debitIRR > 0 || ln.creditIRR > 0)) {
+        if (ln.bankId && (ln.debitIRR > 0 || ln.creditIRR > 0 || ln.debitForeign > 0 || ln.creditForeign > 0)) {
           newEntries.push({
             id: `bs-vch-${Date.now()}-${idx}`,
             bankId: ln.bankId,
@@ -1167,6 +1248,19 @@ export function App() {
       });
       return [...newEntries, ...filtered];
     });
+  };
+
+  const handleDeleteVoucher = (id: string) => {
+    const targetVch = vouchers.find((v) => v.id === id);
+    setVouchers((prev) => prev.filter((v) => v.id !== id));
+    setFxDeals((prev) => prev.filter((d) => d.linkedVoucherId !== id));
+    setInvoices((prev) => prev.filter((i) => i.linkedVoucherId !== id));
+    if (targetVch) {
+      const lineIds = new Set(targetVch.lines.map((l) => l.id));
+      setBankStatements((prev) =>
+        prev.filter((bs) => !bs.matchedVoucherLineId || !lineIds.has(bs.matchedVoucherLineId))
+      );
+    }
   };
 
   const handleAddBank = (newBank: BankAccount) => {
@@ -1191,13 +1285,14 @@ export function App() {
 
       const nextBankVoucherNumber =
         Math.max(1003, ...vouchers.map((v) => v.voucherNumber || 0)) + 1;
+      const todayDate = getTodayJalaliDate();
       const initVoucher: JournalVoucher = {
         id: vchId,
         voucherNumber: nextBankVoucherNumber,
-        date: '1404/08/12',
+        date: todayDate,
         description: `سند موجودی اولیه ${cleanBank.bankName}`,
         status: 'permanent',
-        createdAt: '1404/08/12',
+        createdAt: todayDate,
         autoType: 'income',
         lines: [
           {
@@ -1383,7 +1478,14 @@ export function App() {
     return (
       <OfflineActivationModal
         license={licenseStatus}
-        onActivated={(newStatus) => setLicenseStatus(newStatus)}
+        onActivated={(newStatus) => {
+          setLicenseStatus(newStatus);
+          fetch('/api/license', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ license: newStatus }),
+          }).catch(() => {});
+        }}
       />
     );
   }
@@ -1410,7 +1512,7 @@ export function App() {
         <div className="max-w-[1600px] mx-auto flex items-center justify-between gap-2 sm:gap-4 overflow-hidden">
           <div className="flex items-center gap-2.5 min-w-0">
             <img
-              src="/arka-logo.jpg"
+              src={arkaLogo}
               alt="لوگو آرکا (ARKA)"
               referrerPolicy="no-referrer"
               className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl object-cover border-2 border-teal-500 shadow-md shadow-teal-500/20 shrink-0"
@@ -1548,7 +1650,10 @@ export function App() {
         networkSyncStatus={networkSyncStatus}
         lastSyncTime={lastSyncTime}
         licenseStatus={licenseStatus}
-        onLockLicense={() => setLicenseStatus(lockApplicationLicense())}
+        onLockLicense={() => {
+          setLicenseStatus(lockApplicationLicense());
+          fetch('/api/license', { method: 'DELETE' }).catch(() => {});
+        }}
         onRestoreFullBackup={handleRestoreFullBackup}
       />
 
@@ -1557,6 +1662,22 @@ export function App() {
         {/* Navigation Bar (Desktop Vertical Sidebar Only) */}
         <aside className="hidden lg:block w-64 shrink-0">
           <nav className="bg-white border border-slate-200 rounded-xl p-2 flex flex-col gap-1.5 sticky top-20 z-20 shadow-xs">
+            {/* Desktop Brand Header Card */}
+            <div className="p-2.5 mb-1 bg-gradient-to-br from-slate-900 via-teal-950 to-slate-900 rounded-lg text-white border border-teal-500/30 flex items-center gap-2.5 shadow-sm">
+              <img
+                src={arkaLogo}
+                alt="ARKA Logo"
+                className="w-10 h-10 rounded-lg object-cover border border-teal-400 shadow-sm shrink-0"
+              />
+              <div className="min-w-0">
+                <div className="flex items-center gap-1">
+                  <span className="text-xs font-black text-amber-400 tracking-wide">آرکا (ARKA)</span>
+                  <span className="text-[9px] px-1 py-0.2 bg-teal-500/20 text-teal-300 rounded font-mono">v6.0</span>
+                </div>
+                <p className="text-[10px] text-slate-300 truncate">حسابداری و صرافی دوارزی</p>
+              </div>
+            </div>
+
             {navItems.map((item) => {
               const active = activeTab === item.id;
               return (
@@ -1648,9 +1769,7 @@ export function App() {
               onAddVoucher={handleAddVoucher}
               onUpdateVoucher={handleUpdateVoucher}
               onAddContact={(newContact) => setContacts([...contacts, newContact])}
-              onDeleteVoucher={(id) => {
-                setVouchers(vouchers.filter((v) => v.id !== id));
-              }}
+              onDeleteVoucher={handleDeleteVoucher}
             />
           )}
 
@@ -1666,56 +1785,17 @@ export function App() {
               onUpdateDeal={(updatedDeal) => {
                 setFxDeals(fxDeals.map((d) => (d.id === updatedDeal.id ? updatedDeal : d)));
                 if (updatedDeal.linkedVoucherId) {
+                  const { lines, mainTracking, userNotePart } = buildFXDealVoucherLines(updatedDeal);
+                  const isBuy = updatedDeal.type === 'buy';
                   setVouchers(
                     vouchers.map((v) => {
                       if (v.id !== updatedDeal.linkedVoucherId) return v;
-                      const isBuy = updatedDeal.type === 'buy';
-                      const vaultBank =
-                        banks.find((b) => b.id === updatedDeal.targetForeignBankId) ||
-                        banks.find((b) => b.currency === updatedDeal.currency);
-                      const vaultAcc = getAccountForBank(vaultBank);
-                      const personAccCode = isBuy ? '2101' : '1104';
-                      const personAccName = isBuy
-                        ? 'حساب اشخاص و فروشندگان (بستانکاران / بدهی ما)'
-                        : 'حساب اشخاص و مشتریان (بدهکاران / طلب ما)';
-                      const mainTracking = (updatedDeal.trackingNumber || '').trim() || updatedDeal.dealNumber;
                       return {
                         ...v,
                         date: updatedDeal.date,
-                        description: `سند معامله ${isBuy ? 'خرید' : 'فروش'} ${formatNumber(updatedDeal.foreignAmount)} ${updatedDeal.currency} (${updatedDeal.contactName})`,
-                        lines: [
-                          {
-                            id: v.lines[0]?.id || `ln-fx-vault-${Date.now()}-1`,
-                            accountCode: vaultAcc.code,
-                            accountName: vaultAcc.name,
-                            bankId: vaultBank?.id,
-                            bankName: vaultBank?.bankName,
-                            description: `${isBuy ? 'خرید ارز و ورود به' : 'فروش ارز و خروج از'} ${vaultBank?.bankName || 'خزانه ارزی'} (${updatedDeal.foreignAmount} ${updatedDeal.currency} به نرخ ${updatedDeal.exchangeRate}) [شماره فیش/رهگیری: ${mainTracking}]`,
-                            currency: updatedDeal.currency,
-                            exchangeRate: updatedDeal.exchangeRate,
-                            debitForeign: isBuy ? updatedDeal.foreignAmount : 0,
-                            creditForeign: isBuy ? 0 : updatedDeal.foreignAmount,
-                            debitIRR: isBuy ? updatedDeal.totalIRR : 0,
-                            creditIRR: isBuy ? 0 : updatedDeal.totalIRR,
-                            trackingNumber: mainTracking,
-                            reconciled: true,
-                          },
-                          {
-                            id: v.lines[1]?.id || `ln-fx-person-${Date.now()}-2`,
-                            accountCode: personAccCode,
-                            accountName: personAccName,
-                            contactId: updatedDeal.contactId,
-                            contactName: updatedDeal.contactName,
-                            description: `${isBuy ? 'خرید' : 'فروش'} ${updatedDeal.foreignAmount} ${updatedDeal.currency} به نرخ ${updatedDeal.exchangeRate} ریال (${updatedDeal.dealNumber}) [شماره فیش/رهگیری: ${mainTracking}]`,
-                            currency: updatedDeal.currency,
-                            exchangeRate: updatedDeal.exchangeRate,
-                            debitForeign: isBuy ? 0 : updatedDeal.foreignAmount,
-                            creditForeign: isBuy ? updatedDeal.foreignAmount : 0,
-                            debitIRR: isBuy ? 0 : updatedDeal.totalIRR,
-                            creditIRR: isBuy ? updatedDeal.totalIRR : 0,
-                            trackingNumber: mainTracking,
-                          },
-                        ],
+                        referenceNumber: mainTracking,
+                        description: `سند اتوماتیک ${isBuy ? 'خرید' : 'فروش'} ارز ${updatedDeal.dealNumber} (${updatedDeal.contactName}) [فیش/رهگیری: ${mainTracking}]${userNotePart}`,
+                        lines,
                       };
                     })
                   );
@@ -1727,9 +1807,12 @@ export function App() {
                 const target = fxDeals.find((d) => d.id === dealId);
                 setFxDeals(fxDeals.filter((d) => d.id !== dealId));
                 if (target?.linkedVoucherId) {
-                  setVouchers(vouchers.filter((v) => v.id !== target.linkedVoucherId));
+                  handleDeleteVoucher(target.linkedVoucherId);
                 }
               }}
+              onAddVoucher={handleAddVoucher}
+              onUpdateVoucher={handleUpdateVoucher}
+              onDeleteVoucher={handleDeleteVoucher}
             />
           )}
 

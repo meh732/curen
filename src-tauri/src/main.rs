@@ -6,6 +6,7 @@
 use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tauri::{image::Image, Manager};
 
 fn resolve_backup_dir() -> PathBuf {
   #[cfg(target_os = "windows")]
@@ -27,22 +28,64 @@ fn resolve_backup_dir() -> PathBuf {
   fallback
 }
 
-fn resolve_license_lock_path() -> PathBuf {
+fn get_all_candidate_lock_paths() -> Vec<PathBuf> {
+  let mut paths = Vec::new();
+
   #[cfg(target_os = "windows")]
   {
+    // 1. ProgramData (System-wide, completely preserved across app updates, installs, and uninstalls)
+    if let Ok(prog_data) = std::env::var("ProgramData") {
+      let dir = PathBuf::from(&prog_data).join("ARKA_Accounting");
+      let _ = fs::create_dir_all(&dir);
+      paths.push(dir.join("arka_master_license_v6.lock"));
+    } else {
+      let dir = PathBuf::from(r"C:\ProgramData\ARKA_Accounting");
+      let _ = fs::create_dir_all(&dir);
+      paths.push(dir.join("arka_master_license_v6.lock"));
+    }
+
+    // 2. LocalAppData directories (current and legacy app identifiers)
     if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
-      let dir = PathBuf::from(local_app_data).join("com.tarazban.accounting");
-      if fs::create_dir_all(&dir).is_ok() {
-        return dir.join("arka_master_license_v6.lock");
+      let base = PathBuf::from(&local_app_data);
+      let candidate_dirs = [
+        base.join("com.arka.accounting"),
+        base.join("ARKA_Accounting"),
+        base.join("com.tarazban.accounting"),
+        base.join("TarazBan_Accounting"),
+      ];
+      for dir in candidate_dirs.iter() {
+        let _ = fs::create_dir_all(dir);
+        paths.push(dir.join("arka_master_license_v6.lock"));
       }
     }
-  }
-  if let Ok(exe_path) = std::env::current_exe() {
-    if let Some(parent) = exe_path.parent() {
-      return parent.join("arka_master_license_v6.lock");
+
+    // 3. Roaming AppData
+    if let Ok(app_data) = std::env::var("APPDATA") {
+      let dir = PathBuf::from(&app_data).join("ARKA_Accounting");
+      let _ = fs::create_dir_all(&dir);
+      paths.push(dir.join("arka_master_license_v6.lock"));
     }
   }
-  PathBuf::from("arka_master_license_v6.lock")
+
+  // 4. Executable parent directory
+  if let Ok(exe_path) = std::env::current_exe() {
+    if let Some(parent) = exe_path.parent() {
+      paths.push(parent.join("arka_master_license_v6.lock"));
+    }
+  }
+
+  paths.push(PathBuf::from("arka_master_license_v6.lock"));
+  paths
+}
+
+fn resolve_license_lock_path() -> PathBuf {
+  let candidates = get_all_candidate_lock_paths();
+  for p in &candidates {
+    if p.exists() {
+      return p.clone();
+    }
+  }
+  candidates.first().cloned().unwrap_or_else(|| PathBuf::from("arka_master_license_v6.lock"))
 }
 
 #[tauri::command]
@@ -84,37 +127,91 @@ fn read_latest_auto_backup() -> Result<String, String> {
 
 #[tauri::command]
 fn verify_native_license_lock(machine_id: String, seal: String) -> bool {
-  let lock_path = resolve_license_lock_path();
-  if !lock_path.exists() {
-    return false;
-  }
-  if let Ok(content) = fs::read_to_string(&lock_path) {
-    let expected = format!(
-      "ARKA_V6_LOCK::{}::{}",
-      machine_id.trim().to_uppercase(),
-      seal.trim().to_uppercase()
-    );
-    return content.trim() == expected;
+  let clean_machine = machine_id.trim().to_uppercase();
+  let clean_seal = seal.trim().to_uppercase();
+  let expected_prefix = format!("ARKA_V6_LOCK::{}::{}", clean_machine, clean_seal);
+
+  let paths = get_all_candidate_lock_paths();
+  for path in &paths {
+    if path.exists() {
+      if let Ok(content) = fs::read_to_string(path) {
+        let trimmed = content.trim();
+        if trimmed == expected_prefix || trimmed.starts_with(&expected_prefix) {
+          // Sync valid lock to ALL other candidate paths
+          for target in &paths {
+            if target != path {
+              if let Some(parent) = target.parent() {
+                let _ = fs::create_dir_all(parent);
+              }
+              let _ = fs::write(target, trimmed);
+            }
+          }
+          return true;
+        }
+      }
+    }
   }
   false
 }
 
 #[tauri::command]
-fn save_native_license_lock(machine_id: String, seal: String) -> bool {
-  let lock_path = resolve_license_lock_path();
+fn get_saved_native_license(machine_id: String) -> Option<String> {
+  let clean_machine = machine_id.trim().to_uppercase();
+  let prefix = format!("ARKA_V6_LOCK::{}::", clean_machine);
+
+  let paths = get_all_candidate_lock_paths();
+  for path in &paths {
+    if path.exists() {
+      if let Ok(content) = fs::read_to_string(path) {
+        let trimmed = content.trim();
+        if trimmed.starts_with(&prefix) {
+          // Sync found lock to all other candidate locations
+          for target in &paths {
+            if target != path {
+              if let Some(parent) = target.parent() {
+                let _ = fs::create_dir_all(parent);
+              }
+              let _ = fs::write(target, trimmed);
+            }
+          }
+          return Some(trimmed.to_string());
+        }
+      }
+    }
+  }
+  None
+}
+
+#[tauri::command]
+fn save_native_license_lock(machine_id: String, seal: String, activation_key: Option<String>) -> bool {
+  let key_str = activation_key.unwrap_or_default();
   let payload = format!(
-    "ARKA_V6_LOCK::{}::{}",
+    "ARKA_V6_LOCK::{}::{}::{}",
     machine_id.trim().to_uppercase(),
-    seal.trim().to_uppercase()
+    seal.trim().to_uppercase(),
+    key_str.trim().to_uppercase()
   );
-  fs::write(&lock_path, payload).is_ok()
+
+  let mut any_success = false;
+  let paths = get_all_candidate_lock_paths();
+  for path in &paths {
+    if let Some(parent) = path.parent() {
+      let _ = fs::create_dir_all(parent);
+    }
+    if fs::write(path, &payload).is_ok() {
+      any_success = true;
+    }
+  }
+  any_success
 }
 
 #[tauri::command]
 fn revoke_native_license_lock() -> bool {
-  let lock_path = resolve_license_lock_path();
-  if lock_path.exists() {
-    let _ = fs::remove_file(&lock_path);
+  let paths = get_all_candidate_lock_paths();
+  for path in &paths {
+    if path.exists() {
+      let _ = fs::remove_file(path);
+    }
   }
   true
 }
@@ -126,6 +223,8 @@ fn purge_stale_webview_cache_on_upgrade() {
     if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
       let base = PathBuf::from(&local_app_data);
       let candidate_roots = [
+        base.join("com.arka.accounting"),
+        base.join("ARKA_Accounting"),
         base.join("com.tarazban.accounting"),
         base.join("TarazBan_Accounting"),
       ];
@@ -171,11 +270,23 @@ fn main() {
   purge_stale_webview_cache_on_upgrade();
 
   tauri::Builder::default()
+    .setup(|app| {
+      if let Ok(icon) = Image::from_bytes(include_bytes!("../icons/icon.png")) {
+        for (_, window) in app.webview_windows() {
+          let _ = window.set_icon(icon.clone());
+        }
+        if let Some(window) = app.get_webview_window("main") {
+          let _ = window.set_icon(icon);
+        }
+      }
+      Ok(())
+    })
     .invoke_handler(tauri::generate_handler![
       get_backup_folder_path,
       save_auto_backup,
       read_latest_auto_backup,
       verify_native_license_lock,
+      get_saved_native_license,
       save_native_license_lock,
       revoke_native_license_lock
     ])

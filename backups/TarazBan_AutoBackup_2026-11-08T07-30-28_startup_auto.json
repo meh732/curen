@@ -1,0 +1,1182 @@
+{
+  "backupVersion": "4.3.0-AUTO-BACKUP",
+  "exportedAt": "2026-11-08T07:30:28.183Z",
+  "reason": "startup_auto",
+  "backupDirPath": "/app/applet/backups",
+  "data": {
+    "companyName": "دفتر حسابداری شخصی و معاملات ارزی من",
+    "fiscalYear": "سال مالی ۱۴۰۴",
+    "currencies": [
+      {
+        "code": "IRR",
+        "name": "ریال ایران (ارز پایه)",
+        "symbol": "ریال",
+        "defaultRateToIRR": 1,
+        "isBase": true,
+        "updatedAt": "1404/08/12"
+      },
+      {
+        "code": "USD",
+        "name": "دلار آمریکا (USD)",
+        "symbol": "$",
+        "defaultRateToIRR": 685000,
+        "updatedAt": "1404/08/12"
+      },
+      {
+        "code": "EUR",
+        "name": "یورو اروپا (EUR)",
+        "symbol": "€",
+        "defaultRateToIRR": 742000,
+        "updatedAt": "1404/08/12"
+      },
+      {
+        "code": "AED",
+        "name": "درهم امارات (AED)",
+        "symbol": "د.إ",
+        "defaultRateToIRR": 186500,
+        "updatedAt": "1404/08/12"
+      },
+      {
+        "code": "CNY",
+        "name": "یوان چین (CNY)",
+        "symbol": "¥",
+        "defaultRateToIRR": 95200,
+        "updatedAt": "1404/08/12"
+      }
+    ],
+    "accounts": [
+      {
+        "code": "1",
+        "name": "دارایی‌ها",
+        "level": "group",
+        "nature": "debit",
+        "category": "asset",
+        "isSystem": true
+      },
+      {
+        "code": "2",
+        "name": "بدهی‌ها",
+        "level": "group",
+        "nature": "credit",
+        "category": "liability",
+        "isSystem": true
+      },
+      {
+        "code": "3",
+        "name": "سرمایه شخصی",
+        "level": "group",
+        "nature": "credit",
+        "category": "equity",
+        "isSystem": true
+      },
+      {
+        "code": "4",
+        "name": "درآمدها و فروش",
+        "level": "group",
+        "nature": "credit",
+        "category": "revenue",
+        "isSystem": true
+      },
+      {
+        "code": "5",
+        "name": "خرید و هزینه‌ها",
+        "level": "group",
+        "nature": "debit",
+        "category": "expense",
+        "isSystem": true
+      },
+      {
+        "code": "11",
+        "name": "بانک‌ها، صندوق‌ها و طلب‌ها",
+        "level": "kol",
+        "parentCode": "1",
+        "nature": "debit",
+        "category": "asset",
+        "isSystem": true
+      },
+      {
+        "code": "12",
+        "name": "اموال و دارایی‌های ثابت",
+        "level": "kol",
+        "parentCode": "1",
+        "nature": "debit",
+        "category": "asset",
+        "isSystem": true
+      },
+      {
+        "code": "21",
+        "name": "بدهی به اشخاص و فروشندگان",
+        "level": "kol",
+        "parentCode": "2",
+        "nature": "credit",
+        "category": "liability",
+        "isSystem": true
+      },
+      {
+        "code": "31",
+        "name": "سرمایه و موجودی اولیه",
+        "level": "kol",
+        "parentCode": "3",
+        "nature": "credit",
+        "category": "equity",
+        "isSystem": true
+      },
+      {
+        "code": "41",
+        "name": "فروش کالا، ارز و خدمات",
+        "level": "kol",
+        "parentCode": "4",
+        "nature": "credit",
+        "category": "revenue",
+        "isSystem": true
+      },
+      {
+        "code": "42",
+        "name": "سود معاملات ارزی و سایر درآمدها",
+        "level": "kol",
+        "parentCode": "4",
+        "nature": "credit",
+        "category": "revenue",
+        "isSystem": true
+      },
+      {
+        "code": "51",
+        "name": "خرید کالا و ارز",
+        "level": "kol",
+        "parentCode": "5",
+        "nature": "debit",
+        "category": "expense",
+        "isSystem": true
+      },
+      {
+        "code": "52",
+        "name": "هزینه‌های شخصی و کاری",
+        "level": "kol",
+        "parentCode": "5",
+        "nature": "debit",
+        "category": "expense",
+        "isSystem": true
+      },
+      {
+        "code": "1101",
+        "name": "موجودی نقد و صندوق‌ها (ریالی و ارزی)",
+        "level": "moein",
+        "parentCode": "11",
+        "nature": "debit",
+        "category": "asset",
+        "isSystem": true
+      },
+      {
+        "code": "1102",
+        "name": "موجودی بانک‌های ریالی",
+        "level": "moein",
+        "parentCode": "11",
+        "nature": "debit",
+        "category": "asset",
+        "isSystem": true
+      },
+      {
+        "code": "1103",
+        "name": "موجودی بانک‌ها و خزانه‌های ارزی",
+        "level": "moein",
+        "parentCode": "11",
+        "nature": "debit",
+        "category": "asset",
+        "isSystem": true
+      },
+      {
+        "code": "1104",
+        "name": "حساب اشخاص و مشتریان (بدهکاران / طلب ما)",
+        "level": "moein",
+        "parentCode": "11",
+        "nature": "debit",
+        "category": "asset",
+        "isSystem": true
+      },
+      {
+        "code": "1105",
+        "name": "اسناد و چک‌های دریافتنی",
+        "level": "moein",
+        "parentCode": "11",
+        "nature": "debit",
+        "category": "asset",
+        "isSystem": true
+      },
+      {
+        "code": "1106",
+        "name": "موجودی کالا و خرید انبار",
+        "level": "moein",
+        "parentCode": "11",
+        "nature": "debit",
+        "category": "asset",
+        "isSystem": true
+      },
+      {
+        "code": "2101",
+        "name": "حساب اشخاص و فروشندگان (بستانکاران / بدهی ما)",
+        "level": "moein",
+        "parentCode": "21",
+        "nature": "credit",
+        "category": "liability",
+        "isSystem": true
+      },
+      {
+        "code": "2102",
+        "name": "اسناد و چک‌های پرداختنی",
+        "level": "moein",
+        "parentCode": "21",
+        "nature": "credit",
+        "category": "liability",
+        "isSystem": true
+      },
+      {
+        "code": "3101",
+        "name": "سرمایه و موجودی اول دوره",
+        "level": "moein",
+        "parentCode": "31",
+        "nature": "credit",
+        "category": "equity",
+        "isSystem": true
+      },
+      {
+        "code": "4101",
+        "name": "درآمد فروش ریالی",
+        "level": "moein",
+        "parentCode": "41",
+        "nature": "credit",
+        "category": "revenue",
+        "isSystem": true
+      },
+      {
+        "code": "4102",
+        "name": "درآمد فروش ارزی و کالا",
+        "level": "moein",
+        "parentCode": "41",
+        "nature": "credit",
+        "category": "revenue",
+        "isSystem": true
+      },
+      {
+        "code": "4201",
+        "name": "سود و درآمد متفرقه / تسعیر ارز",
+        "level": "moein",
+        "parentCode": "42",
+        "nature": "both",
+        "category": "revenue",
+        "isSystem": true
+      },
+      {
+        "code": "5101",
+        "name": "خرید کالا و خدمات",
+        "level": "moein",
+        "parentCode": "51",
+        "nature": "debit",
+        "category": "expense",
+        "isSystem": true
+      },
+      {
+        "code": "5201",
+        "name": "هزینه‌های شخصی، حقوق و دستمزد",
+        "level": "moein",
+        "parentCode": "52",
+        "nature": "debit",
+        "category": "expense"
+      },
+      {
+        "code": "5202",
+        "name": "هزینه کارمزد بانکی و حواله",
+        "level": "moein",
+        "parentCode": "52",
+        "nature": "debit",
+        "category": "expense",
+        "isSystem": true
+      },
+      {
+        "code": "5203",
+        "name": "هزینه حمل‌ونقل، اجاره و قبوض",
+        "level": "moein",
+        "parentCode": "52",
+        "nature": "debit",
+        "category": "expense"
+      }
+    ],
+    "contacts": [
+      {
+        "id": "cnt-1",
+        "code": "P-1001",
+        "name": "علی رضایی (مشتری و طرف حساب دلاری/ریالی)",
+        "type": "both",
+        "phone": "0912-1112233",
+        "nationalId": "0012345678",
+        "address": "تهران، سعادت‌آباد",
+        "baleChatId": "491029384",
+        "telegramChatId": "982103455",
+        "defaultCurrency": "USD",
+        "creditLimitIRR": 50000000000
+      },
+      {
+        "id": "cnt-2",
+        "code": "P-1002",
+        "name": "صرافی و بازرگانی النور دبی (حساب درهم و دلار)",
+        "type": "both",
+        "phone": "+971-50-2289900",
+        "nationalId": "AE-908812",
+        "address": "دبی، دیره، برج التجاره",
+        "baleChatId": "551209311",
+        "telegramChatId": "771928300",
+        "defaultCurrency": "AED",
+        "creditLimitIRR": 80000000000
+      },
+      {
+        "id": "cnt-3",
+        "code": "P-1003",
+        "name": "محمد محمدی (تأمین‌کننده کالا و یوان)",
+        "type": "supplier",
+        "phone": "0912-3334455",
+        "nationalId": "0055443322",
+        "address": "تهران، بازار بزرگ",
+        "baleChatId": "660192831",
+        "telegramChatId": "882910442",
+        "defaultCurrency": "CNY"
+      },
+      {
+        "id": "cnt-4",
+        "code": "P-1004",
+        "name": "حسین کریمی (مشتری ریالی)",
+        "type": "customer",
+        "phone": "0912-7778899",
+        "nationalId": "0088776655",
+        "address": "تهران، ونک",
+        "baleChatId": "310948271",
+        "telegramChatId": "619283745",
+        "defaultCurrency": "IRR"
+      },
+      {
+        "id": "cnt-5",
+        "code": "P-1005",
+        "name": "رضا احمدی (طرف حساب یورو و ارز)",
+        "type": "both",
+        "phone": "0912-9990011",
+        "nationalId": "0044112233",
+        "address": "تهران، فردوسی",
+        "baleChatId": "719203844",
+        "telegramChatId": "510928374",
+        "defaultCurrency": "EUR"
+      }
+    ],
+    "banks": [
+      {
+        "id": "bnk-1",
+        "code": "B-101",
+        "bankName": "بانک ملت (حساب جاری ریالی)",
+        "kind": "bank",
+        "branchName": "شعبه مرکزی",
+        "accountNumber": "4819283746",
+        "shebaOrIban": "IR420120000000004819283746",
+        "currency": "IRR",
+        "moeinCode": "1102",
+        "initialBalanceForeign": 0,
+        "initialBalanceIRR": 0
+      },
+      {
+        "id": "bnk-5",
+        "code": "B-102",
+        "bankName": "بانک سامان (کارت و حساب ریالی)",
+        "kind": "bank",
+        "branchName": "شعبه ولیعصر",
+        "accountNumber": "8120049182",
+        "shebaOrIban": "IR560560081200008120049182",
+        "currency": "IRR",
+        "moeinCode": "1102",
+        "initialBalanceForeign": 0,
+        "initialBalanceIRR": 0
+      },
+      {
+        "id": "bnk-cash-irr",
+        "code": "C-101",
+        "bankName": "صندوق نقدی ریالی (موجودی نقد و تنخواه)",
+        "kind": "cash_box",
+        "branchName": "صندوق شخصی",
+        "accountNumber": "CASH-IRR-01",
+        "shebaOrIban": "—",
+        "currency": "IRR",
+        "moeinCode": "1101",
+        "initialBalanceForeign": 0,
+        "initialBalanceIRR": 0
+      },
+      {
+        "id": "bnk-2",
+        "code": "C-102",
+        "bankName": "صندوق و خزانه دلاری (USD)",
+        "kind": "cash_box",
+        "branchName": "صندوق ارزی دلار",
+        "accountNumber": "USD-VAULT-01",
+        "shebaOrIban": "—",
+        "currency": "USD",
+        "moeinCode": "1103",
+        "initialBalanceForeign": 0,
+        "initialBalanceIRR": 0
+      },
+      {
+        "id": "bnk-3",
+        "code": "B-103",
+        "bankName": "حساب و صندوق درهم امارات (AED)",
+        "kind": "bank",
+        "branchName": "حساب درهمی دبی",
+        "accountNumber": "AED-448102",
+        "shebaOrIban": "AE490260001014481029901",
+        "currency": "AED",
+        "moeinCode": "1103",
+        "initialBalanceForeign": 0,
+        "initialBalanceIRR": 0
+      },
+      {
+        "id": "bnk-4",
+        "code": "B-104",
+        "bankName": "حساب و صندوق یوان چین (CNY)",
+        "kind": "bank",
+        "branchName": "حساب یوان",
+        "accountNumber": "CNY-772910",
+        "shebaOrIban": "CN8810400009912345678",
+        "currency": "CNY",
+        "moeinCode": "1103",
+        "initialBalanceForeign": 0,
+        "initialBalanceIRR": 0
+      },
+      {
+        "id": "bnk-eur",
+        "code": "C-103",
+        "bankName": "صندوق نقدی یورو (EUR)",
+        "kind": "cash_box",
+        "branchName": "صندوق ارزی یورو",
+        "accountNumber": "EUR-VAULT-01",
+        "shebaOrIban": "—",
+        "currency": "EUR",
+        "moeinCode": "1103",
+        "initialBalanceForeign": 0,
+        "initialBalanceIRR": 0
+      }
+    ],
+    "products": [
+      {
+        "id": "prd-usd",
+        "sku": "CURR-USD",
+        "name": "دلار آمریکا (USD) — اسکناس و حواله",
+        "category": "ارزهای پایه و اصلی",
+        "unit": "دلار",
+        "stockQty": 10000,
+        "minStockAlert": 1000,
+        "warehouseLocation": "خزانه ارزی و صندوق",
+        "defaultPriceIRR": 685000,
+        "defaultPriceForeign": 1,
+        "defaultCurrency": "USD"
+      },
+      {
+        "id": "prd-eur",
+        "sku": "CURR-EUR",
+        "name": "یورو اروپا (EUR) — اسکناس و حواله",
+        "category": "ارزهای پایه و اصلی",
+        "unit": "یورو",
+        "stockQty": 5000,
+        "minStockAlert": 500,
+        "warehouseLocation": "خزانه ارزی و صندوق",
+        "defaultPriceIRR": 742000,
+        "defaultPriceForeign": 1,
+        "defaultCurrency": "EUR"
+      },
+      {
+        "id": "prd-aed",
+        "sku": "CURR-AED",
+        "name": "درهم امارات (AED) — اسکناس و حواله",
+        "category": "ارزهای منطقه‌ای و خاورمیانه",
+        "unit": "درهم",
+        "stockQty": 25000,
+        "minStockAlert": 2000,
+        "warehouseLocation": "خزانه ارزی و صندوق",
+        "defaultPriceIRR": 186500,
+        "defaultPriceForeign": 1,
+        "defaultCurrency": "AED"
+      },
+      {
+        "id": "prd-cny",
+        "sku": "CURR-CNY",
+        "name": "یوان چین (CNY) — حواله شرقی",
+        "category": "ارزهای منطقه‌ای و خاورمیانه",
+        "unit": "یوان",
+        "stockQty": 50000,
+        "minStockAlert": 5000,
+        "warehouseLocation": "خزانه ارزی و صندوق",
+        "defaultPriceIRR": 95200,
+        "defaultPriceForeign": 1,
+        "defaultCurrency": "CNY"
+      },
+      {
+        "id": "prd-gbp",
+        "sku": "CURR-GBP",
+        "name": "پوند انگلیس (GBP) — اسکناس",
+        "category": "سایر ارزهای معتبر",
+        "unit": "پوند",
+        "stockQty": 2000,
+        "minStockAlert": 200,
+        "warehouseLocation": "خزانه ارزی و صندوق",
+        "defaultPriceIRR": 885000,
+        "defaultPriceForeign": 1,
+        "defaultCurrency": "GBP"
+      },
+      {
+        "id": "prd-try",
+        "sku": "CURR-TRY",
+        "name": "لیر ترکیه (TRY) — اسکناس",
+        "category": "سایر ارزهای معتبر",
+        "unit": "لیر",
+        "stockQty": 30000,
+        "minStockAlert": 3000,
+        "warehouseLocation": "خزانه ارزی و صندوق",
+        "defaultPriceIRR": 19800,
+        "defaultPriceForeign": 1,
+        "defaultCurrency": "TRY"
+      }
+    ],
+    "inventoryMovements": [
+      {
+        "id": "mov-1",
+        "date": "1404/08/05",
+        "productId": "prd-usd",
+        "productSku": "CURR-USD",
+        "productName": "دلار آمریکا (USD) — اسکناس و حواله",
+        "type": "inbound",
+        "quantity": 5000,
+        "unitPriceForeign": 1,
+        "currency": "USD",
+        "exchangeRate": 685000,
+        "unitPriceIRR": 685000,
+        "referenceDoc": "INV-1404-101",
+        "projectCode": "GENERAL",
+        "warehouseName": "خزانه ارزی و صندوق",
+        "notes": "ورود موجودی ۵,۰۰۰ دلار خریداری‌شده"
+      }
+    ],
+    "vouchers": [
+      {
+        "id": "vch-1",
+        "voucherNumber": 1001,
+        "date": "1404/08/01",
+        "description": "موجودی اولیه بانک‌ها و صندوق‌های شخصی (ریالی و ارزی)",
+        "referenceNumber": "OPEN-1404",
+        "status": "permanent",
+        "autoType": "income",
+        "createdAt": "1404/08/01",
+        "lines": [
+          {
+            "id": "vl-101",
+            "accountCode": "1102",
+            "accountName": "موجودی بانک‌های ریالی",
+            "bankId": "bnk-1",
+            "bankName": "بانک ملت (حساب جاری ریالی)",
+            "description": "موجودی اولیه بانک ملت",
+            "currency": "IRR",
+            "exchangeRate": 1,
+            "debitForeign": 3500000000,
+            "creditForeign": 0,
+            "debitIRR": 3500000000,
+            "creditIRR": 0,
+            "trackingNumber": "INIT-101",
+            "reconciled": true
+          },
+          {
+            "id": "vl-101-b",
+            "accountCode": "1102",
+            "accountName": "موجودی بانک‌های ریالی",
+            "bankId": "bnk-5",
+            "bankName": "بانک سامان (کارت و حساب ریالی)",
+            "description": "موجودی اولیه بانک سامان",
+            "currency": "IRR",
+            "exchangeRate": 1,
+            "debitForeign": 2000000000,
+            "creditForeign": 0,
+            "debitIRR": 2000000000,
+            "creditIRR": 0,
+            "trackingNumber": "INIT-102",
+            "reconciled": true
+          },
+          {
+            "id": "vl-101-c",
+            "accountCode": "1101",
+            "accountName": "موجودی نقد و صندوق‌ها (ریالی و ارزی)",
+            "bankId": "bnk-cash-irr",
+            "bankName": "صندوق نقدی ریالی (موجودی نقد و تنخواه)",
+            "description": "موجودی اولیه صندوق نقدی ریالی",
+            "currency": "IRR",
+            "exchangeRate": 1,
+            "debitForeign": 500000000,
+            "creditForeign": 0,
+            "debitIRR": 500000000,
+            "creditIRR": 0,
+            "trackingNumber": "INIT-103",
+            "reconciled": true
+          },
+          {
+            "id": "vl-102",
+            "accountCode": "1103",
+            "accountName": "موجودی بانک‌ها و خزانه‌های ارزی",
+            "bankId": "bnk-2",
+            "bankName": "صندوق و خزانه دلاری (USD)",
+            "description": "موجودی اولیه صندوق دلاری (۲۰,۰۰۰ دلار به نرخ ۶۸۵,۰۰۰ ریال)",
+            "currency": "USD",
+            "exchangeRate": 685000,
+            "debitForeign": 20000,
+            "creditForeign": 0,
+            "debitIRR": 13700000000,
+            "creditIRR": 0,
+            "trackingNumber": "INIT-USD-01",
+            "reconciled": true
+          },
+          {
+            "id": "vl-102-aed",
+            "accountCode": "1103",
+            "accountName": "موجودی بانک‌ها و خزانه‌های ارزی",
+            "bankId": "bnk-3",
+            "bankName": "حساب و صندوق درهم امارات (AED)",
+            "description": "موجودی اولیه حساب درهمی (۵۰,۰۰۰ درهم به نرخ ۱۸۶,۵۰۰ ریال)",
+            "currency": "AED",
+            "exchangeRate": 186500,
+            "debitForeign": 50000,
+            "creditForeign": 0,
+            "debitIRR": 9325000000,
+            "creditIRR": 0,
+            "trackingNumber": "INIT-AED-01",
+            "reconciled": true
+          },
+          {
+            "id": "vl-102-cny",
+            "accountCode": "1103",
+            "accountName": "موجودی بانک‌ها و خزانه‌های ارزی",
+            "bankId": "bnk-4",
+            "bankName": "حساب و صندوق یوان چین (CNY)",
+            "description": "موجودی اولیه حساب یوان (۵۰,۰۰۰ یوان به نرخ ۹۵,۲۰۰ ریال)",
+            "currency": "CNY",
+            "exchangeRate": 95200,
+            "debitForeign": 50000,
+            "creditForeign": 0,
+            "debitIRR": 4760000000,
+            "creditIRR": 0,
+            "trackingNumber": "INIT-CNY-01",
+            "reconciled": true
+          },
+          {
+            "id": "vl-102-eur",
+            "accountCode": "1103",
+            "accountName": "موجودی بانک‌ها و خزانه‌های ارزی",
+            "bankId": "bnk-eur",
+            "bankName": "صندوق نقدی یورو (EUR)",
+            "description": "موجودی اولیه صندوق یورو (۵,۰۰۰ یورو به نرخ ۷۴۲,۰۰۰ ریال)",
+            "currency": "EUR",
+            "exchangeRate": 742000,
+            "debitForeign": 5000,
+            "creditForeign": 0,
+            "debitIRR": 3710000000,
+            "creditIRR": 0,
+            "trackingNumber": "INIT-EUR-01",
+            "reconciled": true
+          },
+          {
+            "id": "vl-103",
+            "accountCode": "3101",
+            "accountName": "سرمایه و موجودی اول دوره",
+            "description": "جمع سرمایه اولیه بانک‌ها و صندوق‌های من",
+            "currency": "IRR",
+            "exchangeRate": 1,
+            "debitForeign": 0,
+            "creditForeign": 37495000000,
+            "debitIRR": 0,
+            "creditIRR": 37495000000
+          }
+        ]
+      },
+      {
+        "id": "vch-2",
+        "voucherNumber": 1002,
+        "date": "1404/08/05",
+        "description": "فاکتور فروش شماره INV-1404-101 به علی رضایی (همراه با دریافت ترکیبی در بانک ملت و صندوق نقدی)",
+        "referenceNumber": "INV-1404-101",
+        "invoiceId": "inv-1",
+        "autoType": "invoice",
+        "status": "permanent",
+        "createdAt": "1404/08/05",
+        "lines": [
+          {
+            "id": "vl-301",
+            "accountCode": "1104",
+            "accountName": "حساب اشخاص و مشتریان (بدهکاران / طلب ما)",
+            "contactId": "cnt-1",
+            "contactName": "علی رضایی (مشتری و طرف حساب دلاری/ریالی)",
+            "description": "فاکتور فروش ۲ دستگاه آیفون ۱۶ پرو مکس (۲,۶۰۰ دلار به نرخ ۶۸۵,۰۰۰ ریال)",
+            "currency": "USD",
+            "exchangeRate": 685000,
+            "debitForeign": 2600,
+            "creditForeign": 0,
+            "debitIRR": 1781000000,
+            "creditIRR": 0,
+            "trackingNumber": "INV-1404-101"
+          },
+          {
+            "id": "vl-302",
+            "accountCode": "4102",
+            "accountName": "درآمد فروش ارزی و کالا",
+            "description": "فروش ۲ دستگاه آیفون ۱۶ پرو مکس طبق فاکتور INV-1404-101",
+            "currency": "USD",
+            "exchangeRate": 685000,
+            "debitForeign": 0,
+            "creditForeign": 2600,
+            "debitIRR": 0,
+            "creditIRR": 1781000000,
+            "trackingNumber": "INV-1404-101"
+          },
+          {
+            "id": "vl-303",
+            "accountCode": "1102",
+            "accountName": "موجودی بانک‌های ریالی",
+            "bankId": "bnk-1",
+            "bankName": "بانک ملت (حساب جاری ریالی)",
+            "description": "دریافت بخشی از فاکتور INV-1404-101 از علی رضایی (واریز به بانک ملت)",
+            "currency": "IRR",
+            "exchangeRate": 1,
+            "debitForeign": 1000000000,
+            "creditForeign": 0,
+            "debitIRR": 1000000000,
+            "creditIRR": 0,
+            "trackingNumber": "PAY-101-A",
+            "reconciled": true
+          },
+          {
+            "id": "vl-304",
+            "accountCode": "1104",
+            "accountName": "حساب اشخاص و مشتریان (بدهکاران / طلب ما)",
+            "contactId": "cnt-1",
+            "contactName": "علی رضایی (مشتری و طرف حساب دلاری/ریالی)",
+            "description": "کسر از بدهی علی رضایی بابت واریز به بانک ملت (فاکتور INV-1404-101)",
+            "currency": "USD",
+            "exchangeRate": 685000,
+            "debitForeign": 0,
+            "creditForeign": 1459.85,
+            "debitIRR": 0,
+            "creditIRR": 1000000000,
+            "trackingNumber": "PAY-101-A"
+          },
+          {
+            "id": "vl-305",
+            "accountCode": "1101",
+            "accountName": "موجودی نقد و صندوق‌ها (ریالی و ارزی)",
+            "bankId": "bnk-cash-irr",
+            "bankName": "صندوق نقدی ریالی (موجودی نقد و تنخواه)",
+            "description": "دریافت نقدی بخشی از فاکتور INV-1404-101 از علی رضایی (صندوق نقدی)",
+            "currency": "IRR",
+            "exchangeRate": 1,
+            "debitForeign": 500000000,
+            "creditForeign": 0,
+            "debitIRR": 500000000,
+            "creditIRR": 0,
+            "trackingNumber": "PAY-101-B",
+            "reconciled": true
+          },
+          {
+            "id": "vl-306",
+            "accountCode": "1104",
+            "accountName": "حساب اشخاص و مشتریان (بدهکاران / طلب ما)",
+            "contactId": "cnt-1",
+            "contactName": "علی رضایی (مشتری و طرف حساب دلاری/ریالی)",
+            "description": "کسر از بدهی علی رضایی بابت دریافت در صندوق نقدی (فاکتور INV-1404-101)",
+            "currency": "USD",
+            "exchangeRate": 685000,
+            "debitForeign": 0,
+            "creditForeign": 729.93,
+            "debitIRR": 0,
+            "creditIRR": 500000000,
+            "trackingNumber": "PAY-101-B"
+          }
+        ]
+      },
+      {
+        "id": "vch-3",
+        "voucherNumber": 1003,
+        "date": "1404/08/08",
+        "description": "خرید ۵,۰۰۰ دلار از صرافی النور دبی (پرداخت ترکیبی از بانک ملت و بانک سامان)",
+        "referenceNumber": "FX-1404-1001",
+        "autoType": "fx_deal",
+        "status": "permanent",
+        "createdAt": "1404/08/08",
+        "lines": [
+          {
+            "id": "vl-401",
+            "accountCode": "1103",
+            "accountName": "موجودی بانک‌ها و خزانه‌های ارزی",
+            "bankId": "bnk-2",
+            "bankName": "صندوق و خزانه دلاری (USD)",
+            "description": "ورود ۵,۰۰۰ دلار به صندوق دلاری بابت خرید ارز FX-1404-1001",
+            "currency": "USD",
+            "exchangeRate": 680000,
+            "debitForeign": 5000,
+            "creditForeign": 0,
+            "debitIRR": 3400000000,
+            "creditIRR": 0,
+            "trackingNumber": "FX-1404-1001",
+            "reconciled": true
+          },
+          {
+            "id": "vl-402",
+            "accountCode": "2101",
+            "accountName": "حساب اشخاص و فروشندگان (بستانکاران / بدهی ما)",
+            "contactId": "cnt-2",
+            "contactName": "صرافی و بازرگانی النور دبی (حساب درهم و دلار)",
+            "description": "بستانکاری صرافی النور بابت خرید ۵,۰۰۰ دلار",
+            "currency": "USD",
+            "exchangeRate": 680000,
+            "debitForeign": 0,
+            "creditForeign": 5000,
+            "debitIRR": 0,
+            "creditIRR": 3400000000,
+            "trackingNumber": "FX-1404-1001"
+          },
+          {
+            "id": "vl-403",
+            "accountCode": "2101",
+            "accountName": "حساب اشخاص و فروشندگان (بستانکاران / بدهی ما)",
+            "contactId": "cnt-2",
+            "contactName": "صرافی و بازرگانی النور دبی (حساب درهم و دلار)",
+            "description": "پرداخت به صرافی النور از بانک ملت بابت خرید دلار",
+            "currency": "USD",
+            "exchangeRate": 680000,
+            "debitForeign": 2941.18,
+            "creditForeign": 0,
+            "debitIRR": 2000000000,
+            "creditIRR": 0,
+            "trackingNumber": "TRK-M-101"
+          },
+          {
+            "id": "vl-404",
+            "accountCode": "1102",
+            "accountName": "موجودی بانک‌های ریالی",
+            "bankId": "bnk-1",
+            "bankName": "بانک ملت (حساب جاری ریالی)",
+            "description": "برداشت از بانک ملت بابت پرداخت به صرافی النور (FX-1404-1001)",
+            "currency": "IRR",
+            "exchangeRate": 1,
+            "debitForeign": 0,
+            "creditForeign": 2000000000,
+            "debitIRR": 0,
+            "creditIRR": 2000000000,
+            "trackingNumber": "TRK-M-101",
+            "reconciled": true
+          },
+          {
+            "id": "vl-405",
+            "accountCode": "2101",
+            "accountName": "حساب اشخاص و فروشندگان (بستانکاران / بدهی ما)",
+            "contactId": "cnt-2",
+            "contactName": "صرافی و بازرگانی النور دبی (حساب درهم و دلار)",
+            "description": "پرداخت به صرافی النور از بانک سامان بابت خرید دلار",
+            "currency": "USD",
+            "exchangeRate": 680000,
+            "debitForeign": 1470.59,
+            "creditForeign": 0,
+            "debitIRR": 1000000000,
+            "creditIRR": 0,
+            "trackingNumber": "TRK-S-102"
+          },
+          {
+            "id": "vl-406",
+            "accountCode": "1102",
+            "accountName": "موجودی بانک‌های ریالی",
+            "bankId": "bnk-5",
+            "bankName": "بانک سامان (کارت و حساب ریالی)",
+            "description": "برداشت از بانک سامان بابت پرداخت به صرافی النور (FX-1404-1001)",
+            "currency": "IRR",
+            "exchangeRate": 1,
+            "debitForeign": 0,
+            "creditForeign": 1000000000,
+            "debitIRR": 0,
+            "creditIRR": 1000000000,
+            "trackingNumber": "TRK-S-102",
+            "reconciled": true
+          }
+        ]
+      }
+    ],
+    "bankStatementEntries": [
+      {
+        "id": "bst-0-irr",
+        "bankId": "bnk-1",
+        "date": "1404/08/01",
+        "trackingNumber": "INIT-101",
+        "description": "موجودی اولیه بانک ملت",
+        "currency": "IRR",
+        "depositForeign": 3500000000,
+        "withdrawalForeign": 0,
+        "depositIRR": 3500000000,
+        "withdrawalIRR": 0,
+        "matchedVoucherLineId": "vl-101"
+      },
+      {
+        "id": "bst-1",
+        "bankId": "bnk-1",
+        "date": "1404/08/05",
+        "trackingNumber": "PAY-101-A",
+        "description": "دریافت از علی رضایی بابت فاکتور ۱۰۱",
+        "currency": "IRR",
+        "depositForeign": 1000000000,
+        "withdrawalForeign": 0,
+        "depositIRR": 1000000000,
+        "withdrawalIRR": 0,
+        "matchedVoucherLineId": "vl-303"
+      },
+      {
+        "id": "bst-2",
+        "bankId": "bnk-1",
+        "date": "1404/08/08",
+        "trackingNumber": "TRK-M-101",
+        "description": "پرداخت به صرافی النور بابت خرید دلار",
+        "currency": "IRR",
+        "depositForeign": 0,
+        "withdrawalForeign": 2000000000,
+        "depositIRR": 0,
+        "withdrawalIRR": 2000000000,
+        "matchedVoucherLineId": "vl-404"
+      }
+    ],
+    "invoices": [
+      {
+        "id": "inv-1",
+        "invoiceNumber": "INV-1404-101",
+        "type": "sales",
+        "date": "1404/08/05",
+        "dueDate": "1404/09/05",
+        "contactId": "cnt-1",
+        "contactName": "علی رضایی (مشتری و طرف حساب دلاری/ریالی)",
+        "currency": "USD",
+        "exchangeRate": 685000,
+        "convertToIRRInPrint": true,
+        "warehouseName": "انبار مرکزی",
+        "projectCode": "GENERAL",
+        "items": [
+          {
+            "id": "itm-1",
+            "productId": "prd-1",
+            "productSku": "ITEM-101",
+            "productName": "گوشی موبایل آیفون ۱۶ پرو مکس ۲۵۶ گیگ",
+            "unit": "دستگاه",
+            "quantity": 2,
+            "unitPriceForeign": 1300,
+            "unitPriceIRR": 890500000,
+            "discountForeign": 0,
+            "discountIRR": 0,
+            "taxPercent": 0,
+            "totalForeign": 2600,
+            "totalIRR": 1781000000
+          }
+        ],
+        "subtotalForeign": 2600,
+        "subtotalIRR": 1781000000,
+        "totalDiscountForeign": 0,
+        "totalDiscountIRR": 0,
+        "totalTaxForeign": 0,
+        "totalTaxIRR": 0,
+        "grandTotalForeign": 2600,
+        "grandTotalIRR": 1781000000,
+        "payments": [
+          {
+            "id": "pay-inv-1a",
+            "bankId": "bnk-1",
+            "bankName": "بانک ملت (حساب جاری ریالی)",
+            "currency": "IRR",
+            "amountForeign": 1000000000,
+            "exchangeRate": 1,
+            "amountIRR": 1000000000,
+            "trackingNumber": "PAY-101-A",
+            "description": "واریز به بانک ملت"
+          },
+          {
+            "id": "pay-inv-1b",
+            "bankId": "bnk-cash-irr",
+            "bankName": "صندوق نقدی ریالی (موجودی نقد و تنخواه)",
+            "currency": "IRR",
+            "amountForeign": 500000000,
+            "exchangeRate": 1,
+            "amountIRR": 500000000,
+            "trackingNumber": "PAY-101-B",
+            "description": "دریافت نقدی در صندوق"
+          }
+        ],
+        "paidAmountIRR": 1500000000,
+        "remainingAmountIRR": 281000000,
+        "status": "partial",
+        "linkedVoucherId": "vch-2",
+        "notes": "۱.۵ میلیارد ریال به صورت ترکیبی (بانک ملت + صندوق نقدی) دریافت شد و الباقی در حساب شخص منظور گردید."
+      }
+    ],
+    "fxDeals": [
+      {
+        "id": "fx-1",
+        "dealNumber": "FX-1404-1001",
+        "type": "buy",
+        "date": "1404/08/08",
+        "contactId": "cnt-2",
+        "contactName": "صرافی و بازرگانی النور دبی (حساب درهم و دلار)",
+        "currency": "USD",
+        "foreignAmount": 5000,
+        "exchangeRate": 680000,
+        "totalIRR": 3400000000,
+        "commissionIRR": 0,
+        "settlementMethod": "multi_split",
+        "targetForeignBankId": "bnk-2",
+        "payments": [
+          {
+            "id": "fx-pay-1",
+            "bankId": "bnk-1",
+            "bankName": "بانک ملت (حساب جاری ریالی)",
+            "currency": "IRR",
+            "amountForeign": 2000000000,
+            "exchangeRate": 1,
+            "amountIRR": 2000000000,
+            "trackingNumber": "TRK-M-101",
+            "description": "پرداخت از بانک ملت"
+          },
+          {
+            "id": "fx-pay-2",
+            "bankId": "bnk-5",
+            "bankName": "بانک سامان (کارت و حساب ریالی)",
+            "currency": "IRR",
+            "amountForeign": 1000000000,
+            "exchangeRate": 1,
+            "amountIRR": 1000000000,
+            "trackingNumber": "TRK-S-102",
+            "description": "پرداخت از بانک سامان"
+          }
+        ],
+        "paidAmountIRR": 3000000000,
+        "remainingAmountIRR": 400000000,
+        "trackingNumber": "FX-1404-1001",
+        "linkedVoucherId": "vch-3",
+        "notes": "خرید ۵,۰۰۰ دلار با پرداخت ترکیبی از بانک ملت و بانک سامان (۴۰۰ میلیون ریال مانده بستانکاری)"
+      }
+    ],
+    "botConfig": {
+      "baleEnabled": true,
+      "baleBotToken": "1892034192:BALE_ENTERPRISE_ACCOUNTING_TOKEN_v4",
+      "baleDefaultChatId": "491029384",
+      "telegramEnabled": true,
+      "telegramBotToken": "7192837465:AAH_TELEGRAM_ACCOUNTING_BOT_SECURE",
+      "telegramDefaultChatId": "982103455",
+      "autoBackupIntervalHours": 6,
+      "autoBackupOnVoucherSave": true,
+      "lastBackupTime": "1404/08/12 - 08:46:03"
+    },
+    "botLogs": [
+      {
+        "id": "log-1794114966691-n4vy",
+        "timestamp": "1404/08/12 - 08:46:06",
+        "platform": "telegram",
+        "recipientChatId": "982103455",
+        "recipientName": "بکاپ خودکار تلگرام (6 ساعته)",
+        "messageType": "backup",
+        "status": "simulated_local",
+        "summary": "پشتیبان خودکار 6 ساعته با موفقیت در مسیر (C:\\TarazBan_Backups\\TarazBan_Latest_AutoBackup.json) ذخیره شد."
+      },
+      {
+        "id": "log-1794114966691-ur1f",
+        "timestamp": "1404/08/12 - 08:46:06",
+        "platform": "bale",
+        "recipientChatId": "491029384",
+        "recipientName": "بکاپ خودکار بله (6 ساعته)",
+        "messageType": "backup",
+        "status": "simulated_local",
+        "summary": "پشتیبان خودکار 6 ساعته با موفقیت در مسیر (C:\\TarazBan_Backups\\TarazBan_Latest_AutoBackup.json) ذخیره شد."
+      },
+      {
+        "id": "log-1794088822128-kgiy",
+        "timestamp": "1404/08/12 - 01:30:22",
+        "platform": "telegram",
+        "recipientChatId": "982103455",
+        "recipientName": "بکاپ خودکار تلگرام (6 ساعته)",
+        "messageType": "backup",
+        "status": "simulated_local",
+        "summary": "پشتیبان خودکار 6 ساعته با موفقیت در مسیر (/app/applet/backups/TarazBan_Latest_AutoBackup.json) ذخیره شد."
+      },
+      {
+        "id": "log-1794088822128-1dov",
+        "timestamp": "1404/08/12 - 01:30:22",
+        "platform": "bale",
+        "recipientChatId": "491029384",
+        "recipientName": "بکاپ خودکار بله (6 ساعته)",
+        "messageType": "backup",
+        "status": "simulated_local",
+        "summary": "پشتیبان خودکار 6 ساعته با موفقیت در مسیر (/app/applet/backups/TarazBan_Latest_AutoBackup.json) ذخیره شد."
+      },
+      {
+        "id": "log-1794057106482-6khs",
+        "timestamp": "1404/08/12 - 16:41:46",
+        "platform": "telegram",
+        "recipientChatId": "982103455",
+        "recipientName": "بکاپ خودکار تلگرام (ساعتی)",
+        "messageType": "backup",
+        "status": "simulated_local",
+        "summary": "پشتیبان خودکار ساعتی (6 ساعته) با موفقیت در دیتابیس مرکزی سرور لینوکس ثبت و به ربات پیام‌رسان ارسال شد."
+      },
+      {
+        "id": "log-1794057106480-next",
+        "timestamp": "1404/08/12 - 16:41:46",
+        "platform": "bale",
+        "recipientChatId": "491029384",
+        "recipientName": "بکاپ خودکار بله (ساعتی)",
+        "messageType": "backup",
+        "status": "simulated_local",
+        "summary": "پشتیبان خودکار ساعتی (6 ساعته) با موفقیت در دیتابیس مرکزی سرور لینوکس ثبت و به ربات پیام‌رسان ارسال شد."
+      },
+      {
+        "id": "log-1",
+        "timestamp": "1404/08/12 - 09:30:00",
+        "platform": "bale",
+        "recipientChatId": "491029384",
+        "recipientName": "بکاپ خودکار بله",
+        "messageType": "backup",
+        "status": "simulated_local",
+        "summary": "ذخیره خودکار اطلاعات حسابداری شخصی و بانک‌ها"
+      }
+    ],
+    "users": [
+      {
+        "id": "usr-admin",
+        "username": "admin",
+        "passwordHash": "123",
+        "fullName": "مدیر کل سیستم",
+        "role": "admin",
+        "isActive": true,
+        "permissions": {
+          "canResetDatabase": true,
+          "canManageUsers": true,
+          "canManageCurrencies": true,
+          "canEditVouchers": true,
+          "canViewReports": true,
+          "canIssueInvoices": true,
+          "canTradeFX": true
+        }
+      },
+      {
+        "id": "usr-accountant",
+        "username": "hesabdar",
+        "passwordHash": "123",
+        "fullName": "حسابدار ارزی صرافی",
+        "role": "accountant",
+        "isActive": true,
+        "permissions": {
+          "canResetDatabase": false,
+          "canManageUsers": false,
+          "canManageCurrencies": true,
+          "canEditVouchers": true,
+          "canViewReports": true,
+          "canIssueInvoices": true,
+          "canTradeFX": true
+        }
+      }
+    ]
+  }
+}

@@ -114,17 +114,28 @@ show_menu() {
                 return
             fi
             cd "$INSTALL_DIR"
+            cp -f "$INSTALL_DIR/server_db.json" /tmp/curen_server_db.json.bak 2>/dev/null || true
+            cp -f "$INSTALL_DIR/server_license.json" /tmp/curen_server_license.json.bak 2>/dev/null || true
+            cp -f "$INSTALL_DIR/public/server_license.json" /tmp/curen_pub_license.json.bak 2>/dev/null || true
             git fetch origin "$BRANCH"
             git reset --hard "origin/$BRANCH"
+            cp -f /tmp/curen_server_db.json.bak "$INSTALL_DIR/server_db.json" 2>/dev/null || true
+            cp -f /tmp/curen_server_license.json.bak "$INSTALL_DIR/server_license.json" 2>/dev/null || true
+            mkdir -p "$INSTALL_DIR/public" "$INSTALL_DIR/dist"
+            cp -f /tmp/curen_pub_license.json.bak "$INSTALL_DIR/public/server_license.json" 2>/dev/null || true
             npm install --legacy-peer-deps
             npm run build
-            # Preserve server license
-            mkdir -p "$INSTALL_DIR/public" "$INSTALL_DIR/dist"
-            if [[ ! -f "$INSTALL_DIR/dist/server_license.json" && -f "$INSTALL_DIR/public/server_license.json" ]]; then
-                cp "$INSTALL_DIR/public/server_license.json" "$INSTALL_DIR/dist/server_license.json"
+            if [[ -f "$INSTALL_DIR/server_license.json" ]]; then
+                cp -f "$INSTALL_DIR/server_license.json" "$INSTALL_DIR/dist/server_license.json" 2>/dev/null || true
+                cp -f "$INSTALL_DIR/server_license.json" "$INSTALL_DIR/public/server_license.json" 2>/dev/null || true
+            elif [[ -f "$INSTALL_DIR/public/server_license.json" ]]; then
+                cp -f "$INSTALL_DIR/public/server_license.json" "$INSTALL_DIR/dist/server_license.json" 2>/dev/null || true
+                cp -f "$INSTALL_DIR/public/server_license.json" "$INSTALL_DIR/server_license.json" 2>/dev/null || true
             fi
+            sed -i 's|ExecStart=.*|ExecStart=/usr/bin/npm start|g' /etc/systemd/system/curen.service 2>/dev/null || true
+            systemctl daemon-reload
             systemctl restart curen.service
-            echo -e "${green}Successfully updated to the latest version from GitHub!${plain}"
+            echo -e "${green}Successfully updated to the latest version from GitHub (Database & License preserved)!${plain}"
             read -p "Press Enter to continue..." && show_menu
             ;;
         3)
@@ -147,6 +158,7 @@ show_menu() {
             read -p "Enter new port (e.g. 3000, 8080): " new_port
             if [[ -n "$new_port" ]]; then
                 sed -i "s/--port [0-9]*/--port $new_port/g" /etc/systemd/system/curen.service
+                sed -i "s/Environment=PORT=[0-9]*/Environment=PORT=$new_port/g" /etc/systemd/system/curen.service
                 systemctl daemon-reload
                 systemctl restart curen.service
                 if command -v ufw >/dev/null 2>&1; then
@@ -164,7 +176,7 @@ show_menu() {
             ;;
         11)
             IP=$(curl -s4 ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')
-            PORT=$(grep -oP '(?<=--port )\d+' /etc/systemd/system/curen.service 2>/dev/null || echo "3000")
+            PORT=$(grep -oP '(?<=Environment=PORT=)\d+' /etc/systemd/system/curen.service 2>/dev/null || echo "3000")
             echo -e "\n${cyan}================ Server & Access Info ================${plain}"
             echo -e "Web App URL : ${green}http://${IP}:${PORT}${plain}"
             echo -e "Install Path: ${yellow}${INSTALL_DIR}${plain}"
@@ -197,8 +209,13 @@ manage_server_license() {
     clear
     LIC_FILE="${INSTALL_DIR}/dist/server_license.json"
     PUB_LIC="${INSTALL_DIR}/public/server_license.json"
+    ROOT_LIC="${INSTALL_DIR}/server_license.json"
     STATUS="ACTIVE (Unlocked for all IP clients)"
-    if [[ -f "$LIC_FILE" ]]; then
+    if [[ -f "$ROOT_LIC" ]]; then
+        if grep -q '"isActivated": false' "$ROOT_LIC"; then
+            STATUS="INACTIVE (Server Locked)"
+        fi
+    elif [[ -f "$LIC_FILE" ]]; then
         if grep -q '"isActivated": false' "$LIC_FILE"; then
             STATUS="INACTIVE (Server Locked)"
         fi
@@ -226,12 +243,13 @@ manage_server_license() {
   "licenseType": "SERVER_WIDE_IP_UNLOCKED",
   "machineId": "TB-SRV-LINUX-ENTERPRISE",
   "activatedKey": "8512-3519-4923-6788",
-  "activatedAt": "1404/08/12",
+  "activatedAt": "1405/01/01",
   "unlockedForAllIpClients": true
 }
 LIC_EOF
             mkdir -p "${INSTALL_DIR}/dist"
             cp "$PUB_LIC" "$LIC_FILE" 2>/dev/null || true
+            cp "$PUB_LIC" "$ROOT_LIC" 2>/dev/null || true
             echo -e "${green}Server license is now ACTIVE! All IP clients have unlimited access.${plain}"
             sleep 2; manage_server_license ;;
         2)
@@ -244,12 +262,13 @@ LIC_EOF
   "licenseType": "SERVER_WIDE_IP_UNLOCKED",
   "machineId": "TB-SRV-LINUX-ENTERPRISE",
   "activatedKey": "${user_key}",
-  "activatedAt": "1404/08/12",
+  "activatedAt": "1405/01/01",
   "unlockedForAllIpClients": true
 }
 LIC_EOF
                 mkdir -p "${INSTALL_DIR}/dist"
                 cp "$PUB_LIC" "$LIC_FILE" 2>/dev/null || true
+                cp "$PUB_LIC" "$ROOT_LIC" 2>/dev/null || true
                 echo -e "${green}Server license updated successfully!${plain}"
             fi
             sleep 2; manage_server_license ;;
@@ -263,6 +282,7 @@ LIC_EOF
 LIC_EOF
             mkdir -p "${INSTALL_DIR}/dist"
             cp "$PUB_LIC" "$LIC_FILE" 2>/dev/null || true
+            cp "$PUB_LIC" "$ROOT_LIC" 2>/dev/null || true
             echo -e "${yellow}Server license has been DEACTIVATED.${plain}"
             sleep 2; manage_server_license ;;
         0)
@@ -297,8 +317,12 @@ do_install() {
     mkdir -p "$INSTALL_DIR"
     if [[ -d "$INSTALL_DIR/.git" ]]; then
         cd "$INSTALL_DIR"
+        cp -f "$INSTALL_DIR/server_db.json" /tmp/curen_server_db.json.bak 2>/dev/null || true
+        cp -f "$INSTALL_DIR/server_license.json" /tmp/curen_server_license.json.bak 2>/dev/null || true
         git fetch origin "$BRANCH"
         git reset --hard "origin/$BRANCH"
+        cp -f /tmp/curen_server_db.json.bak "$INSTALL_DIR/server_db.json" 2>/dev/null || true
+        cp -f /tmp/curen_server_license.json.bak "$INSTALL_DIR/server_license.json" 2>/dev/null || true
     else
         git clone -b "$BRANCH" "$REPO_URL" "$INSTALL_DIR"
         cd "$INSTALL_DIR"
@@ -312,19 +336,22 @@ do_install() {
 
     # Initialize Server-Wide License (One-Time Server Activation for All IP Clients)
     mkdir -p "$INSTALL_DIR/public" "$INSTALL_DIR/dist"
-    cat <<'LIC_EOF' > "$INSTALL_DIR/public/server_license.json"
+    if [[ ! -f "$INSTALL_DIR/server_license.json" ]]; then
+        cat <<'LIC_EOF' > "$INSTALL_DIR/server_license.json"
 {
   "isActivated": true,
   "serverEdition": "Linux Server Edition",
   "licenseType": "SERVER_WIDE_IP_UNLOCKED",
   "machineId": "TB-SRV-LINUX-ENTERPRISE",
   "activatedKey": "8512-3519-4923-6788",
-  "activatedAt": "1404/08/12",
+  "activatedAt": "1405/01/01",
   "unlockedForAllIpClients": true,
   "description": "Server license is active. All incoming IP connections are authorized without client-side activation."
 }
 LIC_EOF
-    cp "$INSTALL_DIR/public/server_license.json" "$INSTALL_DIR/dist/server_license.json" 2>/dev/null || true
+    fi
+    cp -f "$INSTALL_DIR/server_license.json" "$INSTALL_DIR/public/server_license.json" 2>/dev/null || true
+    cp -f "$INSTALL_DIR/server_license.json" "$INSTALL_DIR/dist/server_license.json" 2>/dev/null || true
 
     # Configure Systemd Service
     echo -e "${yellow}[5/5] Configuring systemd background daemon service (curen.service)...${plain}"
@@ -337,7 +364,7 @@ After=network.target
 Type=simple
 User=root
 WorkingDirectory=${INSTALL_DIR}
-ExecStart=/usr/bin/npm run preview -- --port ${APP_PORT} --host 0.0.0.0
+ExecStart=/usr/bin/npm start
 Restart=always
 RestartSec=5
 Environment=NODE_ENV=production
@@ -392,13 +419,23 @@ show_installer_menu() {
             if [[ -d "$INSTALL_DIR" ]]; then
                 echo -e "${yellow}Updating Curen from GitHub repository...${plain}"
                 cd "$INSTALL_DIR"
+                cp -f "$INSTALL_DIR/server_db.json" /tmp/curen_server_db.json.bak 2>/dev/null || true
+                cp -f "$INSTALL_DIR/server_license.json" /tmp/curen_server_license.json.bak 2>/dev/null || true
                 git fetch origin "$BRANCH"
                 git reset --hard "origin/$BRANCH"
+                cp -f /tmp/curen_server_db.json.bak "$INSTALL_DIR/server_db.json" 2>/dev/null || true
+                cp -f /tmp/curen_server_license.json.bak "$INSTALL_DIR/server_license.json" 2>/dev/null || true
                 npm install --legacy-peer-deps
                 npm run build
+                if [[ -f "$INSTALL_DIR/server_license.json" ]]; then
+                    cp -f "$INSTALL_DIR/server_license.json" "$INSTALL_DIR/dist/server_license.json" 2>/dev/null || true
+                    cp -f "$INSTALL_DIR/server_license.json" "$INSTALL_DIR/public/server_license.json" 2>/dev/null || true
+                fi
+                sed -i 's|ExecStart=.*|ExecStart=/usr/bin/npm start|g' /etc/systemd/system/curen.service 2>/dev/null || true
+                systemctl daemon-reload
                 systemctl restart curen.service
                 create_cli_shortcut
-                echo -e "${green}Curen successfully updated to the latest GitHub version!${plain}"
+                echo -e "${green}Curen successfully updated to the latest GitHub version (Database & License preserved)!${plain}"
             else
                 echo -e "${red}Error: Curen is not installed yet. Proceeding with fresh install...${plain}"
                 sleep 2

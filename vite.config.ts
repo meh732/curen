@@ -10,7 +10,36 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const DB_FILE = path.resolve(__dirname, 'server_db.json');
+const LICENSE_FILE = path.resolve(__dirname, 'server_license.json');
+const PUBLIC_LICENSE_FILE = path.resolve(__dirname, 'public', 'server_license.json');
 const BACKUPS_DIR = path.resolve(__dirname, 'backups');
+
+function readServerLicense(): any | null {
+  for (const filePath of [LICENSE_FILE, PUBLIC_LICENSE_FILE]) {
+    try {
+      if (fs.existsSync(filePath)) {
+        const parsed = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+        if (parsed && typeof parsed === 'object') return parsed;
+      }
+    } catch {
+      // ignore
+    }
+  }
+  return null;
+}
+
+function writeServerLicense(data: any): boolean {
+  try {
+    const json = JSON.stringify(data, null, 2);
+    fs.writeFileSync(LICENSE_FILE, json, 'utf-8');
+    if (fs.existsSync(path.dirname(PUBLIC_LICENSE_FILE))) {
+      fs.writeFileSync(PUBLIC_LICENSE_FILE, json, 'utf-8');
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function ensureBackupsDir(): string {
   try {
@@ -134,6 +163,58 @@ function apiServerPlugin(): Plugin {
       server.middlewares.use((req, res, next) => {
         if (!req.url?.startsWith('/api')) {
           return next();
+        }
+
+        if (req.url === '/api/license' && req.method === 'GET') {
+          const lic = readServerLicense();
+          res.setHeader('Content-Type', 'application/json');
+          res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+          return res.end(
+            JSON.stringify({
+              success: true,
+              isActivated: Boolean(lic && lic.isActivated),
+              license: lic || null,
+            })
+          );
+        }
+
+        if (req.url === '/api/license' && req.method === 'POST') {
+          let body = '';
+          req.on('data', (chunk) => {
+            body += chunk;
+          });
+          req.on('end', () => {
+            try {
+              const parsed = JSON.parse(body || '{}');
+              const src = parsed.license || parsed;
+              const payload = {
+                isActivated: true,
+                machineId: src.machineId || 'TB-SRV-LINUX-ENTERPRISE',
+                activatedKey: src.activatedKey || src.activationKey || '',
+                activatedAt: src.activatedAt || new Date().toISOString(),
+                unlockedForAllIpClients: true,
+              };
+              const ok = writeServerLicense(payload);
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ success: ok, isActivated: true, license: payload }));
+            } catch (err) {
+              res.statusCode = 500;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ success: false, error: String(err) }));
+            }
+          });
+          return;
+        }
+
+        if (req.url === '/api/license' && req.method === 'DELETE') {
+          const payload = {
+            isActivated: false,
+            unlockedForAllIpClients: false,
+            deactivatedAt: new Date().toISOString(),
+          };
+          const ok = writeServerLicense(payload);
+          res.setHeader('Content-Type', 'application/json');
+          return res.end(JSON.stringify({ success: ok, isActivated: false }));
         }
 
         if (req.url === '/api/state' && req.method === 'GET') {

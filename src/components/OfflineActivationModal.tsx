@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import arkaLogo from '../assets/arka-logo.jpg';
 import {
   ShieldCheck,
   Lock,
@@ -9,10 +10,13 @@ import {
   AlertTriangle,
   Sparkles,
   ClipboardPaste,
+  RefreshCw,
 } from 'lucide-react';
 import {
   saveActivatedLicense,
   verifyOfflineActivationKey,
+  recoverLicenseFromNativeLock,
+  loadLicenseStatus,
   LicenseStatus,
 } from '../utils/offlineLicenseEngine';
 
@@ -49,6 +53,53 @@ export const OfflineActivationModal: React.FC<OfflineActivationModalProps> = ({
   const [copiedId, setCopiedId] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [pastedSuccess, setPastedSuccess] = useState(false);
+  const [isRecovering, setIsRecovering] = useState(false);
+
+  // Auto-detect existing hardware license lock on modal open
+  useEffect(() => {
+    let active = true;
+    async function tryAutoRecover() {
+      setIsRecovering(true);
+      try {
+        const ok = await recoverLicenseFromNativeLock();
+        if (ok && active) {
+          const fresh = loadLicenseStatus();
+          if (fresh.isActivated) {
+            onActivated(fresh);
+            return;
+          }
+        }
+      } catch {
+        // ignore
+      } finally {
+        if (active) setIsRecovering(false);
+      }
+    }
+    void tryAutoRecover();
+    return () => {
+      active = false;
+    };
+  }, [machineId, onActivated]);
+
+  const handleManualAutoRecover = async () => {
+    setIsRecovering(true);
+    setErrorMsg('');
+    try {
+      const ok = await recoverLicenseFromNativeLock();
+      if (ok) {
+        const fresh = loadLicenseStatus();
+        if (fresh.isActivated) {
+          onActivated(fresh);
+          return;
+        }
+      }
+      setErrorMsg('قفل سخت‌افزاری فعال روی سیستم شناسایی نشد. لطفاً کد ۱۶ رقمی را در کادر زیر وارد فرمایید.');
+    } catch {
+      setErrorMsg('خطا در بازخوانی قفل سخت‌افزاری سیستم.');
+    } finally {
+      setIsRecovering(false);
+    }
+  };
 
   const handleCopyMachineId = () => {
     if (!machineId) return;
@@ -119,7 +170,7 @@ export const OfflineActivationModal: React.FC<OfflineActivationModalProps> = ({
         <div className="bg-gradient-to-l from-emerald-900/90 via-teal-900/80 to-slate-900 p-5 border-b border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-3.5">
             <img
-              src="/arka-logo.jpg"
+              src={arkaLogo}
               alt="لوگو آرکا"
               className="w-12 h-12 rounded-2xl object-cover bg-white p-0.5 border border-emerald-500/40 shadow-lg shrink-0"
             />
@@ -221,14 +272,30 @@ export const OfflineActivationModal: React.FC<OfflineActivationModalProps> = ({
             </div>
           )}
 
-          {/* Activate Button */}
-          <button
-            type="submit"
-            className="w-full py-3.5 rounded-xl bg-gradient-to-l from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-sm shadow-lg shadow-emerald-900/50 flex items-center justify-center gap-2 transition cursor-pointer"
-          >
-            <Sparkles className="w-4 h-4" />
-            <span>ثبت رمز فعال‌سازی و بازگشایی نرم‌افزار روی این کامپیوتر</span>
-          </button>
+          {/* Action Buttons */}
+          <div className="space-y-2 pt-1">
+            <button
+              type="submit"
+              className="w-full py-3.5 rounded-xl bg-gradient-to-l from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-sm shadow-lg shadow-emerald-900/50 flex items-center justify-center gap-2 transition cursor-pointer"
+            >
+              <Sparkles className="w-4 h-4" />
+              <span>ثبت رمز فعال‌سازی و بازگشایی نرم‌افزار روی این کامپیوتر</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleManualAutoRecover}
+              disabled={isRecovering}
+              className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-bold text-slate-300 hover:text-white flex items-center justify-center gap-2 transition cursor-pointer disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-teal-400 ${isRecovering ? 'animate-spin' : ''}`} />
+              <span>
+                {isRecovering
+                  ? 'در حال خواندن قفل دائمی سخت‌افزار...'
+                  : 'شناسایی خودکار قفل سخت‌افزار (در صورت فعال‌سازی قبلی این کامپیوتر)'}
+              </span>
+            </button>
+          </div>
         </form>
 
         {/* Footer Info */}

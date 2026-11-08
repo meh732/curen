@@ -129,7 +129,17 @@ export interface JournalVoucher {
   lines: VoucherLine[];
   createdAt: string;
   invoiceId?: string;
-  autoType?: 'receive_from_person' | 'pay_to_person' | 'bank_transfer' | 'expense' | 'income' | 'invoice' | 'fx_deal' | 'manual';
+  autoType?:
+    | 'receive_from_person'
+    | 'pay_to_person'
+    | 'currency_receive_from_person'
+    | 'currency_pay_to_person'
+    | 'bank_transfer'
+    | 'expense'
+    | 'income'
+    | 'invoice'
+    | 'fx_deal'
+    | 'manual';
 }
 
 export interface BankStatementEntry {
@@ -284,6 +294,8 @@ export interface UserAccount {
 export interface AccountingState {
   companyName: string;
   fiscalYear: string;
+  fiscalStartDate?: string;
+  fiscalEndDate?: string;
   currencies: Currency[];
   accounts: Account[];
   contacts: Contact[];

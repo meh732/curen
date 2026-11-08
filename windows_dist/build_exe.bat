@@ -17,8 +17,9 @@ if not exist "%CSC%" (
     exit /b 1
 )
 
-echo Compiling TarazBan_Accounting.exe ...
-"%CSC%" /nologo /target:winexe /out:"%~dp0TarazBan_Accounting.exe" /r:System.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll /r:System.Management.dll /r:System.Xml.dll /r:System.Core.dll "%~dp0TarazBanNativeApp.cs"
+echo Compiling ARKA_Accounting.exe / TarazBan_Accounting.exe with ARKA icon...
+"%CSC%" /nologo /target:winexe /win32icon:"%~dp0..\public\favicon.ico" /out:"%~dp0TarazBan_Accounting.exe" /r:System.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll /r:System.Management.dll /r:System.Xml.dll /r:System.Core.dll "%~dp0TarazBanNativeApp.cs"
+copy /Y "%~dp0TarazBan_Accounting.exe" "%~dp0ARKA_Accounting.exe" >nul 2>&1
 
 if exist "%~dp0TarazBan_Accounting.exe" (
     echo.
